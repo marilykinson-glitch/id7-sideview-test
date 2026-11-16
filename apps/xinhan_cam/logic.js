@@ -1,0 +1,265 @@
+'use strict';
+/**
+ * logic.js - everything Camera xi nhan decides, as pure functions (no kit, no car): the tests run
+ * them as they are. Node 8.
+ *
+ *   decode(value)            a de.bmw.body.Light indicator event -> { direction, kind, raw }
+ *   createBlinker(opts)      the turn signals over time -> the side whose camera is wanted
+ *   camState(xv, icam)       the camera unit's state -> what its picture holds
+ *   viewConfig(settings, targets, kind)   the settings -> the helper's config (crop, turn, size, place)
+ *   plan(input)              all of it -> { view, why, want } for this moment
+ */
+
+/* ---------------- turn signals ---------------- */
+
+// de.bmw.body.Light StatusFunctionsIndicators / StatusFunctionsIndicators2, as read on a G30 (iDrive 7):
+// controlIndicateDirection is what the stalk asks for, activeFunctionIndicateDirection what blinks.
+const CONTROL = {
+    BLINKEN_AUS: 0,
+    TIPP_BLINKEN_LINKS_EIN: 1,
+    TIPP_BLINKEN_RECHTS_EIN: 2,
+    DAUER_BLINKEN_LINKS_EIN: 3,
+    DAUER_BLINKEN_RECHTS_EIN: 4,
+    BEIDSEITIGES_BLINKEN_EIN: 8,
+};
+const CONTROL_DIR = { 0: 'OFF', 1: 'LEFT', 2: 'RIGHT', 3: 'LEFT', 4: 'RIGHT', 8: 'HAZARD' };
+const CONTROL_KIND = { 1: 'tip', 2: 'tip', 3: 'steady', 4: 'steady' };
+const ACTIVE_DIR = { 0: 'OFF', 6: 'HAZARD', 7: 'LEFT', 8: 'RIGHT', 9: 'LEFT', 10: 'RIGHT' };
+
+/** The first value under `key` anywhere in a (nested) event value. */
+function field(value, key) {
+    if (!value || typeof value !== 'object') return undefined;
+    if (Object.prototype.hasOwnProperty.call(value, key)) return value[key];
+    const keys = Object.keys(value);
+    for (let i = 0; i < keys.length; i++) {
+        const found = field(value[keys[i]], key);
+        if (found !== undefined) return found;
+    }
+    return undefined;
+}
+
+/**
+ * One indicator event: direction 'LEFT' | 'RIGHT' | 'HAZARD' | 'OFF' | undefined (the event says
+ * nothing about the indicators), kind 'tip' (the three-blink lane-change tap) | 'steady' | null.
+ */
+function decode(value) {
+    const command = field(value, 'controlIndicateDirection');
+    const active = field(value, 'activeFunctionIndicateDirection');
+    const code = Object.prototype.hasOwnProperty.call(CONTROL, command) ? CONTROL[command] : command;
+    const commanded = CONTROL_DIR[code];
+    const a = String(active);
+    const observed = ACTIVE_DIR[active]
+        || (/^(?:DAUERBLINKEN|TIPPBLINKEN)_LINKS$/.test(a) ? 'LEFT' : undefined)
+        || (/^(?:DAUERBLINKEN|TIPPBLINKEN)_RECHTS$/.test(a) ? 'RIGHT' : undefined)
+        || (/^WARNBLINKEN/.test(a) ? 'HAZARD' : undefined);
+    const direction = commanded && commanded !== 'OFF' ? commanded : observed || commanded;
+    let kind = null;
+    if (direction === 'LEFT' || direction === 'RIGHT') {
+        kind = CONTROL_KIND[code] || (/^TIPPBLINKEN/.test(a) ? 'tip' : /^DAUERBLINKEN/.test(a) ? 'steady' : null);
+    }
+    return { direction, kind, raw: String(command === undefined || command === null ? '-' : command) + ' / ' + String(active === undefined || active === null ? '-' : active) };
+}
+
+/**
+ * The side whose camera is wanted, from the indicator events as they come.
+ *   b.event(direction, kind, now)   one decoded event (direction undefined: ignored)
+ *   b.side(now)                     'left' | 'right' | null
+ *   b.state()                       'LEFT' | 'RIGHT' | 'HAZARD' | 'OFF' | 'WAITING' (no event yet)
+ * opts: holdMs (the side stays this long after its signal goes off: covers the dark half of a blink
+ * and the moment after a turn), tip (false: the three-blink tap does not show the camera),
+ * maxMs (a signal left on longer than this is taken as a missed "off": 0 = never).
+ */
+function createBlinker(opts) {
+    let o = Object.assign({ holdMs: 2000, tip: true, maxMs: 0 }, opts || {});
+    let dir = 'WAITING', side = null, onAt = 0, offAt = null;
+    return {
+        configure(next) { o = Object.assign({}, o, next || {}); },
+        event(direction, kind, now) {
+            if (!direction) return;
+            dir = direction;
+            if (direction === 'LEFT' || direction === 'RIGHT') {
+                if (kind === 'tip' && !o.tip) {
+                    // a tap while the other side's camera still shows ends that one too
+                    if (side && offAt === null) offAt = now;
+                    return;
+                }
+                const s = direction === 'LEFT' ? 'left' : 'right';
+                if (s !== side || offAt !== null) onAt = now;
+                side = s;
+                offAt = null;
+            } else if (direction === 'HAZARD') {
+                side = null;             // both sides blink: no camera, at once
+                offAt = null;
+            } else if (side && offAt === null) {
+                offAt = now;             // OFF: the side stays for holdMs
+            }
+        },
+        side(now) {
+            if (!side) return null;
+            if (offAt !== null && now - offAt >= o.holdMs) { side = null; offAt = null; return null; }
+            if (offAt === null && o.maxMs && now - onAt >= o.maxMs) { side = null; return null; }
+            return side;
+        },
+        state() { return dir; },
+    };
+}
+
+/* ---------------- the camera unit ---------------- */
+
+// CurrentState.application of a parking view (TOPREARVIEW 1, SIDEVIEW 2, RFK 3, OFFROAD 20, REMOTE360 60):
+// the driver is looking at the cameras on the centre screen, the stream is that view's
+const PARKING = /^(TOPREARVIEW|SIDEVIEW|RFK|OFFROAD|REMOTE360|1|2|3|20|60)$/;
+const DR = /^(DR_ACTIVE|51)$/;
+// CurrentState.perspective in Drive Recorder mode -> what the picture holds
+const ALL4 = [7, 9, 10], FRONT_REAR = [5, 6];
+
+/**
+ * What the camera unit shows, from XView3D.CurrentState and ICAM2Proxy.currentState (either may be
+ * missing): { known, text, ready, parking, dr, perspective, kind } with kind
+ * 'all4' (the four cameras in one picture) | 'left' | 'right' | 'front' | 'rear' | 'frontrear' |
+ * 'parking' | 'starting' | 'other' | 'unknown' (no state could be read).
+ */
+function camState(xv, icam) {
+    const states = [xv, icam].filter((s) => s && typeof s === 'object');
+    if (!states.length) return { known: false, text: 'không đọc được', ready: false, parking: false, dr: false, perspective: null, kind: 'unknown' };
+    const one = (s) => {
+        const app = String(s.application), p = Number(s.perspective);
+        const starting = /SIGNAL_UNFILLED|^255$/.test(app) || p === 255;
+        const dr = DR.test(app);
+        let kind = 'other';
+        if (starting) kind = 'starting';
+        else if (PARKING.test(app)) kind = 'parking';
+        else if (dr && ALL4.indexOf(p) >= 0) kind = 'all4';
+        else if (dr && p === 3) kind = 'left';
+        else if (dr && p === 4) kind = 'right';
+        else if (dr && p === 1) kind = 'front';
+        else if (dr && p === 2) kind = 'rear';
+        else if (dr && FRONT_REAR.indexOf(p) >= 0) kind = 'frontrear';
+        return { known: true, text: s.application + '/' + s.mode + '/' + s.perspective, ready: !starting, parking: kind === 'parking', dr, perspective: Number.isFinite(p) ? p : null, kind };
+    };
+    const all = states.map(one);
+    // the one that shows a view we can use counts (either service may lag behind the other)
+    const useful = all.filter((s) => ['all4', 'left', 'right'].indexOf(s.kind) >= 0)[0];
+    const parking = all.filter((s) => s.parking)[0];
+    return parking || useful || all[0];
+}
+
+/* ---------------- the helper's config ---------------- */
+
+const QUADS = { tl: [0, 0], tr: [500, 0], bl: [0, 500], br: [500, 500] };
+const HEIGHTS = { small: 288, medium: 384, large: 480 };
+
+/** "map:1088x480,panel:1920x720,hud:800x480" -> { map: { w, h }, ... } */
+function parseTargets(text) {
+    const out = {};
+    String(text || '').split(',').forEach((part) => {
+        const m = /^([a-z0-9_]+):(\d+)x(\d+)$/i.exec(part.trim());
+        if (m) out[m[1]] = { w: Number(m[2]), h: Number(m[3]) };
+    });
+    return out;
+}
+
+/** A crop "x,y,w,h" (1/1000) zoomed in about its middle: zoom 100 = all of it, 200 = the middle half. */
+function zoomCrop(x, y, w, h, zoom) {
+    const z = Math.max(100, Math.min(400, Number(zoom) || 100));
+    const nw = Math.max(50, Math.round(w * 100 / z)), nh = Math.max(50, Math.round(h * 100 / z));
+    return [Math.round(x + (w - nw) / 2), Math.round(y + (h - nh) / 2), nw, nh].join(',');
+}
+
+/**
+ * The helper's config for these settings.
+ * mode 'mosaic': each side is its quarter of the four-camera picture; 'single': the camera unit sends
+ * the wanted mirror camera alone and the view is the whole picture.
+ * targets: the cluster renderer's (parseTargets); side: the side shown, for "place: side".
+ */
+function viewConfig(settings, targets, side) {
+    const s = settings || {};
+    const target = ['map', 'panel', 'hud'].indexOf(s.target) >= 0 ? s.target : 'map';
+    const t = (targets && targets[target]) || { map: { w: 1088, h: 480 }, panel: { w: 1920, h: 720 }, hud: { w: 800, h: 480 } }[target];
+    const single = s.mode === 'single';
+    const stretch = [100, 150, 200].indexOf(Number(s.stretch)) >= 0 ? Number(s.stretch) : 100;
+    const rot = (k) => ([0, 90, 180, 270].indexOf(Number(s[k])) >= 0 ? Number(s[k]) : 0);
+    const quad = (k, d) => QUADS[s[k]] || QUADS[d];
+    const ql = quad('quadLeft', 'bl'), qr = quad('quadRight', 'br');
+    const left = single ? zoomCrop(0, 0, 1000, 1000, s.zoom) : zoomCrop(ql[0], ql[1], 500, 500, s.zoom);
+    const right = single ? zoomCrop(0, 0, 1000, 1000, s.zoom) : zoomCrop(qr[0], qr[1], 500, 500, s.zoom);
+    // the picture's shape on the cluster: a quarter of the 4:3 mosaic is 4:3, a single camera is 8:3;
+    // "stretch" widens it when the camera unit squeezed the picture sideways
+    const turned = (r) => r === 90 || r === 270;
+    const base = single ? 8 / 3 : 4 / 3;
+    const shape = (r) => { const a = base * stretch / 100; return turned(r) ? 1 / a : a; };
+    // one layer for both sides: as wide as the wider of the two
+    const aspect = Math.max(shape(rot('rotLeft')), shape(rot('rotRight')));
+    let h = HEIGHTS[s.size] || HEIGHTS.medium;
+    if (h > t.h) h = t.h;
+    let w = Math.round(h * aspect);
+    if (w > t.w) { w = t.w; h = Math.round(w / aspect); }
+    w = Math.max(64, w - (w % 4));
+    h = Math.max(64, h - (h % 2));
+    let x = Math.round((t.w - w) / 2), y = Math.round((t.h - h) / 2);
+    if (s.place === 'side' && side === 'left') x = Math.min(x, 16);
+    if (s.place === 'side' && side === 'right') x = Math.max(x, t.w - w - 16);
+    if (s.place === 'top') y = 0;
+    if (s.place === 'bottom') y = t.h - h;
+    x -= x % 2;
+    y -= y % 2;
+    const fps = [8, 10, 12, 15].indexOf(Number(s.fps)) >= 0 ? Number(s.fps) : 12;
+    const flip = s.mirror === 'on' ? 1 : 0;
+    return {
+        op: 'config', target, w, h, x, y, fps, klass: 'overlay', exclusive: 1, contend: 1, persist: s.layer === 'make' ? 0 : 1,
+        left, left_rot: rot('rotLeft'), left_flip: flip, left_sar: stretch,
+        right, right_rot: rot('rotRight'), right_flip: flip, right_sar: stretch,
+        all: '0,0,1000,1000', all_rot: 0, all_flip: 0, all_sar: 100,
+    };
+}
+
+/* ---------------- what to show now ---------------- */
+
+/**
+ * input: {
+ *   enabled, mode ('mosaic' | 'single'), source ('auto' | 'passive'),
+ *   side ('left' | 'right' | null: the blinker's), test ('left' | 'right' | 'all' | null),
+ *   speed (km/h or null), maxSpeed (0: any), cam (camState()),
+ *   helper: { ok, pictureAge, pictureW, pictureH } (the helper's status; ok false: not running)
+ * }
+ * -> { view: 'left' | 'right' | 'all' | 'none', why (when none, or what holds it up), want }
+ * want: the perspective to ask the camera unit for (7 all four, 3 left, 4 right), or null to ask for
+ * nothing (off, or "passive": use what another app has on).
+ */
+function plan(i) {
+    const none = (why, want) => ({ view: 'none', why, want: want === undefined ? null : want });
+    if (!i.enabled && !i.test) return none('Đang tắt');
+    const single = i.mode === 'single';
+    const ask = i.source !== 'passive';
+    const side = i.test === 'left' || i.test === 'right' ? i.test : i.test === 'all' ? null : i.side;
+    // what the camera unit should send: in single mode the wanted mirror camera while a side is on,
+    // else (and always in mosaic mode) all four, which is also what Drive Recorder keeps on
+    const want = !ask ? null : single && side ? (side === 'left' ? 3 : 4) : 7;
+    if (!side && i.test !== 'all') return none('Chờ xi nhan', want);
+    if (!i.test && i.maxSpeed && i.speed !== null && i.speed !== undefined && i.speed > i.maxSpeed) {
+        return none('Xe chạy nhanh hơn ' + i.maxSpeed + ' km/h', want);
+    }
+    const h = i.helper || {};
+    if (!h.ok) return none('Trợ thủ xinhan-cam chưa chạy', want);
+    const cam = i.cam || { kind: 'unknown' };
+    if (cam.kind === 'parking') return none('Xe đang hiện camera đỗ xe', want);
+    if (cam.kind === 'starting') return none('Hộp camera đang khởi động', want);
+    if (h.pictureAge === null || h.pictureAge === undefined || h.pictureAge < 0) return none('Chưa có hình từ camera', want);
+    if (h.pictureAge > 1500) return none('Luồng camera đang dừng', want);
+    if (i.test === 'all') return { view: 'all', why: '', want };
+    const tall = h.pictureH >= 800;        // the four-camera picture is 1280x960, one camera 1280x480
+    if (single) {
+        // the wanted camera alone: the unit says so, or (state unreadable) the picture is a single camera's
+        const on = cam.kind === side || (cam.kind === 'unknown' && !tall);
+        if (!on) return none('Chờ hộp camera chuyển sang camera ' + (side === 'left' ? 'trái' : 'phải'), want);
+        return { view: side, why: '', want };
+    }
+    const on = cam.kind === 'all4' || (cam.kind === 'unknown' && tall);
+    if (!on) {
+        if (cam.kind === 'unknown') return none('Hình camera không phải dạng ghép 4 camera', want);
+        return none('Hộp camera chưa ở chế độ 4 camera (' + cam.text + ')', want);
+    }
+    return { view: side, why: '', want };
+}
+
+module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, plan, CONTROL, HEIGHTS };

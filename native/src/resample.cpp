@@ -1,0 +1,190 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "resample.h"
+
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+
+namespace sidecam {
+
+bool parse_crop(const std::string &text, ViewSpec *v)
+{
+    int x, y, w, h;
+    char tail;
+    if (std::sscanf(text.c_str(), "%d,%d,%d,%d%c", &x, &y, &w, &h, &tail) != 4)
+        return false;
+    if (x < 0 || y < 0 || w < 50 || h < 50 || x + w > 1000 || y + h > 1000)
+        return false;
+    v->x = x;
+    v->y = y;
+    v->w = w;
+    v->h = h;
+    return true;
+}
+
+void black_atlas(uint8_t *atlas, int w, int h)
+{
+    std::memset(atlas, 0, (size_t)w * h);
+    std::memset(atlas + (size_t)w * h, 128, (size_t)w * (h / 2));
+}
+
+namespace {
+
+/* Studio levels to full range, as the atlas shader expects. */
+struct RangeTables {
+    uint8_t y[256], c[256];
+    RangeTables()
+    {
+        for (int i = 0; i < 256; i++) {
+            int a = (int)std::lround((i - 16) * 255.0 / 219.0);
+            int b = (int)std::lround((i - 128) * 255.0 / 224.0) + 128;
+            y[i] = (uint8_t)(a < 0 ? 0 : a > 255 ? 255 : a);
+            c[i] = (uint8_t)(b < 0 ? 0 : b > 255 ? 255 : b);
+        }
+    }
+};
+const RangeTables &range_tables()
+{
+    static const RangeTables t;
+    return t;
+}
+
+inline int even_down(int v) { return v & ~1; }
+
+}  // namespace
+
+/* The taps of one plane: its source rect (px0, py0, psw, psh) onto a content
+ * rect of dw x dh. */
+void Resampler::plane_taps(std::vector<Tap> *taps, int px0, int py0, int psw, int psh, int dw, int dh) const
+{
+    taps->resize((size_t)dw * dh);
+    const int rot = ((view_.rot % 360) + 360) % 360;
+    for (int j = 0; j < dh; j++) {
+        for (int i = 0; i < dw; i++) {
+            double u = (i + 0.5) / dw, v = (j + 0.5) / dh;
+            if (view_.flip)
+                u = 1.0 - u;
+            double su, sv;
+            switch (rot) {
+            case 90: su = v; sv = 1.0 - u; break;
+            case 180: su = 1.0 - u; sv = 1.0 - v; break;
+            case 270: su = 1.0 - v; sv = u; break;
+            default: su = u; sv = v; break;
+            }
+            double x = px0 + su * psw - 0.5, y = py0 + sv * psh - 0.5;
+            /* inside the rect, with a neighbour to the right and below */
+            const double xmax = px0 + psw - 1, ymax = py0 + psh - 1;
+            if (x < px0) x = px0;
+            if (y < py0) y = py0;
+            if (x > xmax) x = xmax;
+            if (y > ymax) y = ymax;
+            int xi = (int)x, yi = (int)y;
+            int fx = (int)((x - xi) * 256.0), fy = (int)((y - yi) * 256.0);
+            if (xi >= px0 + psw - 1) { xi = px0 + psw - 2; fx = 255; }
+            if (yi >= py0 + psh - 1) { yi = py0 + psh - 2; fy = 255; }
+            if (fx > 255) fx = 255;
+            if (fy > 255) fy = 255;
+            Tap &t = (*taps)[(size_t)j * dw + i];
+            t.x = (uint16_t)xi;
+            t.y = (uint16_t)yi;
+            t.fx = (uint8_t)fx;
+            t.fy = (uint8_t)fy;
+        }
+    }
+}
+
+bool Resampler::build(int src_w, int src_h, const ViewSpec &v, int out_w, int out_h)
+{
+    src_w_ = src_h_ = 0;   /* nothing matches until the tables are whole */
+    if (src_w < 32 || src_h < 32 || src_w > 4096 || src_h > 4096 || (src_w & 1) || (src_h & 1))
+        return false;
+    if (out_w < 16 || out_h < 16 || out_w > 1920 || out_h > 720 || (out_w & 3) || (out_h & 1))
+        return false;
+    view_ = v;
+    /* the part of the picture, on even luma samples, at least 16x16 */
+    int sx = even_down((int)((int64_t)src_w * v.x / 1000));
+    int sy = even_down((int)((int64_t)src_h * v.y / 1000));
+    int sw = even_down((int)((int64_t)src_w * v.w / 1000));
+    int sh = even_down((int)((int64_t)src_h * v.h / 1000));
+    if (sx + sw > src_w) sw = even_down(src_w - sx);
+    if (sy + sh > src_h) sh = even_down(src_h - sy);
+    if (sw < 16 || sh < 16)
+        return false;
+    const int rot = ((v.rot % 360) + 360) % 360;
+    if (rot != 0 && rot != 90 && rot != 180 && rot != 270)
+        return false;
+    if (v.sar < 25 || v.sar > 400)
+        return false;
+    /* its shape on the display: the samples sar % as wide as high, then the turn */
+    const double shown_w = sw * (v.sar / 100.0);
+    const double cw = (rot == 90 || rot == 270) ? (double)sh : shown_w, ch = (rot == 90 || rot == 270) ? shown_w : (double)sh;
+    /* the largest picture of that shape in the output, on even samples */
+    double scale = (double)out_w / cw;
+    if ((double)out_h / ch < scale)
+        scale = (double)out_h / ch;
+    dw_ = even_down((int)std::lround(cw * scale));
+    dh_ = even_down((int)std::lround(ch * scale));
+    if (dw_ > out_w) dw_ = out_w;
+    if (dh_ > out_h) dh_ = out_h;
+    if (dw_ < 2 || dh_ < 2)
+        return false;
+    ox_ = even_down((out_w - dw_) / 2);
+    oy_ = even_down((out_h - dh_) / 2);
+    plane_taps(&y_taps_, sx, sy, sw, sh, dw_, dh_);
+    plane_taps(&c_taps_, sx / 2, sy / 2, sw / 2, sh / 2, dw_ / 2, dh_ / 2);
+    out_w_ = out_w;
+    out_h_ = out_h;
+    src_w_ = src_w;
+    src_h_ = src_h;
+    return true;
+}
+
+namespace {
+
+inline uint8_t sample(const uint8_t *plane, int stride, unsigned x, unsigned y, unsigned fx, unsigned fy)
+{
+    const uint8_t *p = plane + (size_t)y * stride + x;
+    const unsigned top = p[0] * (256 - fx) + p[1] * fx;
+    const unsigned bot = p[stride] * (256 - fx) + p[stride + 1] * fx;
+    return (uint8_t)((top * (256 - fy) + bot * fy + 32768) >> 16);
+}
+
+}  // namespace
+
+void Resampler::run(const Planes &p, uint8_t *atlas) const
+{
+    if (!src_w_ || p.w != src_w_ || p.h != src_h_)
+        return;
+    const RangeTables &rt = range_tables();
+    const bool stretch = !p.full_range;
+    black_atlas(atlas, out_w_, out_h_);
+    /* Y */
+    {
+        const Tap *t = y_taps_.data();
+        for (int j = 0; j < dh_; j++) {
+            uint8_t *o = atlas + (size_t)(oy_ + j) * out_w_ + ox_;
+            for (int i = 0; i < dw_; i++, t++) {
+                const uint8_t v = sample(p.y, p.y_stride, t->x, t->y, t->fx, t->fy);
+                o[i] = stretch ? rt.y[v] : v;
+            }
+        }
+    }
+    /* U on the left half, V on the right half, below Y */
+    {
+        const int cw = out_w_ / 2, cdw = dw_ / 2, cdh = dh_ / 2, cox = ox_ / 2, coy = oy_ / 2;
+        uint8_t *base = atlas + (size_t)out_w_ * out_h_;
+        const Tap *t = c_taps_.data();
+        for (int j = 0; j < cdh; j++) {
+            uint8_t *ou = base + (size_t)(coy + j) * out_w_ + cox;
+            uint8_t *ov = ou + cw;
+            for (int i = 0; i < cdw; i++, t++) {
+                const uint8_t a = sample(p.u, p.c_stride, t->x, t->y, t->fx, t->fy);
+                const uint8_t b = sample(p.v, p.c_stride, t->x, t->y, t->fx, t->fy);
+                ou[i] = stretch ? rt.c[a] : a;
+                ov[i] = stretch ? rt.c[b] : b;
+            }
+        }
+    }
+}
+
+}  // namespace sidecam

@@ -1,0 +1,62 @@
+{
+  "id": "xinhan-cam",
+  "kind": "tool",
+  "version": "0.3.0",
+  "title": "Trợ thủ Camera xi nhan",
+  "description": "Nhận luồng camera của xe (4 camera 360), giải mã và vẽ camera gương lên đồng hồ qua cluster-render khi app Camera xi nhan yêu cầu. Chỉ đọc luồng hình, không ghi gì vào xe. Sau khi cài lần đầu cần khởi động lại màn hình.",
+  "license": "GPL-3.0-or-later",
+  "mguHmi": [
+    "ID7"
+  ],
+  "uninstallable": true,
+  "requires": {
+    "mgu-deploy": "0.7.11",
+    "cluster-render": "0.5.10"
+  },
+  "files": [
+    {
+      "path": "xinhan-cam.js",
+      "mode": "0644"
+    },
+    {
+      "path": "mgu-sidecam",
+      "mode": "0755"
+    },
+    {
+      "path": "NOTICE.md",
+      "mode": "0644"
+    },
+    {
+      "path": "LICENSE.GPL-3.0",
+      "mode": "0644"
+    },
+    {
+      "path": "LICENSE.MPL-2.0",
+      "mode": "0644"
+    },
+    {
+      "path": "LICENSE.ffmpeg",
+      "mode": "0644"
+    }
+  ],
+  "units": [
+    {
+      "name": "xinhan-cam.service"
+    }
+  ],
+  "enable": [
+    {
+      "unit": "xinhan-cam.service",
+      "target": "multi-user.target"
+    }
+  ],
+  "recmgr": [
+    "xinhan-cam"
+  ],
+  "crashNames": [
+    "mgu-sidecam"
+  ],
+  "restart": [
+    "xinhan-cam.service"
+  ]
+}
