@@ -171,6 +171,31 @@ int main()
         v.sar = 1000;
         CHECK(!r.build(1280, 960, v, 512, 384));
     }
+    /* round: a disc with a light rim, black and colourless around it */
+    {
+        Pic p(480, 480);
+        for (auto &b : p.y) b = 90;
+        for (auto &b : p.u) b = 60;
+        for (auto &b : p.v) b = 200;
+        ViewSpec v;
+        v.round = true;
+        Resampler r;
+        CHECK(r.build(480, 480, v, 384, 384));
+        std::vector<uint8_t> a(atlas_bytes(384, 384));
+        r.run(p.planes(true), a.data());
+        CHECK(Y(a, 384, 192, 192) == 90 && U(a, 384, 384, 192, 192) == 60 && V(a, 384, 384, 192, 192) == 200);   /* the middle */
+        CHECK(Y(a, 384, 192, 60) == 90 && Y(a, 384, 60, 192) == 90);                                              /* well inside */
+        CHECK(Y(a, 384, 2, 2) == 0 && U(a, 384, 384, 2, 2) == 128 && V(a, 384, 384, 2, 2) == 128);              /* a corner */
+        CHECK(Y(a, 384, 381, 381) == 0 && Y(a, 384, 30, 30) == 0);
+        CHECK(Y(a, 384, 192, 3) == 200 && U(a, 384, 384, 192, 3) == 128);                                        /* the rim, top */
+        CHECK(Y(a, 384, 380, 192) == 200 && Y(a, 384, 3, 192) == 200 && Y(a, 384, 192, 380) == 200);
+        CHECK(Y(a, 384, 192, 12) == 90);                                                                         /* past the rim */
+        ViewSpec sq;
+        CHECK(!r.matches(480, 480, sq, 384, 384));                                                               /* round is part of the view */
+        CHECK(r.build(480, 480, sq, 384, 384));
+        r.run(p.planes(true), a.data());
+        CHECK(Y(a, 384, 2, 2) == 90);
+    }
     /* sizes it refuses */
     {
         Resampler r;

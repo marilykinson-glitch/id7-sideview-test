@@ -24,9 +24,13 @@ struct ViewSpec {
     int sar = 100;                          /* how wide a sample is shown, in % of its height: 200 for a
                                              * picture the camera unit squeezed to half its width */
 
+    bool round = false;                     /* shown as a disc with a light rim, black around it (a round
+                                             * "gauge" on the cluster's black background) */
+
     bool operator==(const ViewSpec &o) const
     {
-        return x == o.x && y == o.y && w == o.w && h == o.h && rot == o.rot && flip == o.flip && sar == o.sar;
+        return x == o.x && y == o.y && w == o.w && h == o.h && rot == o.rot && flip == o.flip && sar == o.sar &&
+               round == o.round;
     }
     bool operator!=(const ViewSpec &o) const { return !(*this == o); }
 };
@@ -76,6 +80,10 @@ private:
     ViewSpec view_;
     int ox_ = 0, oy_ = 0, dw_ = 0, dh_ = 0;
     std::vector<Tap> y_taps_, c_taps_;     /* one per content pixel, row by row */
+    /* round: per content pixel, 0-255 how much of the picture shows (0 outside the disc), and 255 in
+     * rim_ where the rim is drawn; empty when not round */
+    std::vector<uint8_t> y_mask_, c_mask_, y_rim_, c_rim_;
+    void disc(std::vector<uint8_t> *mask, std::vector<uint8_t> *rim, int dw, int dh, double rim_px) const;
 };
 
 /* The whole atlas black (Y 0, chroma neutral). */

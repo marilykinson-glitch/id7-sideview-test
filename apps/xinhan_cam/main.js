@@ -218,7 +218,7 @@ mgu.run({
             if (n) {
                 cluster = n.cr !== 'connected' ? 'Đồng hồ: chưa nối được cluster-render (cài cluster-render trong Store)'
                     : n.layer === 'refused' ? 'Đồng hồ: từ chối lớp video - ' + n.layer_reason
-                        : 'Đồng hồ: sẵn sàng, ' + n.target + ' ' + n.layer_w + 'x' + n.layer_h + (n.target_holder && n.target_holder !== 'none' ? ' (đang do ' + n.target_holder + ' giữ)' : '');
+                        : 'Đồng hồ: sẵn sàng, ' + n.target + ' ' + n.layer_w + 'x' + n.layer_h + (n.target_holder && ['none', 'us'].indexOf(n.target_holder) < 0 ? ' (đang do ' + n.target_holder + ' giữ)' : '');
             }
             const camText = 'Hộp camera: ' + (info.cam.known ? info.cam.text : link.icam === 'ok' || link.xv === 'ok' ? 'chưa đọc được trạng thái' : 'chưa nối (' + (link.icam || '-') + ')')
                 + ' - ' + ({ on: 'đúng chế độ', idle: 'không yêu cầu', asked: 'đã yêu cầu', waiting: 'xe chưa cho, chờ thử lại', starting: 'đang khởi động', 'parking view': 'đang hiện camera đỗ xe' }[info.phase] || info.phase)

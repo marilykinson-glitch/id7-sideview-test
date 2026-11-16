@@ -1,10 +1,10 @@
-# Camera xi nhan 0.3.1 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.3.2 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 
 Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. Hình lấy từ chính luồng 4 camera mà Drive Recorder Next đang dùng, nên hai app chạy song song được.
 
-> **Trên xe (G30, bản 0.3.0):** app đọc được xi nhan, hộp camera vào đúng chế độ `DR_ACTIVE/MODE_MOSAIK/7`, trợ thủ nhận và giải mã được luồng, cluster-render sẵn sàng. Luồng của G30 là **1280x480, 30 hình/giây**: hai loại khung xen kẽ, mỗi khung 2 camera. Bản 0.3.1 ghép hai khung đó thành hình 4 camera rồi mới cắt. **Phần ghép và hình trên đồng hồ chưa được xác nhận trên xe.**
+> **Trên xe (G30, bản 0.3.1):** đã lên hình trên đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). Sau khi ghép: hàng trên là camera trước và sau, hàng dưới là gương trái và gương phải, đúng mặc định. **Chưa xác nhận trên xe:** xi nhan thật khi đang chạy, và hình tròn của bản 0.3.2.
 
 ## Gồm những gì
 
@@ -33,7 +33,7 @@ Mở app **Camera xi nhan**. Chờ khoảng 15 giây sau khi đầu xe khởi đ
 | Xi nhan | `Tắt (Đã kết nối, ...)` |
 | Hộp camera | `DR_ACTIVE/MODE_MOSAIK/7` (hoặc 9, 10) `- đúng chế độ` |
 | Luồng camera | `1280x480, 30 hình/giây, ghép 2 khung xen kẽ (sei@N)` trên G30; xe khác có thể là `1280x960, 15 hình/giây` |
-| Đồng hồ | `sẵn sàng, map 512x384` |
+| Đồng hồ | `sẵn sàng, map 384x384` |
 
 Sau đó:
 
@@ -50,7 +50,8 @@ Nếu hình bị nghiêng, ngược hay bị bóp hẹp: chỉnh *Xoay hình*, *
 | Camera theo xi nhan | Bật | Tắt thì chỉ còn nút thử |
 | Giữ hình sau khi tắt xi nhan | 2 giây | 1, 2, 3, 5 giây |
 | Gạt nhẹ xi nhan (nháy 3 lần) | Cũng hiện camera | |
-| Cỡ hình | Vừa (512x384) | Nhỏ 384x288, Lớn 640x480 |
+| Hình dạng | Tròn, có viền | Kiểu Hyundai/Kia: phần giữa hình camera trong khung tròn. *Chữ nhật* thì thấy hết hình |
+| Cỡ hình | Vừa (cao 384) | Nhỏ 288, Lớn 480. Tròn: đường kính; chữ nhật: 384x288 / 512x384 / 640x480 |
 | Vị trí hình | Giữa | Hoặc lệch về bên xi nhan, sát trên, sát dưới |
 | Hiện ở đâu | Vùng bản đồ giữa đồng hồ | Phủ toàn đồng hồ và HUD là thử nghiệm |
 | Camera gương TRÁI / PHẢI nằm ở ô nào | Dưới trái / Dưới phải | Theo hình ghép 4 camera |
@@ -130,9 +131,8 @@ NODE_PATH=<nơi có acorn> node scripts/check_node8.js     # cú pháp Node 8 c�
 
 **Chưa kiểm tra được vì cần xe:**
 
-- Hai khung xen kẽ của G30 có đúng là 2 cặp camera không, và thẻ SEI có phân biệt được chúng không (nếu không, trợ thủ đếm chẵn/lẻ).
-- Bố cục thật của hình 4 camera sau khi ghép (ô nào là gương trái/phải, hình có bị xoay hay bóp không). Có cài đặt để chỉnh.
-- Hình có thật sự lên đồng hồ không.
+- Xi nhan thật khi xe đang chạy (mới thử nút *Thử xem cả 4 camera* lúc đỗ).
+- Hình tròn trên đồng hồ thật (viền, nền đen quanh hình có hợp với nền đồng hồ không).
 - Tải CPU khi giải mã phần mềm 1280x960 trên đầu xe.
 - Độ trễ thật từ lúc bật xi nhan tới lúc đồng hồ lên hình (trên máy thử: dưới 0,1 giây chưa tính đồng hồ).
 

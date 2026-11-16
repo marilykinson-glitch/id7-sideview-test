@@ -169,6 +169,17 @@ def t_drive():
     r = Rig('drive')
     try:
         check(r.wait(lambda: r.native().get('pictures', 0) > 5 and r.native().get('cr') == 'connected', 15), 'the helper started the decoder; pictures decoded, renderer connected')
+        c = r.control().get('config') or {}
+        check(c.get('w') == 384 and c.get('h') == 384 and c.get('left_round') == 1 and c.get('left') == '62,500,375,500', 'as installed: round, 384x384, the middle of the lower-left quarter')
+        r.cmd(light=[0, LEFT_ON])
+        ok = r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('vw') == 384 and r.shown()[0] is not None, 3)
+        a = r.shown()[0]
+        check(ok and near(colour(a, 384, 384, 100, 100, 284, 284), BLUE) and near(colour(a, 384, 384, 0, 0, 40, 40), (0, 0, 0), 6)
+              and near(colour(a, 384, 384, 344, 344, 384, 384), (0, 0, 0), 6), 'left signal: a blue disc, black corners')
+        r.cmd(light=[0, OFF])
+        r.wait(lambda: not r.cr.visible(), 4)
+        r.cmd(set=['shape', 'square'])          # the rest of this drive with the whole rectangle
+        time.sleep(0.4)
         check(r.status().get('app') == 'xinhan_cam', 'the helper found the app')
         check(r.wait(lambda: [c[0] for c in r.ecu] == ['clientAttach', 'changeState'], 5), 'the app attached to the camera unit and asked for a view')
         if len(r.ecu) >= 2:
@@ -305,7 +316,7 @@ def t_parking_and_single():
         r.cmd(light=[0, RIGHT_ON])
         check(r.wait(lambda: any(c[0] == 'changeState' and c[1]['desiredState']['perspective'] == 4 for c in r.ecu[n:]), 2), 'single mode, right signal: the unit is asked for the right camera (4)')
         check(r.wait(lambda: r.shown()[0] is not None, 3), 'shown once the unit says it is on')
-        check((r.control().get('config') or {}).get('right') == '0,0,1000,1000', 'as the whole picture')
+        check((r.control().get('config') or {}).get('right') == '313,0,375,1000', 'as the middle of that camera\'s picture (round)')
         r.cmd(light=[0, OFF])
         check(r.wait(lambda: not r.cr.visible(), 4), 'signal off: gone')
         check(r.wait(lambda: r.ecu[-1][0] == 'changeState' and r.ecu[-1][1]['desiredState']['perspective'] == 7, 3), 'and the unit is given back the four-camera view (7)')

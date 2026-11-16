@@ -180,14 +180,22 @@ function viewConfig(settings, targets, side) {
     const stretch = [100, 150, 200].indexOf(Number(s.stretch)) >= 0 ? Number(s.stretch) : 100;
     const rot = (k) => ([0, 90, 180, 270].indexOf(Number(s[k])) >= 0 ? Number(s[k]) : 0);
     const quad = (k, d) => QUADS[s[k]] || QUADS[d];
+    const round = s.shape !== 'square';
     const ql = quad('quadLeft', 'bl'), qr = quad('quadRight', 'br');
-    const left = single ? zoomCrop(0, 0, 1000, 1000, s.zoom) : zoomCrop(ql[0], ql[1], 500, 500, s.zoom);
-    const right = single ? zoomCrop(0, 0, 1000, 1000, s.zoom) : zoomCrop(qr[0], qr[1], 500, 500, s.zoom);
-    // the picture's shape on the cluster: a quarter of the 4:3 mosaic is 4:3, a single camera is 8:3;
+    // the picture's shape on the cluster: a quarter of the four-camera picture is 4:3, a single camera is 8:3;
     // "stretch" widens it when the camera unit squeezed the picture sideways
-    const turned = (r) => r === 90 || r === 270;
     const base = single ? 8 / 3 : 4 / 3;
-    const shape = (r) => { const a = base * stretch / 100; return turned(r) ? 1 / a : a; };
+    const wide = base * stretch / 100;
+    // round: the middle of the picture, as wide as it is high on the cluster (a part 1 / wide of its width)
+    const part = (x, y, w, h) => {
+        if (!round || wide <= 1) return zoomCrop(x, y, w, h, s.zoom);
+        const nw = w / wide;
+        return zoomCrop(Math.round(x + (w - nw) / 2), y, Math.round(nw), h, s.zoom);
+    };
+    const left = single ? part(0, 0, 1000, 1000) : part(ql[0], ql[1], 500, 500);
+    const right = single ? part(0, 0, 1000, 1000) : part(qr[0], qr[1], 500, 500);
+    const turned = (r) => r === 90 || r === 270;
+    const shape = (r) => (round ? 1 : turned(r) ? 1 / wide : wide);
     // one layer for both sides: as wide as the wider of the two
     const aspect = Math.max(shape(rot('rotLeft')), shape(rot('rotRight')));
     let h = HEIGHTS[s.size] || HEIGHTS.medium;
@@ -207,8 +215,8 @@ function viewConfig(settings, targets, side) {
     const flip = s.mirror === 'on' ? 1 : 0;
     return {
         op: 'config', target, w, h, x, y, fps, klass: 'overlay', exclusive: 1, contend: 1, persist: s.layer === 'make' ? 0 : 1,
-        left, left_rot: rot('rotLeft'), left_flip: flip, left_sar: stretch,
-        right, right_rot: rot('rotRight'), right_flip: flip, right_sar: stretch,
+        left, left_rot: rot('rotLeft'), left_flip: flip, left_sar: stretch, left_round: round ? 1 : 0,
+        right, right_rot: rot('rotRight'), right_flip: flip, right_sar: stretch, right_round: round ? 1 : 0,
         all: '0,0,1000,1000', all_rot: 0, all_flip: 0, all_sar: 100,
         // a car whose camera unit sends the four cameras as two wide pictures by turns: the helper puts
         // them one above the other, and the quarters above are of that picture

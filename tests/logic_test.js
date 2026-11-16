@@ -138,7 +138,7 @@ t('camState: two services that disagree - a parking view wins, else the usable v
 });
 
 /* ---------------- the helper's config ---------------- */
-const DEF = { enabled: 'on', size: 'medium', place: 'center', target: 'map', quadLeft: 'bl', quadRight: 'br', rotLeft: '0', rotRight: '0', mirror: 'off', zoom: '100', stretch: '100', fps: '12', mode: 'mosaic', layer: 'keep' };
+const DEF = { enabled: 'on', shape: 'square', size: 'medium', place: 'center', target: 'map', quadLeft: 'bl', quadRight: 'br', rotLeft: '0', rotRight: '0', mirror: 'off', zoom: '100', stretch: '100', fps: '12', mode: 'mosaic', layer: 'keep' };
 const set = (o) => Object.assign({}, DEF, o);
 t('viewConfig: the defaults - the lower quarters, 512x384 in the middle of the map', () => {
     const c = L.viewConfig(DEF, L.parseTargets('map:1088x480,panel:1920x720,hud:800x480'), null);
@@ -181,10 +181,26 @@ t('viewConfig: which quarter, turns, the mirror, zoom, stretch, the single-camer
     assert.deepStrictEqual([c.left, c.right, c.w, c.h], ['0,0,1000,1000', '0,0,1000,1000', 1024, 384]);
     c = L.viewConfig(set({ layer: 'make' }), T);
     assert.strictEqual(c.persist, 0);
-    c = L.viewConfig({}, null);                                     // no settings, no renderer yet
+    c = L.viewConfig({ shape: 'square' }, null);                    // no other settings, no renderer yet
     assert.deepStrictEqual([c.target, c.w, c.h, c.fps], ['map', 512, 384, 12]);
     c = L.viewConfig(set({ target: 'x', size: 'y', fps: '99', rotLeft: '45', quadLeft: 'zz' }), T);
     assert.deepStrictEqual([c.target, c.h, c.fps, c.left_rot, c.left], ['map', 384, 12, 0, '0,500,500,500']);
+});
+t('viewConfig: round (the default) - a square layer, the middle of each camera\'s picture', () => {
+    const T = L.parseTargets('map:1088x480,panel:1920x720');
+    let c = L.viewConfig(set({ shape: 'round' }), T);
+    assert.deepStrictEqual([c.w, c.h, c.x, c.y, c.left_round, c.right_round], [384, 384, 352, 48, 1, 1]);
+    assert.deepStrictEqual([c.left, c.right], ['62,500,375,500', '563,500,375,500']);      // 480 of the quarter's 640 columns
+    assert.strictEqual(c.all, '0,0,1000,1000');
+    c = L.viewConfig({}, T);                                                               // nothing saved: round
+    assert.deepStrictEqual([c.w, c.h, c.left_round], [384, 384, 1]);
+    c = L.viewConfig(set({ shape: 'round', size: 'large', zoom: '150' }), T);
+    assert.deepStrictEqual([c.w, c.h, c.left], [480, 480, '125,584,250,333']);
+    c = L.viewConfig(set({ shape: 'round', rotLeft: '90', stretch: '200' }), T);           // squeezed pictures: the middle 3/8
+    assert.deepStrictEqual([c.w, c.h, c.left, c.left_sar], [384, 384, '156,500,188,500', 200]);
+    c = L.viewConfig(set({ shape: 'round', mode: 'single' }), T);                          // one 8:3 camera: its middle 3/8
+    assert.deepStrictEqual([c.w, c.h, c.left], [384, 384, '313,0,375,1000']);
+    assert.strictEqual(L.viewConfig(DEF, T).left_round, 0);
 });
 t('parseTargets, zoomCrop', () => {
     assert.deepStrictEqual(L.parseTargets('map:1088x480,hud:800x480'), { map: { w: 1088, h: 480 }, hud: { w: 800, h: 480 } });

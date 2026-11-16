@@ -2,7 +2,7 @@
   "id": "xinhan_cam",
   "title": "Camera xi nhan",
   "description": "Bật xi nhan bên nào thì đồng hồ hiện camera gương bên đó (kiểu Hyundai/Kia), lấy từ luồng 4 camera của xe. Cần xe có camera 360, trợ thủ xinhan-cam (tự cài kèm) và cluster-render (robertnisipeanu/idrive-apps). Đặt Đồng hồ > Vùng hiển thị giữa là Bản đồ.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "startType": "autostart",
   "vendor": "custom",
   "loggingId": "OAXN",
@@ -132,6 +132,22 @@
         [
           "off",
           "Không hiện camera"
+        ]
+      ]
+    },
+    {
+      "key": "shape",
+      "label": "Hình dạng",
+      "type": "choice",
+      "default": "round",
+      "options": [
+        [
+          "round",
+          "Tròn, có viền (kiểu Hyundai/Kia)"
+        ],
+        [
+          "square",
+          "Chữ nhật, thấy hết hình"
         ]
       ]
     },

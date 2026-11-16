@@ -51,6 +51,8 @@ const RangeTables &range_tables()
 
 inline int even_down(int v) { return v & ~1; }
 
+const unsigned kRimLuma = 200;   /* the round view's rim */
+
 }  // namespace
 
 /* The taps of one plane: its source rect (px0, py0, psw, psh) onto a content
@@ -93,6 +95,25 @@ void Resampler::plane_taps(std::vector<Tap> *taps, int px0, int py0, int psw, in
     }
 }
 
+/* The disc inscribed in a dw x dh rect: full inside, a soft edge one pixel wide, a rim rim_px wide
+ * just inside the edge. */
+void Resampler::disc(std::vector<uint8_t> *mask, std::vector<uint8_t> *rim, int dw, int dh, double rim_px) const
+{
+    mask->assign((size_t)dw * dh, 0);
+    rim->assign((size_t)dw * dh, 0);
+    const double cx = dw / 2.0, cy = dh / 2.0, r = (dw < dh ? dw : dh) / 2.0 - 1.0;
+    for (int j = 0; j < dh; j++)
+        for (int i = 0; i < dw; i++) {
+            const double d = std::sqrt((i + 0.5 - cx) * (i + 0.5 - cx) + (j + 0.5 - cy) * (j + 0.5 - cy));
+            double a = r - d + 0.5;                 /* 1 inside, 0 outside, a ramp across the edge */
+            a = a < 0 ? 0 : a > 1 ? 1 : a;
+            (*mask)[(size_t)j * dw + i] = (uint8_t)std::lround(a * 255);
+            double k = d - (r - rim_px) + 0.5;      /* the rim: from r - rim_px outwards */
+            k = k < 0 ? 0 : k > 1 ? 1 : k;
+            (*rim)[(size_t)j * dw + i] = (uint8_t)std::lround(k * 255);
+        }
+}
+
 bool Resampler::build(int src_w, int src_h, const ViewSpec &v, int out_w, int out_h)
 {
     src_w_ = src_h_ = 0;   /* nothing matches until the tables are whole */
@@ -132,6 +153,13 @@ bool Resampler::build(int src_w, int src_h, const ViewSpec &v, int out_w, int ou
     oy_ = even_down((out_h - dh_) / 2);
     plane_taps(&y_taps_, sx, sy, sw, sh, dw_, dh_);
     plane_taps(&c_taps_, sx / 2, sy / 2, sw / 2, sh / 2, dw_ / 2, dh_ / 2);
+    y_mask_.clear();
+    c_mask_.clear();
+    if (v.round) {
+        const double rim = (dw_ < dh_ ? dw_ : dh_) / 96.0 + 1.0;    /* 4 px on a 288 disc, 6 on 480 */
+        disc(&y_mask_, &y_rim_, dw_, dh_, rim);
+        disc(&c_mask_, &c_rim_, dw_ / 2, dh_ / 2, rim / 2);
+    }
     out_w_ = out_w;
     out_h_ = out_h;
     src_w_ = src_w;
@@ -164,8 +192,16 @@ void Resampler::run(const Planes &p, uint8_t *atlas) const
         for (int j = 0; j < dh_; j++) {
             uint8_t *o = atlas + (size_t)(oy_ + j) * out_w_ + ox_;
             for (int i = 0; i < dw_; i++, t++) {
-                const uint8_t v = sample(p.y, p.y_stride, t->x, t->y, t->fx, t->fy);
-                o[i] = stretch ? rt.y[v] : v;
+                uint8_t v = sample(p.y, p.y_stride, t->x, t->y, t->fx, t->fy);
+                if (stretch)
+                    v = rt.y[v];
+                if (!y_mask_.empty()) {
+                    /* the rim (a light grey) over the picture, then black outside the disc */
+                    const size_t m = (size_t)j * dw_ + i;
+                    const unsigned k = y_rim_[m], a = y_mask_[m];
+                    v = (uint8_t)(((v * (255 - k) + kRimLuma * k) / 255) * a / 255);
+                }
+                o[i] = v;
             }
         }
     }
@@ -178,10 +214,21 @@ void Resampler::run(const Planes &p, uint8_t *atlas) const
             uint8_t *ou = base + (size_t)(coy + j) * out_w_ + cox;
             uint8_t *ov = ou + cw;
             for (int i = 0; i < cdw; i++, t++) {
-                const uint8_t a = sample(p.u, p.c_stride, t->x, t->y, t->fx, t->fy);
-                const uint8_t b = sample(p.v, p.c_stride, t->x, t->y, t->fx, t->fy);
-                ou[i] = stretch ? rt.c[a] : a;
-                ov[i] = stretch ? rt.c[b] : b;
+                int a = sample(p.u, p.c_stride, t->x, t->y, t->fx, t->fy);
+                int b = sample(p.v, p.c_stride, t->x, t->y, t->fx, t->fy);
+                if (stretch) {
+                    a = rt.c[a];
+                    b = rt.c[b];
+                }
+                if (!c_mask_.empty()) {
+                    /* no colour in the rim or outside the disc */
+                    const size_t m = (size_t)j * cdw + i;
+                    const int keep = (255 - c_rim_[m]) * c_mask_[m] / 255;
+                    a = 128 + (a - 128) * keep / 255;
+                    b = 128 + (b - 128) * keep / 255;
+                }
+                ou[i] = (uint8_t)a;
+                ov[i] = (uint8_t)b;
             }
         }
     }

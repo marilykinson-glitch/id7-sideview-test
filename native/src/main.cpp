@@ -14,7 +14,8 @@
  *    "exclusive":1,"contend":1,"persist":1,"pair":1,"pair_swap":0,   (pair: pipeline.h)
  *    "left":"0,500,500,500","left_rot":0,"left_flip":0,"left_sar":100, "right":..., "all":"0,0,1000,1000", ...}
  *                                       crops are x,y,w,h in 1/1000 of the picture; _rot degrees clockwise;
- *                                       _sar how wide a sample is shown, % of its height; x or y -1: centred
+ *                                       _sar how wide a sample is shown, % of its height; _round 1: a disc with a
+ *                                       rim, black around it; x or y -1: centred
  *   {"op":"status"}                     a status line now
  *   {"op":"quit"}
  * stdout: {"ev":"status",...} lines, on every change and once a second.
@@ -310,6 +311,7 @@ void apply_config(App &a, const cr::Json &j)
         if (rot == 0 || rot == 90 || rot == 180 || rot == 270)
             vs.rot = (int)rot;
         vs.flip = to_long(j, (std::string(names[v]) + "_flip").c_str(), vs.flip) != 0;
+        vs.round = to_long(j, (std::string(names[v]) + "_round").c_str(), vs.round) != 0;
         const long sar = to_long(j, (std::string(names[v]) + "_sar").c_str(), vs.sar);
         if (sar >= 25 && sar <= 400)
             vs.sar = (int)sar;
