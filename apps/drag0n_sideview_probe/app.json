@@ -1,0 +1,58 @@
+{
+  "id": "drag0n_sideview_probe",
+  "title": "ID7 Side View Test",
+  "description": "Parked diagnostics for turn signals and camera interface names",
+  "version": "0.1.0",
+  "startType": "manually",
+  "vendor": "custom",
+  "loggingId": "OA7V",
+  "signals": {
+    "de.bmw.body.Light": {
+      "StatusFunctionsIndicators": "s",
+      "StatusFunctionsIndicators2": "s"
+    }
+  },
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "menu",
+      "items": [
+        [
+          "text",
+          "INTRO",
+          "Parked test: left, right, hazards, off"
+        ],
+        [
+          "twocol",
+          "SIGNAL",
+          "Turn signal"
+        ],
+        [
+          "twocol",
+          "SOURCE",
+          "Light service"
+        ],
+        [
+          "twocol",
+          "RAW1",
+          "Light event 1"
+        ],
+        [
+          "twocol",
+          "RAW2",
+          "Light event 2"
+        ],
+        [
+          "twocol",
+          "SEEN",
+          "Seen this session"
+        ],
+        [
+          "twocol",
+          "CAM",
+          "Camera interfaces"
+        ]
+      ]
+    }
+  ]
+}
