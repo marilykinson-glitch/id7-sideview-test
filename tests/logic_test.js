@@ -181,7 +181,7 @@ t('viewConfig: which quarter, turns, the mirror, zoom, stretch, the single-camer
     assert.deepStrictEqual([c.left, c.right, c.w, c.h], ['0,0,1000,1000', '0,0,1000,1000', 1024, 384]);
     c = L.viewConfig(set({ layer: 'make' }), T);
     assert.strictEqual(c.persist, 0);
-    c = L.viewConfig({ shape: 'square' }, null);                    // no other settings, no renderer yet
+    c = L.viewConfig({ shape: 'square', place: 'center' }, null);   // no other settings, no renderer yet
     assert.deepStrictEqual([c.target, c.w, c.h, c.fps], ['map', 512, 384, 12]);
     c = L.viewConfig(set({ target: 'x', size: 'y', fps: '99', rotLeft: '45', quadLeft: 'zz' }), T);
     assert.deepStrictEqual([c.target, c.h, c.fps, c.left_rot, c.left], ['map', 384, 12, 0, '0,500,500,500']);
@@ -192,7 +192,7 @@ t('viewConfig: round (the default) - a square layer, the middle of each camera\'
     assert.deepStrictEqual([c.w, c.h, c.x, c.y, c.left_round, c.right_round], [384, 384, 352, 48, 1, 1]);
     assert.deepStrictEqual([c.left, c.right], ['62,500,375,500', '563,500,375,500']);      // 480 of the quarter's 640 columns
     assert.strictEqual(c.all, '0,0,1000,1000');
-    c = L.viewConfig({}, T);                                                               // nothing saved: round
+    c = L.viewConfig({ place: 'center' }, T);                                              // no shape or size saved: round, medium
     assert.deepStrictEqual([c.w, c.h, c.left_round], [384, 384, 1]);
     c = L.viewConfig(set({ shape: 'round', size: 'large', zoom: '150' }), T);
     assert.deepStrictEqual([c.w, c.h, c.left], [480, 480, '125,584,250,333']);
@@ -201,6 +201,28 @@ t('viewConfig: round (the default) - a square layer, the middle of each camera\'
     c = L.viewConfig(set({ shape: 'round', mode: 'single' }), T);                          // one 8:3 camera: its middle 3/8
     assert.deepStrictEqual([c.w, c.h, c.left], [384, 384, '313,0,375,1000']);
     assert.strictEqual(L.viewConfig(DEF, T).left_round, 0);
+});
+t('viewConfig: inside the dial on the signal\'s side (the default place), on the whole-cluster target', () => {
+    const T = L.parseTargets('map:1088x480,panel:1920x720,hud:800x480');
+    const CX = L.GAUGE.cx, CY = L.GAUGE.cy;
+    assert.deepStrictEqual([CX, CY], [380, 400]);
+    const g = (o, side) => L.viewConfig(set(Object.assign({ shape: 'round', place: 'gauge', size: 'fit' }, o)), T, side);
+    let c = g({}, 'left');
+    assert.deepStrictEqual([c.target, c.w, c.h, c.x, c.y], ['panel', 320, 320, CX - 160, CY - 160]);
+    c = g({}, 'right');
+    assert.deepStrictEqual([c.target, c.x, c.y], ['panel', 1920 - CX - 160, CY - 160]);
+    c = g({ target: 'hud' }, 'left');                                                              // the target setting does not apply
+    assert.strictEqual(c.target, 'panel');
+    c = g({ size: 'small', gaugeDx: '40', gaugeDy: '-20' }, 'left');
+    assert.deepStrictEqual([c.w, c.x, c.y], [288, CX + 40 - 144, CY - 20 - 144]);
+    c = g({ size: 'small', gaugeDx: '40', gaugeDy: '-20' }, 'right');                              // mirrored: towards the middle
+    assert.deepStrictEqual([c.x, c.y], [1920 - CX - 40 - 144, CY - 20 - 144]);
+    c = g({ size: 'large', gaugeDx: '-60', gaugeDy: '60' }, 'left');                               // kept on the cluster
+    assert.deepStrictEqual([c.w, c.x, c.y], [480, 80, 220]);
+    c = g({ size: 'large', gaugeDy: '60' }, null);                                                 // no side yet: the left dial
+    assert.deepStrictEqual([c.x, c.y], [140, 220]);
+    c = L.viewConfig({}, T, 'right');                                                              // nothing saved: this
+    assert.deepStrictEqual([c.target, c.w, c.x, c.y, c.left_round], ['panel', 320, 1380, 240, 1]);
 });
 t('parseTargets, zoomCrop', () => {
     assert.deepStrictEqual(L.parseTargets('map:1088x480,hud:800x480'), { map: { w: 1088, h: 480 }, hud: { w: 800, h: 480 } });

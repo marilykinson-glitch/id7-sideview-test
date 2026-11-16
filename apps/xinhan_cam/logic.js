@@ -147,7 +147,8 @@ function camState(xv, icam) {
 /* ---------------- the helper's config ---------------- */
 
 const QUADS = { tl: [0, 0], tr: [500, 0], bl: [0, 500], br: [500, 500] };
-const HEIGHTS = { small: 288, medium: 384, large: 480 };
+const HEIGHTS = { small: 288, fit: 320, medium: 384, large: 480 };
+const GAUGE = { cx: 380, cy: 400 };
 
 /** "map:1088x480,panel:1920x720,hud:800x480" -> { map: { w, h }, ... } */
 function parseTargets(text) {
@@ -174,7 +175,10 @@ function zoomCrop(x, y, w, h, zoom) {
  */
 function viewConfig(settings, targets, side) {
     const s = settings || {};
-    const target = ['map', 'panel', 'hud'].indexOf(s.target) >= 0 ? s.target : 'map';
+    // "gauge": the view sits inside the dial on the signal's side (left: the speedometer, right: the rev
+    // counter), which only the whole-cluster target reaches
+    const gauge = s.place === 'gauge' || s.place === undefined;
+    const target = gauge ? 'panel' : ['map', 'panel', 'hud'].indexOf(s.target) >= 0 ? s.target : 'map';
     const t = (targets && targets[target]) || { map: { w: 1088, h: 480 }, panel: { w: 1920, h: 720 }, hud: { w: 800, h: 480 } }[target];
     const single = s.mode === 'single';
     const stretch = [100, 150, 200].indexOf(Number(s.stretch)) >= 0 ? Number(s.stretch) : 100;
@@ -198,7 +202,7 @@ function viewConfig(settings, targets, side) {
     const shape = (r) => (round ? 1 : turned(r) ? 1 / wide : wide);
     // one layer for both sides: as wide as the wider of the two
     const aspect = Math.max(shape(rot('rotLeft')), shape(rot('rotRight')));
-    let h = HEIGHTS[s.size] || HEIGHTS.medium;
+    let h = HEIGHTS[s.size] || (gauge ? HEIGHTS.fit : HEIGHTS.medium);
     if (h > t.h) h = t.h;
     let w = Math.round(h * aspect);
     if (w > t.w) { w = t.w; h = Math.round(w / aspect); }
@@ -209,6 +213,17 @@ function viewConfig(settings, targets, side) {
     if (s.place === 'side' && side === 'right') x = Math.max(x, t.w - w - 16);
     if (s.place === 'top') y = 0;
     if (s.place === 'bottom') y = t.h - h;
+    if (gauge) {
+        // the dials' free middles on the 1920x720 cluster of a G30 (Live Cockpit Professional), measured
+        // from photos of the car: GAUGE.cx in from each side, GAUGE.cy down; gaugeDx moves the view towards
+        // the middle of the cluster (negative: outwards), gaugeDy down
+        const dx = Math.max(-120, Math.min(120, Number(s.gaugeDx) || 0)), dy = Math.max(-120, Math.min(120, Number(s.gaugeDy) || 0));
+        const cx = side === 'right' ? t.w - GAUGE.cx - dx : GAUGE.cx + dx;
+        x = Math.round(cx - w / 2);
+        y = Math.round(GAUGE.cy + dy - h / 2);
+        x = Math.max(0, Math.min(t.w - w, x));
+        y = Math.max(0, Math.min(t.h - h, y));
+    }
     x -= x % 2;
     y -= y % 2;
     const fps = [8, 10, 12, 15].indexOf(Number(s.fps)) >= 0 ? Number(s.fps) : 12;
@@ -274,4 +289,4 @@ function plan(i) {
     return { view: side, why: '', want };
 }
 
-module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, plan, CONTROL, HEIGHTS };
+module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, plan, CONTROL, HEIGHTS, GAUGE };

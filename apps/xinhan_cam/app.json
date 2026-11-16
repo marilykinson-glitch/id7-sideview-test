@@ -2,7 +2,7 @@
   "id": "xinhan_cam",
   "title": "Camera xi nhan",
   "description": "Bật xi nhan bên nào thì đồng hồ hiện camera gương bên đó (kiểu Hyundai/Kia), lấy từ luồng 4 camera của xe. Cần xe có camera 360, trợ thủ xinhan-cam (tự cài kèm) và cluster-render (robertnisipeanu/idrive-apps). Đặt Đồng hồ > Vùng hiển thị giữa là Bản đồ.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "startType": "autostart",
   "vendor": "custom",
   "loggingId": "OAXN",
@@ -155,35 +155,44 @@
       "key": "size",
       "label": "Cỡ hình",
       "type": "choice",
-      "default": "medium",
+      "default": "fit",
       "options": [
         [
           "small",
-          "Nhỏ"
+          "Nhỏ (288)"
+        ],
+        [
+          "fit",
+          "Vừa khít vòng đồng hồ (320)"
         ],
         [
           "medium",
-          "Vừa"
+          "Vừa (384)"
         ],
         [
           "large",
-          "Lớn"
+          "Lớn (480)"
         ]
-      ]
+      ],
+      "reset": 1
     },
     {
       "key": "place",
       "label": "Vị trí hình",
       "type": "choice",
-      "default": "center",
+      "default": "gauge",
       "options": [
+        [
+          "gauge",
+          "Trong vòng đồng hồ bên xi nhan (tốc độ / vòng tua)"
+        ],
         [
           "center",
           "Giữa"
         ],
         [
           "side",
-          "Lệch về bên xi nhan"
+          "Sát mép bên xi nhan"
         ],
         [
           "top",
@@ -193,11 +202,84 @@
           "bottom",
           "Giữa, sát dưới"
         ]
+      ],
+      "reset": 1
+    },
+    {
+      "key": "gaugeDx",
+      "label": "Chỉnh vị trí trong vòng đồng hồ: ngang",
+      "type": "choice",
+      "default": "0",
+      "options": [
+        [
+          "-60",
+          "60 điểm ra phía ngoài"
+        ],
+        [
+          "-40",
+          "40 điểm ra phía ngoài"
+        ],
+        [
+          "-20",
+          "20 điểm ra phía ngoài"
+        ],
+        [
+          "0",
+          "Không"
+        ],
+        [
+          "20",
+          "20 điểm vào giữa"
+        ],
+        [
+          "40",
+          "40 điểm vào giữa"
+        ],
+        [
+          "60",
+          "60 điểm vào giữa"
+        ]
+      ]
+    },
+    {
+      "key": "gaugeDy",
+      "label": "Chỉnh vị trí trong vòng đồng hồ: lên/xuống",
+      "type": "choice",
+      "default": "0",
+      "options": [
+        [
+          "-60",
+          "Lên 60 điểm"
+        ],
+        [
+          "-40",
+          "Lên 40 điểm"
+        ],
+        [
+          "-20",
+          "Lên 20 điểm"
+        ],
+        [
+          "0",
+          "Không"
+        ],
+        [
+          "20",
+          "Xuống 20 điểm"
+        ],
+        [
+          "40",
+          "Xuống 40 điểm"
+        ],
+        [
+          "60",
+          "Xuống 60 điểm"
+        ]
       ]
     },
     {
       "key": "target",
-      "label": "Hiện ở đâu",
+      "label": "Hiện ở đâu (khi không đặt trong vòng đồng hồ)",
       "type": "choice",
       "default": "map",
       "options": [

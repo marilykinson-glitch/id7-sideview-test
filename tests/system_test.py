@@ -170,15 +170,24 @@ def t_drive():
     try:
         check(r.wait(lambda: r.native().get('pictures', 0) > 5 and r.native().get('cr') == 'connected', 15), 'the helper started the decoder; pictures decoded, renderer connected')
         c = r.control().get('config') or {}
-        check(c.get('w') == 384 and c.get('h') == 384 and c.get('left_round') == 1 and c.get('left') == '62,500,375,500', 'as installed: round, 384x384, the middle of the lower-left quarter')
+        check(c.get('w') == 320 and c.get('h') == 320 and c.get('left_round') == 1 and c.get('left') == '62,500,375,500' and c.get('target') == 'panel',
+              'as installed: round, 320x320, the middle of the lower-left quarter, on the whole cluster')
         r.cmd(light=[0, LEFT_ON])
-        ok = r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('vw') == 384 and r.shown()[0] is not None, 3)
+        ok = r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('vw') == 320 and r.shown()[0] is not None, 3)
+        check(ok and r.shown()[1].get('x') == 220 and r.shown()[1].get('y') == 240, 'left signal: in the speedometer (220,240)')
+        r.cmd(light=[0, RIGHT_ON])
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 1380 and r.shows(YELLOW), 3), 'right signal straight after: in the rev counter (1380,240), yellow')
+        r.cmd(light=[0, LEFT_ON])
+        ok = r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 220 and r.shown()[0] is not None and near(colour(r.shown()[0], 320, 320, 90, 90, 230, 230), BLUE), 3)
         a = r.shown()[0]
-        check(ok and near(colour(a, 384, 384, 100, 100, 284, 284), BLUE) and near(colour(a, 384, 384, 0, 0, 40, 40), (0, 0, 0), 6)
-              and near(colour(a, 384, 384, 344, 344, 384, 384), (0, 0, 0), 6), 'left signal: a blue disc, black corners')
+        check(ok and near(colour(a, 320, 320, 90, 90, 230, 230), BLUE) and near(colour(a, 320, 320, 0, 0, 32, 32), (0, 0, 0), 6)
+              and near(colour(a, 320, 320, 288, 288, 320, 320), (0, 0, 0), 6), 'left signal: a blue disc, black corners')
         r.cmd(light=[0, OFF])
         r.wait(lambda: not r.cr.visible(), 4)
-        r.cmd(set=['shape', 'square'])          # the rest of this drive with the whole rectangle
+        r.cmd(set=['shape', 'square'])          # the rest of this drive with the whole rectangle, in the middle of the map
+        r.cmd(set=['place', 'center'])
+        r.cmd(set=['size', 'medium'])
+        r.cmd(set=['target', 'map'])
         time.sleep(0.4)
         check(r.status().get('app') == 'xinhan_cam', 'the helper found the app')
         check(r.wait(lambda: [c[0] for c in r.ecu] == ['clientAttach', 'changeState'], 5), 'the app attached to the camera unit and asked for a view')
