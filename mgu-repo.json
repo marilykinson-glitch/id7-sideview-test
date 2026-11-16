@@ -11,7 +11,7 @@
         "ID7"
       ],
       "requires": {
-        "xinhan-cam": "0.3.0"
+        "xinhan-cam": "0.3.1"
       },
       "build": {
         "python": "kit/tools/build.py",

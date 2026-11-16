@@ -25,6 +25,7 @@
 #include "avb_source.h"
 #include "decoder.h"
 #include "packet_queue.h"
+#include "pair_tag.h"
 #include "resample.h"
 #include "rtp_h264.h"
 
@@ -38,6 +39,10 @@ struct Output {
     int w = 512, h = 384;
     unsigned fps = 12;
     ViewSpec views[kViews];   /* by View; kNone's is unused */
+    /* The camera unit sends two wide pictures by turns, two cameras in each (pair_tag.h): they are put
+     * one above the other into one picture, the lower-tagged on top (pair_swap: below), and the views
+     * are parts of that. Only for pictures at least 2.5 times as wide as high. */
+    bool pair = false, pair_swap = false;
 };
 
 struct Stats {
@@ -56,6 +61,8 @@ struct Stats {
     int decode_us = 0, view_us = 0;        /* the last picture's decode, the last view's making */
     std::string sei;                       /* the last picture's user-data SEI, hex */
     std::string avb;                       /* the bus receiver: "", "ok" or why not */
+    std::string pair;                      /* "off", or how the alternating pictures are told apart (PairTagger::mode) */
+    std::string sei_prev;                  /* the SEI of the picture before the last */
 };
 
 struct AtlasMeta {
@@ -117,6 +124,11 @@ private:
     std::string avb_state_;
 
     /* decode thread only */
+    PairTagger tagger_;
+    std::vector<uint8_t> pair_y_, pair_u_, pair_v_;   /* the two pictures, one above the other */
+    int pair_w_ = 0, pair_h_ = 0;                     /* one picture's size */
+    bool pair_have_[2] = {false, false};
+    int64_t pair_ms_[2] = {0, 0};
     std::vector<uint8_t> work_;
     int64_t next_due_ms_ = 0;      /* when the next view is due (pacing) */
     uint64_t next_id_ = 1;

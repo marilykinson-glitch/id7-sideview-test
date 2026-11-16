@@ -1,10 +1,10 @@
-# Camera xi nhan 0.3.0 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.3.1 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 
 Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. Hình lấy từ chính luồng 4 camera mà Drive Recorder Next đang dùng, nên hai app chạy song song được.
 
-> **Chưa chạy trên xe thật.** Mọi thứ đã được thử trên máy tính với luồng 4 camera giả lập (xem [Đã kiểm tra gì](#đã-kiểm-tra-gì)). Lần cài đầu tiên của bạn là lần thử đầu trên xe. Mục [Nếu không lên hình](#nếu-không-lên-hình) chỉ rõ cần chụp gì để sửa nhanh.
+> **Trên xe (G30, bản 0.3.0):** app đọc được xi nhan, hộp camera vào đúng chế độ `DR_ACTIVE/MODE_MOSAIK/7`, trợ thủ nhận và giải mã được luồng, cluster-render sẵn sàng. Luồng của G30 là **1280x480, 30 hình/giây**: hai loại khung xen kẽ, mỗi khung 2 camera. Bản 0.3.1 ghép hai khung đó thành hình 4 camera rồi mới cắt. **Phần ghép và hình trên đồng hồ chưa được xác nhận trên xe.**
 
 ## Gồm những gì
 
@@ -32,7 +32,7 @@ Mở app **Camera xi nhan**. Chờ khoảng 15 giây sau khi đầu xe khởi đ
 | Trạng thái | `Chờ xi nhan` |
 | Xi nhan | `Tắt (Đã kết nối, ...)` |
 | Hộp camera | `DR_ACTIVE/MODE_MOSAIK/7` (hoặc 9, 10) `- đúng chế độ` |
-| Luồng camera | `1280x960, 15 hình/giây` |
+| Luồng camera | `1280x480, 30 hình/giây, ghép 2 khung xen kẽ (sei@N)` trên G30; xe khác có thể là `1280x960, 15 hình/giây` |
 | Đồng hồ | `sẵn sàng, map 512x384` |
 
 Sau đó:
@@ -54,6 +54,7 @@ Nếu hình bị nghiêng, ngược hay bị bóp hẹp: chỉnh *Xoay hình*, *
 | Vị trí hình | Giữa | Hoặc lệch về bên xi nhan, sát trên, sát dưới |
 | Hiện ở đâu | Vùng bản đồ giữa đồng hồ | Phủ toàn đồng hồ và HUD là thử nghiệm |
 | Camera gương TRÁI / PHẢI nằm ở ô nào | Dưới trái / Dưới phải | Theo hình ghép 4 camera |
+| Hình 4 camera bị đảo hàng trên/dưới | Không | Bật *Đảo lại* nếu nút *Thử xem cả 4 camera* cho thấy cặp gương nằm hàng trên. Nếu dòng Luồng camera ghi `(count)` thay vì `(sei@N)` thì hai hàng có thể tự đổi chỗ sau khi mất khung: báo lại kèm ảnh dòng cuối |
 | Xoay hình camera trái / phải | Không | 90, 180, 270 độ |
 | Lật hình như soi gương | Không | |
 | Phóng to phần giữa hình | Không | 1,25 / 1,5 / 2 lần |
@@ -93,8 +94,9 @@ app Camera xi nhan ──► hộp camera: DR_ACTIVE / MODE_MOSAIK / 7  (ICAM2Pr
         │  data/control.json: { view: left|right|all|none, config }
         ▼
 trợ thủ xinhan-cam (root) ──► mgu-sidecam
-        luồng AVB media_transport.avb_streaming.1 (H.264 1280x960, 4 camera)
-        → giải mã (FFmpeg, phần mềm) → cắt 1/4 hình, xoay, co → cluster-render → đồng hồ
+        luồng AVB media_transport.avb_streaming.1 (H.264; G30: 1280x480, hai khung xen kẽ, mỗi khung 2 camera)
+        → giải mã (FFmpeg, phần mềm) → ghép 2 khung thành hình 4 camera → cắt 1/4 hình, xoay, co
+        → cluster-render → đồng hồ
 ```
 
 An toàn khi có sự cố:
@@ -128,9 +130,9 @@ NODE_PATH=<nơi có acorn> node scripts/check_node8.js     # cú pháp Node 8 c�
 
 **Chưa kiểm tra được vì cần xe:**
 
-- Bố cục thật của hình 4 camera trên G30 (ô nào là gương trái/phải, hình có bị xoay hay bóp không). Có cài đặt để chỉnh.
-- Hộp camera của G30 có nhận yêu cầu 4 camera từ app này không (cùng lệnh với Drive Recorder Next).
-- Nhận luồng AVB song song với Drive Recorder Next.
+- Hai khung xen kẽ của G30 có đúng là 2 cặp camera không, và thẻ SEI có phân biệt được chúng không (nếu không, trợ thủ đếm chẵn/lẻ).
+- Bố cục thật của hình 4 camera sau khi ghép (ô nào là gương trái/phải, hình có bị xoay hay bóp không). Có cài đặt để chỉnh.
+- Hình có thật sự lên đồng hồ không.
 - Tải CPU khi giải mã phần mềm 1280x960 trên đầu xe.
 - Độ trễ thật từ lúc bật xi nhan tới lúc đồng hồ lên hình (trên máy thử: dưới 0,1 giây chưa tính đồng hồ).
 

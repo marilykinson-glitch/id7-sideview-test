@@ -166,7 +166,7 @@ mgu.run({
                 enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test,
                 speed: speed !== null && now - speedAt < 3000 ? speed : null, maxSpeed: Number(s.maxSpeed) || 0,
                 cam: cam.info().cam,
-                helper: { ok: !!n, pictureAge: n ? n.picture_age_ms : null, pictureW: n ? n.picture_w : 0, pictureH: n ? n.picture_h : 0 },
+                helper: { ok: !!n, pictureAge: n ? n.picture_age_ms : null, pictureW: n ? n.picture_w : 0, pictureH: n ? n.picture_h : 0, pair: n ? n.pair : null },
             });
             if (p.view !== lastPlan.view || p.why !== lastPlan.why) log.info('view ' + p.view + (p.why ? ' (' + p.why + ')' : ''));
             lastPlan = p;
@@ -211,13 +211,14 @@ mgu.run({
             if (n) {
                 video = n.picture_age_ms >= 0 && n.picture_age_ms < 1500
                     ? 'Luồng camera: ' + n.picture_w + 'x' + n.picture_h + ', ' + (st.fps || 0) + ' hình/giây'
+                        + (n.pair && n.pair !== 'off' ? ', ghép 2 khung xen kẽ (' + n.pair + ')' : '')
                     : 'Luồng camera: chưa có hình (' + (n.avb === 'ok' ? 'đã nối, hộp camera chưa phát' : 'chưa nối được: ' + (n.avb || 'đang thử')) + ')';
             }
             let cluster = 'Đồng hồ: chờ trợ thủ';
             if (n) {
                 cluster = n.cr !== 'connected' ? 'Đồng hồ: chưa nối được cluster-render (cài cluster-render trong Store)'
                     : n.layer === 'refused' ? 'Đồng hồ: từ chối lớp video - ' + n.layer_reason
-                        : 'Đồng hồ: sẵn sàng, ' + n.target + ' ' + n.layer_w + 'x' + n.layer_h + (n.target_holder ? ' (đang do ' + n.target_holder + ' giữ)' : '');
+                        : 'Đồng hồ: sẵn sàng, ' + n.target + ' ' + n.layer_w + 'x' + n.layer_h + (n.target_holder && n.target_holder !== 'none' ? ' (đang do ' + n.target_holder + ' giữ)' : '');
             }
             const camText = 'Hộp camera: ' + (info.cam.known ? info.cam.text : link.icam === 'ok' || link.xv === 'ok' ? 'chưa đọc được trạng thái' : 'chưa nối (' + (link.icam || '-') + ')')
                 + ' - ' + ({ on: 'đúng chế độ', idle: 'không yêu cầu', asked: 'đã yêu cầu', waiting: 'xe chưa cho, chờ thử lại', starting: 'đang khởi động', 'parking view': 'đang hiện camera đỗ xe' }[info.phase] || info.phase)
@@ -228,7 +229,7 @@ mgu.run({
                 row('ROW_CAMERA', camText),
                 row('ROW_VIDEO', video),
                 row('ROW_CLUSTER', cluster),
-                row('ROW_NOTE', 'Bản ' + ctx.spec.version + (st && st.version ? ', trợ thủ ' + st.version : '') + (n && n.sei ? ', SEI ' + String(n.sei).slice(0, 24) : '')),
+                row('ROW_NOTE', 'Bản ' + ctx.spec.version + (st && st.version ? ', trợ thủ ' + st.version : '') + (n && n.sei ? ', SEI ' + String(n.sei).slice(32, 56) + (n.sei_prev ? ' / ' + String(n.sei_prev).slice(32, 56) : '') : ', không có SEI')),
             ]).catch((e) => log.warn('page: ' + errText(e)));
         }
         const startTest = (view, secs) => () => {

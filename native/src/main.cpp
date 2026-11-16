@@ -11,7 +11,7 @@
  *   {"op":"view","side":"left"}         left | right | all | none; said again at least every 3 s
  *                                       while a view is wanted (else it goes: the parent is gone)
  *   {"op":"config","target":"map","w":512,"h":384,"x":-1,"y":-1,"fps":12,"klass":"overlay",
- *    "exclusive":1,"contend":1,"persist":1,
+ *    "exclusive":1,"contend":1,"persist":1,"pair":1,"pair_swap":0,   (pair: pipeline.h)
  *    "left":"0,500,500,500","left_rot":0,"left_flip":0,"left_sar":100, "right":..., "all":"0,0,1000,1000", ...}
  *                                       crops are x,y,w,h in 1/1000 of the picture; _rot degrees clockwise;
  *                                       _sar how wide a sample is shown, % of its height; x or y -1: centred
@@ -132,6 +132,8 @@ void emit_status(App &a)
     n("decode_us", s.decode_us);
     n("view_us", s.view_us);
     str("sei", s.sei);
+    str("sei_prev", s.sei_prev);
+    str("pair", s.pair);
     str("cr", a.cr && a.cr->connected() ? "connected" : "connecting");
     str("backend", a.cr ? a.cr->backend : "");
     str("targets", a.cr ? a.cr->targets : "");
@@ -292,6 +294,8 @@ void apply_config(App &a, const cr::Json &j)
         c.out.w = w;
         c.out.h = h;
     }
+    c.out.pair = to_long(j, "pair", c.out.pair) != 0;
+    c.out.pair_swap = to_long(j, "pair_swap", c.out.pair_swap) != 0;
     const long fps = to_long(j, "fps", c.out.fps);
     if (fps >= 1 && fps <= 30)
         c.out.fps = (unsigned)fps;

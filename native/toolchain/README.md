@@ -33,7 +33,7 @@ SIDECAM_LIBPATH=$G:$G/nptl:$G/math:$G/rt:$G/dlfcn:<folder with that fake bridge>
 python3 test/e2e.py build/mgu-sidecam build/test
 ```
 
-All of `test/e2e.py` passes there (0.3.0).
+All of `test/e2e.py` passes there (0.3.0 and 0.3.1).
 
 `abilists/` are data files of the GNU C Library 2.27 (LGPL-2.1-or-later, Copyright (C) Free
 Software Foundation); only symbol names and versions are taken from them.

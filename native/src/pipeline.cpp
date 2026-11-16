@@ -2,6 +2,7 @@
 #include "pipeline.h"
 
 #include <chrono>
+#include <cstring>
 #include <unistd.h>
 
 #include "log.h"
@@ -173,15 +174,58 @@ void Pipeline::on_picture(const DecodedFrame &f)
         stats_.h = f.planes.h;
         stats_.full_range = f.planes.full_range;
         stats_.picture_ms = now;
-        if (!f.sei.empty())
+        if (!f.sei.empty()) {
+            if (f.sei != stats_.sei)
+                stats_.sei_prev = stats_.sei;
             stats_.sei = f.sei;
+        }
         out = out_;
         view = view_;
         gen = gen_;
         fresh = fresh_view_;
     }
-    if (view == kNone)
+    /* Two pictures by turns: which one this is (always, so the tag is known when a view comes on) */
+    const bool pairing = out.pair && (int64_t)f.planes.w * 2 >= (int64_t)f.planes.h * 5;
+    int cls = 0;
+    if (pairing)
+        cls = tagger_.classify(f.sei) ^ (out.pair_swap ? 1 : 0);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stats_.pair = pairing ? tagger_.mode() : "off";
+    }
+    if (view == kNone) {
+        pair_have_[0] = pair_have_[1] = false;
         return;
+    }
+    Planes src = f.planes;
+    if (pairing) {
+        const int w = f.planes.w, h = f.planes.h;
+        if (w != pair_w_ || h != pair_h_) {
+            pair_w_ = w;
+            pair_h_ = h;
+            pair_y_.assign((size_t)w * h * 2, 0);
+            pair_u_.assign((size_t)(w / 2) * h, 128);
+            pair_v_.assign((size_t)(w / 2) * h, 128);
+            pair_have_[0] = pair_have_[1] = false;
+        }
+        for (int r = 0; r < h; r++)
+            std::memcpy(&pair_y_[(size_t)(cls * h + r) * w], f.planes.y + (size_t)r * f.planes.y_stride, (size_t)w);
+        for (int r = 0; r < h / 2; r++) {
+            std::memcpy(&pair_u_[(size_t)(cls * (h / 2) + r) * (w / 2)], f.planes.u + (size_t)r * f.planes.c_stride, (size_t)(w / 2));
+            std::memcpy(&pair_v_[(size_t)(cls * (h / 2) + r) * (w / 2)], f.planes.v + (size_t)r * f.planes.c_stride, (size_t)(w / 2));
+        }
+        pair_have_[cls] = true;
+        pair_ms_[cls] = now;
+        /* both halves, and neither left over from long ago (the other kind stopped coming) */
+        if (!pair_have_[0] || !pair_have_[1] || now - pair_ms_[cls ^ 1] > 500)
+            return;
+        src.y = pair_y_.data();
+        src.u = pair_u_.data();
+        src.v = pair_v_.data();
+        src.y_stride = w;
+        src.c_stride = w / 2;
+        src.h = h * 2;
+    }
     /* At most fps views a second, evenly: each view is due one period after
      * the last was due (not after it was made), so 12 a second out of a
      * 15-a-second stream is four pictures of five, not every other one. */
@@ -193,13 +237,12 @@ void Pipeline::on_picture(const DecodedFrame &f)
     next_due_ms_ += period;
     const int64_t t0 = now_us();
     const ViewSpec &vs = out.views[view];
-    if (!resampler_.matches(f.planes.w, f.planes.h, vs, out.w, out.h) &&
-        !resampler_.build(f.planes.w, f.planes.h, vs, out.w, out.h)) {
-        log_warn("view %s: a %dx%d picture cannot be made %dx%d", view_name(view), f.planes.w, f.planes.h, out.w, out.h);
+    if (!resampler_.matches(src.w, src.h, vs, out.w, out.h) && !resampler_.build(src.w, src.h, vs, out.w, out.h)) {
+        log_warn("view %s: a %dx%d picture cannot be made %dx%d", view_name(view), src.w, src.h, out.w, out.h);
         return;
     }
     work_.resize(atlas_bytes(out.w, out.h));
-    resampler_.run(f.planes, work_.data());
+    resampler_.run(src, work_.data());
     const int64_t t1 = now_us();
     {
         std::lock_guard<std::mutex> lock(mutex_);

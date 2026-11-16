@@ -210,6 +210,9 @@ function viewConfig(settings, targets, side) {
         left, left_rot: rot('rotLeft'), left_flip: flip, left_sar: stretch,
         right, right_rot: rot('rotRight'), right_flip: flip, right_sar: stretch,
         all: '0,0,1000,1000', all_rot: 0, all_flip: 0, all_sar: 100,
+        // a car whose camera unit sends the four cameras as two wide pictures by turns: the helper puts
+        // them one above the other, and the quarters above are of that picture
+        pair: single ? 0 : 1, pair_swap: s.pairSwap === 'on' ? 1 : 0,
     };
 }
 
@@ -247,7 +250,8 @@ function plan(i) {
     if (h.pictureAge === null || h.pictureAge === undefined || h.pictureAge < 0) return none('Chưa có hình từ camera', want);
     if (h.pictureAge > 1500) return none('Luồng camera đang dừng', want);
     if (i.test === 'all') return { view: 'all', why: '', want };
-    const tall = h.pictureH >= 800;        // the four-camera picture is 1280x960, one camera 1280x480
+    // the four-camera picture is 1280x960, or two 1280x480 pictures by turns (the helper pairs them); one camera is 1280x480
+    const tall = h.pictureH >= 800 || (!!h.pair && h.pair !== 'off');
     if (single) {
         // the wanted camera alone: the unit says so, or (state unreadable) the picture is a single camera's
         const on = cam.kind === side || (cam.kind === 'unknown' && !tall);

@@ -228,6 +228,16 @@ t('plan: the unit\'s state unreadable - the picture\'s shape decides', () => {
     assert.strictEqual(L.plan(base({ side: 'right', cam: unknown })).view, 'right');                        // 1280x960: the four cameras
     assert.strictEqual(L.plan(base({ side: 'right', cam: unknown, helper: Object.assign({}, HELPER, { pictureH: 480 }) })).view, 'none');
 });
+t('plan / viewConfig: two pictures by turns (G30) - paired in four-camera mode, never in single mode', () => {
+    assert.strictEqual(L.viewConfig(DEF, null).pair, 1);
+    assert.strictEqual(L.viewConfig(DEF, null).pair_swap, 0);
+    assert.strictEqual(L.viewConfig(set({ pairSwap: 'on' }), null).pair_swap, 1);
+    assert.strictEqual(L.viewConfig(set({ mode: 'single' }), null).pair, 0);
+    const g30 = { ok: true, pictureAge: 30, pictureW: 1280, pictureH: 480, pair: 'sei@17' };
+    assert.strictEqual(L.plan(base({ side: 'left', helper: g30 })).view, 'left');                       // the unit says all four
+    assert.strictEqual(L.plan(base({ side: 'left', helper: g30, cam: L.camState() })).view, 'left');    // state unreadable: paired counts
+    assert.strictEqual(L.plan(base({ side: 'left', helper: Object.assign({}, g30, { pair: 'off' }), cam: L.camState() })).view, 'none');
+});
 t('plan: the speed limit setting', () => {
     assert.strictEqual(L.plan(base({ side: 'left', maxSpeed: 50, speed: 49 })).view, 'left');
     assert.strictEqual(L.plan(base({ side: 'left', maxSpeed: 50, speed: 51 })).view, 'none');

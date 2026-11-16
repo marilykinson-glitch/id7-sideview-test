@@ -24,7 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -99,7 +99,7 @@ function configLine(config) {
     const out = { op: 'config' };
     const str = ['target', 'klass', 'left', 'right', 'all'];
     const num = ['w', 'h', 'x', 'y', 'fps', 'exclusive', 'contend', 'persist', 'left_rot', 'right_rot', 'all_rot',
-        'left_flip', 'right_flip', 'all_flip', 'left_sar', 'right_sar', 'all_sar'];
+        'left_flip', 'right_flip', 'all_flip', 'left_sar', 'right_sar', 'all_sar', 'pair', 'pair_swap'];
     str.forEach((k) => { if (typeof config[k] === 'string' && /^[a-z0-9_,]{1,40}$/i.test(config[k])) out[k] = config[k]; });
     num.forEach((k) => { if (Number.isFinite(config[k])) out[k] = Math.round(config[k]); });
     return JSON.stringify(out);

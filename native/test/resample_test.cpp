@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <vector>
 
+#include "pair_tag.h"
 #include "resample.h"
 
 using namespace sidecam;
@@ -181,6 +182,49 @@ int main()
         v.rot = 45;
         CHECK(!r.build(1280, 960, v, 512, 384));
         CHECK(!r.matches(1280, 960, v, 512, 384));
+    }
+    /* the two pictures that come by turns, told apart by the SEI byte that alternates */
+    {
+        PairTagger t;
+        /* byte 0 the same, byte 1 a counter, byte 2 the tag (09 / 0a), byte 3 the same */
+        const char *tag[2] = {"09", "0a"};
+        int right = 0, n = 0;
+        for (int i = 0; i < 40; i++) {
+            char sei[16];
+            std::snprintf(sei, sizeof sei, "aa%02x%s55", i, tag[i & 1]);
+            const int c = t.classify(sei);
+            if (i >= 6) { n++; right += c == (i & 1); }
+        }
+        CHECK(n == 34 && right == 34);
+        CHECK(t.mode() == "sei@2");
+        /* the same answers when it starts on the other picture */
+        PairTagger u;
+        right = 0;
+        for (int i = 1; i < 40; i++) {
+            char sei[16];
+            std::snprintf(sei, sizeof sei, "aa%02x%s55", i, tag[i & 1]);
+            const int c = u.classify(sei);
+            if (i >= 7) right += c == (i & 1);
+        }
+        CHECK(right == 33);
+        /* a picture lost: in step again as soon as the window alternates again, never the wrong way round for long */
+        PairTagger v;
+        int wrong = 0;
+        for (int i = 0; i < 60; i++) {
+            if (i == 21) continue;
+            char sei[16];
+            std::snprintf(sei, sizeof sei, "aa%02x%s55", i, tag[i & 1]);
+            const int c = v.classify(sei);
+            if (i >= 30) wrong += c != (i & 1);
+        }
+        CHECK(wrong == 0);
+        /* no SEI, or none that alternates: by counting, the first picture 0 */
+        PairTagger w;
+        CHECK(w.classify("") == 0 && w.classify("") == 1 && w.classify("") == 0);
+        CHECK(w.mode() == "count");
+        PairTagger x;
+        for (int i = 0; i < 10; i++) { char sei[16]; std::snprintf(sei, sizeof sei, "aa%02x0955", i); CHECK(x.classify(sei) == (i & 1)); }
+        CHECK(x.mode() == "count");
     }
     std::printf(fails ? "resample_test: %d FAILED\n" : "resample_test: ok\n", fails);
     return fails ? 1 : 0;

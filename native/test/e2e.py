@@ -304,6 +304,43 @@ def t_config():
         c.close()
 
 
+def t_pairs():
+    print('a camera unit that sends two 1280x480 pictures by turns (front|rear, left|right), as a G30 does')
+    c = Cam('pairs', os.path.join(DIR, 'pairs.rtp'))
+    try:
+        c.send(op='config', pair=1)
+        check(c.wait(lambda s: s.get('pictures', 0) > 8 and s.get('cr') == 'connected', 10), 'pictures decoded')
+        check(c.status.get('picture_w') == 1280 and c.status.get('picture_h') == 480, 'each 1280x480')
+        check(c.status.get('pair') == 'count', 'told apart by counting (this stream has no SEI tag): %s' % c.status.get('pair'))
+        check(c.wait(lambda s: s.get('shown') == 1, 3, 'all'), 'all: shown')
+        c.hold('all', 0.8)
+        a, lay = c.atlas()
+        if a:
+            q = [mean_rgb(a, 512, 384, x0, y0, x0 + 256, y0 + 192) for (x0, y0) in ((0, 0), (256, 0), (0, 192), (256, 192))]
+            check(near(q[0], RED) and near(q[1], GREEN) and near(q[2], BLUE) and near(q[3], YELLOW), 'all: the two pictures one above the other: red, green / blue, yellow %s' % (q,))
+        else:
+            check(False, 'all: an atlas')
+        c.hold('left', 0.8)
+        a, lay = c.atlas()
+        check(a is not None and near(mean_rgb(a, 512, 384, 0, 0, 512, 384), BLUE), 'left: the left half of the second picture (blue), steady')
+        cols = set()
+        for i in range(12):
+            c.hold('right', 0.1)
+            a, lay = c.atlas()
+            if a:
+                cols.add(near(mean_rgb(a, 512, 384, 0, 0, 512, 384), YELLOW))
+        check(cols == {True}, 'right: yellow in every frame over a second (no flicker between the two pictures)')
+        c.send(op='config', pair_swap=1)
+        c.hold('left', 0.8)
+        a, lay = c.atlas()
+        check(a is not None and near(mean_rgb(a, 512, 384, 0, 0, 512, 384), RED), 'pair_swap: the other picture below (left is red)')
+        c.send(op='config', pair=0, pair_swap=0, all='0,0,1000,1000')
+        c.hold('all', 0.8)
+        check(c.status.get('pair') == 'off', 'pair 0: off (single-camera mode: each picture as it is)')
+    finally:
+        c.close()
+
+
 def t_renderer_restart():
     print('the cluster renderer restarts while a view shows')
     c = Cam('restart', MOSAIC)
@@ -372,7 +409,7 @@ def t_no_renderer():
         p.wait(timeout=5)
 
 
-for t in (t_views, t_heartbeat, t_stall, t_late_join, t_loss, t_config, t_renderer_restart, t_refused, t_join_retry, t_no_renderer):
+for t in (t_views, t_pairs, t_heartbeat, t_stall, t_late_join, t_loss, t_config, t_renderer_restart, t_refused, t_join_retry, t_no_renderer):
     t()
 print('e2e: %d FAILED: %s' % (len(fails), '; '.join(fails)) if fails else 'e2e: all ok')
 sys.exit(1 if fails else 0)
