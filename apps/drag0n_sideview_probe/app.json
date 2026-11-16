@@ -2,7 +2,7 @@
   "id": "drag0n_sideview_probe",
   "title": "ID7 Side View Test",
   "description": "Parked diagnostics for turn signals and camera interface names",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "startType": "manually",
   "vendor": "custom",
   "loggingId": "OA7V",
@@ -48,9 +48,29 @@
           "Seen this session"
         ],
         [
-          "twocol",
-          "CAM",
+          "button",
+          "CAM_NEXT",
           "Camera interfaces"
+        ],
+        [
+          "text",
+          "CAM1",
+          " "
+        ],
+        [
+          "text",
+          "CAM2",
+          " "
+        ],
+        [
+          "text",
+          "CAM3",
+          " "
+        ],
+        [
+          "text",
+          "CAM4",
+          " "
         ]
       ]
     }

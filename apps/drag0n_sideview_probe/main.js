@@ -11,7 +11,10 @@ mgu.run({
         const seen = new Set();
         let direction = 'Waiting';
         let status = 'Connecting';
-        let camera = 'Unavailable';
+        let cameras = [];
+        let cameraStatus = 'Unavailable';
+        let cameraPage = 0;
+        const pageSize = 4;
         let render = Promise.resolve();
         let pending = false;
 
@@ -27,9 +30,17 @@ mgu.run({
                     RAW1: raw[0],
                     RAW2: raw[1],
                     SEEN: Array.from(seen).join(' / ') || 'None',
-                    CAM: camera,
                 };
-                await Promise.all(Object.entries(rows).map(([id, value]) => ui.text(id, value, 0, 'Text2ndCol')));
+                const totalPages = Math.ceil(cameras.length / pageSize);
+                const page = cameras.slice(cameraPage * pageSize, (cameraPage + 1) * pageSize);
+                const title = totalPages ? 'Camera interfaces ' + (cameraPage + 1) + '/' + totalPages : 'Camera interfaces';
+                const cameraRows = ['CAM1', 'CAM2', 'CAM3', 'CAM4'].map((id, index) =>
+                    ui.text(id, page[index] || (index === 0 && !totalPages ? cameraStatus : ' ')));
+                await Promise.all([
+                    ...Object.entries(rows).map(([id, value]) => ui.text(id, value, 0, 'Text2ndCol')),
+                    ui.text('CAM_NEXT', title),
+                    ...cameraRows,
+                ]);
             }).catch((error) => log.warn(String(error)));
         }
 
@@ -47,12 +58,18 @@ mgu.run({
         try {
             const catalog = JSON.parse(fs.readFileSync('/etc/oap/someip/someip-interfaces.json', 'utf8'));
             const names = cameraNames(catalog);
-            camera = names.length ? names.map((name) => name.split('.').pop()).slice(0, 3).join(', ') : 'No matching names';
+            cameras = names.map((name) => name.replace(/^de\.bmw\./, ''));
+            cameraStatus = 'No matching names';
             log.info('Camera-related interface names: ' + JSON.stringify(names));
         } catch (error) {
             log.warn('Camera catalog: ' + error.message);
         }
 
+        ui.onClick('CAM_NEXT', () => {
+            const totalPages = Math.ceil(cameras.length / pageSize);
+            if (totalPages > 1) cameraPage = (cameraPage + 1) % totalPages;
+            update();
+        });
         ui.onVisible((name, visible) => {
             if (name === 'MAIN' && visible) update();
         });
