@@ -1,10 +1,15 @@
-# Camera xi nhan 0.6.4 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.6.5 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 
 Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. Hình lấy từ chính luồng 4 camera mà Drive Recorder Next đang dùng, nên hai app chạy song song được.
 
 > **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
+
+## Mới trong 0.6.5
+
+- **Trên xe (G30):** tên đường dưới ô rẽ hiện đúng, có dấu.
+- **Hai camera khi đang chọn *Cách lấy hình: Riêng cam gương*.** Chế độ đó bắt hộp camera chỉ phát một camera gương lúc xi nhan, nên không còn hình camera trước để giữ (đó là lý do khúc giữa trống trên xe). Giờ khi cần giữ camera trước, app tạm dùng hình 4 camera cho lần xi nhan đó; lúc camera trước không hiện thì chế độ riêng vẫn như cũ.
 
 ## Mới trong 0.6.4
 

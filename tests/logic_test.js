@@ -307,7 +307,12 @@ t('plan: with a signal on the front camera stays and the mirror camera gets its 
     assert.deepStrictEqual([P({ dual: 'always', front: 'always' }).view, P({ dual: 'always', front: 'always' }).ar, P({ dual: 'always', front: 'always' }).aux], ['front', 'off', 'left']);
     assert.strictEqual(P({ dual: 'always', front: 'slow30', speed: 40 }).view, 'left');       // the front camera would not show: nor now
     assert.strictEqual(P({ dual: 'nav', nav, test: 'left' }).view, 'left');                   // a test shows its camera alone
-    assert.strictEqual(P({ dual: 'nav', nav, mode: 'single', cam: { known: true, kind: 'left', text: 'x' } }).view, 'left');
+    // the single-camera mode steps back while the front camera is to be kept: all four cameras are asked for
+    assert.deepStrictEqual(P({ dual: 'nav', nav, mode: 'single' }), { view: 'front', why: '', want: 7, ar: 'route', aux: 'left' });
+    assert.strictEqual(P({ dual: 'nav', nav, mode: 'single', cam: { known: true, kind: 'left', text: 'x' } }).want, 7);
+    assert.strictEqual(P({ dual: 'nav', nav, mode: 'single', cam: { known: true, kind: 'left', text: 'x' } }).view, 'none');   // until the unit is back on all four
+    assert.deepStrictEqual([P({ dual: 'mirror', nav, mode: 'single', cam: { known: true, kind: 'left', text: 'x' } }).view, P({ dual: 'mirror', nav, mode: 'single' }).want], ['left', 3]);
+    assert.strictEqual(L.auxConfig({ mode: 'single' }, L.parseTargets('map:1088x480,panel:1920x720'), 'left').crop, '0,500,375,500');
     assert.strictEqual(P({ dual: 'nav', nav, maxSpeed: 30 }).view, 'none');                   // the speed limit holds as before
     const T = L.parseTargets('map:1088x480,panel:1920x720');
     assert.deepStrictEqual(L.auxConfig({}, T, 'right'), { side: 'right', target: 'panel', w: 320, h: 320, x: 1380, y: 240, fps: 10, crop: '625,500,375,500', rot: 0, flip: 0, sar: 100, round: 1 });

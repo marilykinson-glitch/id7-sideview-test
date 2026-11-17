@@ -367,7 +367,8 @@ const calib = (s, k) => {
  */
 function auxConfig(s, targets, side) {
     if (side !== 'left' && side !== 'right') return null;
-    const c = viewConfig(s, targets, side, side);
+    // (cut from the four-camera picture, whatever the mode setting: see plan)
+    const c = viewConfig(Object.assign({}, s, { mode: 'mosaic' }), targets, side, side);
     return { side, target: c.target, w: c.w, h: c.h, x: c.x, y: c.y, fps: Math.min(c.fps, 10), crop: c[side], rot: c[side + '_rot'],
         flip: c[side + '_flip'], sar: c[side + '_sar'], round: c[side + '_round'] };
 }
@@ -387,7 +388,11 @@ function arConfig(s, mode, speed) {
 function plan(i) {
     const none = (why, want) => ({ view: 'none', why, want: want === undefined ? null : want });
     if (!i.enabled && !i.test) return none('Đang tắt');
-    const single = i.mode === 'single';
+    // the front camera kept beside a mirror camera (dual, below) needs the four-camera picture: while that is
+    // wanted the single-camera mode steps back (the unit is not switched to the mirror camera alone)
+    const keepFront = !i.auxRefused && !i.test && !!i.side && i.enabled &&
+        ((i.dual === 'nav' && arWanted(i)) || (i.dual === 'always' && (arWanted(i) || frontWanted(i))));
+    const single = i.mode === 'single' && !keepFront;
     const ask = i.source !== 'passive';
     const side = i.test === 'left' || i.test === 'right' ? i.test : i.test === 'all' ? null : i.side;
     // what the camera unit should send: in single mode the wanted mirror camera while a side is on,
