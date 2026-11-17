@@ -23,13 +23,6 @@ if (glyph === 'gauge') {
     c.line(70, 76, nx, ny, 6, W);
     c.circle(70, 76, 9, W);
     c.fillRect(44, 112, 52, 6, W);
-} else if (glyph === 'home') {
-    // a house with a car's signal arcs in it
-    c.line(18, 66, 70, 22, 7, W); c.line(70, 22, 122, 66, 7, W);
-    c.line(32, 60, 32, 118, 7, W); c.line(108, 60, 108, 118, 7, W); c.line(32, 118, 108, 118, 7, W);
-    c.arc(70, 104, 30, 36, -50, 50, A, { round: true });
-    c.arc(70, 104, 16, 22, -50, 50, A, { round: true });
-    c.circle(70, 104, 5, W);
 } else if (glyph === 'flag') {
     // stopwatch + launch flag
     c.arc(62, 78, 38, 46, 0, 360, W);
@@ -113,12 +106,6 @@ if (glyph === 'gauge') {
     c.convex([[96, 56], [74, 64], [78, 78], [94, 74]], A);
     c.convex([[70, 82], [64, 94], [76, 94]], '#000000');     // nose
     for (let i = 0; i < 4; i++) c.fillRect(52 + i * 11, 104, 3, 16, '#000000');   // teeth
-} else if (glyph === 'lights') {
-    // a headlamp with its beams, an amber flash beside it
-    c.strokeRoundRect(14, 46, 54, 52, 18, 6, W);
-    c.circle(41, 72, 11, W);
-    for (const [y0, y1] of [[52, 38], [72, 72], [92, 106]]) c.line(80, y0, 124, y1, 6, W);
-    c.polyline([[50, 6], [40, 22], [52, 22], [42, 38]], 5, '#ffad1f');
 } else {
     c.strokeRoundRect(14, 14, 112, 112, 22, 6, W);
     c.text(glyph, 70, 88, 56, W, { font: 'bold', align: 'center' });

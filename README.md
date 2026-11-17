@@ -1,10 +1,18 @@
-# Camera xi nhan 0.3.3 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.4.0 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 
 Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. Hình lấy từ chính luồng 4 camera mà Drive Recorder Next đang dùng, nên hai app chạy song song được.
 
-> **Trên xe (G30, bản 0.3.2):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trên đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe:** vị trí "trong vòng đồng hồ" của bản 0.3.3 (tọa độ đo từ ảnh chụp, có mục chỉnh trong Cài đặt).
+> **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
+
+## Mới trong 0.4.0
+
+- **Hướng nhìn như Hyundai/Kia.** Blind-Spot View Monitor của Hyundai/Kia chiếu vùng điểm mù phía SAU bên xi nhan. Bản trước lấy phần giữa hình camera gương nên nhìn ngang. Giờ mặc định lấy nửa hình hướng về đuôi xe (*Hướng nhìn: Chếch về sau*). Camera gương của BMW là camera góc rộng chĩa xuống, nên không nhìn xa về sau được như camera riêng của Hyundai. Nếu trên xe thấy hình lại hướng về đầu xe, đổi sang *Chếch về trước* (tức là giả định "mép nào là phía sau" của mình bị ngược).
+- **Màn hình mới**, vẽ bằng bộ vẽ của kit (cần `idrive7-renderd` và `mgu-inputgate`, Store tự cài): sơ đồ đồng hồ cho thấy hình nằm ở đâu và sáng lên khi đang hiện, trạng thái chữ lớn, 4 dòng tình trạng có đèn xanh/vàng.
+- **Trang Vị trí**: mở trang này thì camera bên đang chỉnh hiện luôn trên đồng hồ thật. Chạm vào sơ đồ để đặt hình vào đó, hoặc bấm Lên / Xuống / Ra ngoài / Vào giữa (mỗi lần 10 điểm), Nhỏ hơn / Lớn hơn, Tròn / Chữ nhật, Mặc định. Mỗi thay đổi thấy ngay trên đồng hồ. Hai bên đối xứng nhau.
+- **Camera trước giữa đồng hồ** (thay cho Turn View): mục *Camera trước* = Tắt / Dưới 30 km/h / Dưới 60 km/h / Luôn hiện. Bật xi nhan thì camera gương thay chỗ, tắt xi nhan thì camera trước hiện lại. Không có mũi tên dẫn đường như Turn View của IterioDev (mã của họ giấy phép PolyForm Strict, không dùng lại được). Hai app không chạy cùng lúc được vì Turn View yêu cầu hộp camera chỉ phát camera trước; dùng mục này thì tắt hoặc gỡ Turn View.
+- **Tên mục trong Cài đặt ngắn lại** để ô giá trị không che mất.
 
 ## Gồm những gì
 
@@ -25,47 +33,52 @@ Cần sẵn trên xe: **cluster-render** 0.5.10 trở lên (nguồn `robertnisip
 
 ## Thử lần đầu (xe đỗ, nổ máy hoặc bật điện)
 
-Mở app **Camera xi nhan**. Chờ khoảng 15 giây sau khi đầu xe khởi động xong, rồi đọc 5 dòng trên cùng:
+Mở app **Camera xi nhan**. Chờ khoảng 15 giây sau khi đầu xe khởi động xong. Bên phải màn hình là trạng thái chữ lớn và 4 dòng, mỗi dòng một đèn (xanh là ổn, vàng là có vấn đề):
 
 | Dòng | Khi ổn sẽ ghi |
 |---|---|
-| Trạng thái | `Chờ xi nhan` |
-| Xi nhan | `Tắt (Đã kết nối, ...)` |
-| Hộp camera | `DR_ACTIVE/MODE_MOSAIK/7` (hoặc 9, 10) `- đúng chế độ` |
-| Luồng camera | `1280x480, 30 hình/giây, ghép 2 khung xen kẽ (sei@N)` trên G30; xe khác có thể là `1280x960, 15 hình/giây` |
-| Đồng hồ | `sẵn sàng, panel 320x320` |
+| (chữ lớn) | `CHỜ XI NHAN` |
+| Xi nhan | `Tắt` |
+| Hộp camera | `DR_ACTIVE/MODE_MOSAIK/7` (hoặc 9, 10) `· đúng chế độ` |
+| Luồng hình | `1280x480 · 30 hình/giây · ghép 2 khung (sei@N)` trên G30; xe khác có thể là `1280x960 · 15 hình/giây` |
+| Đồng hồ | `sẵn sàng · panel 320x320` |
 
 Sau đó:
 
-1. Bấm **Thử xem cả 4 camera**. Đồng hồ phải hiện hình ghép 4 camera trong 15 giây. Nhìn xem camera gương trái và phải nằm ở ô nào.
-2. Bấm **Thử camera TRÁI**, rồi **Thử camera PHẢI**. Nếu ra sai camera, vào **Cài đặt** chỉnh hai mục *Camera gương TRÁI/PHẢI nằm ở ô nào*.
+1. Bấm **4 camera**. Đồng hồ phải hiện hình ghép 4 camera trong 15 giây. Nhìn xem camera gương trái và phải nằm ở ô nào.
+2. Bấm **Thử trái**, rồi **Thử phải** (bấm lần nữa để tắt sớm). Nếu ra sai camera, vào **Cài đặt** chỉnh *Ô cam trái / Ô cam phải*.
 3. Bật xi nhan trái, phải, hazard, tắt.
+4. Sang tab **Vị trí** để đặt hình cho vừa vòng đồng hồ: camera hiện sẵn trên đồng hồ trong lúc chỉnh.
+5. Muốn có camera trước giữa đồng hồ: bấm nút **Camera trước** để đổi Tắt / Dưới 30 / Dưới 60 / Luôn hiện.
 
-Nếu hình bị nghiêng, ngược hay bị bóp hẹp: chỉnh *Xoay hình*, *Lật hình như soi gương*, *Kéo giãn ngang* trong Cài đặt. Đổi là có tác dụng ngay, không cần cài lại.
+Nếu hình bị nghiêng, ngược hay bị bóp hẹp: chỉnh *Xoay cam*, *Lật gương*, *Giãn ngang* trong Cài đặt. Đổi là có tác dụng ngay, không cần cài lại.
 
 ## Cài đặt trong app
 
 | Mục | Mặc định | Ghi chú |
 |---|---|---|
-| Camera theo xi nhan | Bật | Tắt thì chỉ còn nút thử |
-| Giữ hình sau khi tắt xi nhan | 2 giây | 1, 2, 3, 5 giây |
-| Gạt nhẹ xi nhan (nháy 3 lần) | Cũng hiện camera | |
-| Hình dạng | Tròn, có viền | Kiểu Hyundai/Kia: phần giữa hình camera trong khung tròn. *Chữ nhật* thì thấy hết hình |
-| Cỡ hình | Vừa khít vòng đồng hồ (320) | Nhỏ 288, Vừa 384, Lớn 480. Tròn: đường kính |
-| Vị trí hình | Trong vòng đồng hồ bên xi nhan | Xi nhan trái: trong đồng hồ tốc độ; phải: trong vòng tua. Hoặc giữa, sát mép, sát trên, sát dưới |
-| Chỉnh vị trí trong vòng đồng hồ | Không | Ngang (vào giữa / ra ngoài) và lên/xuống, mỗi nấc 20 điểm |
-| Hiện ở đâu | Vùng bản đồ giữa đồng hồ | Chỉ dùng khi vị trí không phải "trong vòng đồng hồ". Phủ toàn đồng hồ và HUD là thử nghiệm |
-| Camera gương TRÁI / PHẢI nằm ở ô nào | Dưới trái / Dưới phải | Theo hình ghép 4 camera |
-| Hình 4 camera bị đảo hàng trên/dưới | Không | Bật *Đảo lại* nếu nút *Thử xem cả 4 camera* cho thấy cặp gương nằm hàng trên. Nếu dòng Luồng camera ghi `(count)` thay vì `(sei@N)` thì hai hàng có thể tự đổi chỗ sau khi mất khung: báo lại kèm ảnh dòng cuối |
-| Xoay hình camera trái / phải | Không | 90, 180, 270 độ |
-| Lật hình như soi gương | Không | |
-| Phóng to phần giữa hình | Không | 1,25 / 1,5 / 2 lần |
-| Kéo giãn ngang | Không | Dùng khi hình bị bóp hẹp |
-| Số hình mỗi giây | 12 | Thấp hơn thì nhẹ đường truyền lên đồng hồ |
-| Chỉ hiện khi xe chạy chậm hơn | Mọi tốc độ | 30 / 50 / 80 km/h |
-| Cách lấy hình | Cắt từ hình 4 camera | *Yêu cầu riêng camera gương*: nét hơn (1280x480) nhưng đổi chế độ hộp camera mỗi lần xi nhan, Drive Recorder sẽ mất hình các camera khác trong lúc đó. Thử nghiệm |
-| Bật chế độ camera của xe | Tự bật khi cần | Chọn *Không* nếu muốn chỉ Drive Recorder điều khiển hộp camera |
-| Lớp video trên đồng hồ | Giữ sẵn | Đổi sang *Tạo mỗi lần xi nhan* nếu đồng hồ báo từ chối lớp video |
+| Bật theo xi nhan | Bật | Tắt thì chỉ còn nút thử |
+| Camera trước | Tắt | Dưới 30 km/h, Dưới 60 km/h, Luôn hiện. Hiện ở vùng bản đồ giữa đồng hồ khi không xi nhan |
+| Cỡ cam trước | Vừa (512x384) | Nhỏ 384x288, Lớn 640x480 |
+| Hướng nhìn | Chếch về sau | Ngang (như bản 0.3), Chếch về trước |
+| Phóng to | Không | 1,25 / 1,5 / 2 lần |
+| Giữ hình thêm | 2 giây | Sau khi tắt xi nhan: 1, 2, 3, 5 giây |
+| Gạt nhẹ 3 nháy | Có hiện | |
+| Hình dạng | Tròn | Chữ nhật thì thấy hết hình |
+| Cỡ hình | Vừa khít (320) | Nhỏ 288, Vừa 384, Lớn 480. Tròn: đường kính |
+| Vị trí | Trong đồng hồ | Chỉnh tiếp bằng trang Vị trí của app. Hoặc giữa, sát mép, trên, dưới |
+| Vùng hiện | Vùng bản đồ | Chỉ dùng khi Vị trí không phải "Trong đồng hồ". Toàn đồng hồ và HUD là thử nghiệm |
+| Lật gương | Không | |
+| Giới hạn tốc độ | Mọi tốc độ | Camera gương chỉ hiện khi chậm hơn 30 / 50 / 80 km/h |
+| Ô cam trái / Ô cam phải | Dưới trái / Dưới phải | Camera gương nằm ở ô nào của hình 4 camera |
+| Đảo hàng | Không | Bật nếu nút *4 camera* cho thấy cặp gương nằm hàng trên. Nếu dòng Luồng hình ghi `(count)` thay vì `(sei@N)` thì hai hàng có thể tự đổi chỗ sau khi mất khung: báo lại kèm ảnh |
+| Xoay cam trái / phải | Không | 90, 180, 270 độ |
+| Giãn ngang | Không | Dùng khi hình bị bóp hẹp |
+| Hình/giây | 12 | Thấp hơn thì nhẹ đường truyền lên đồng hồ |
+| Cách lấy hình | Cắt từ 4 cam | *Riêng cam gương*: nét hơn nhưng đổi chế độ hộp camera mỗi lần xi nhan, Drive Recorder mất hình các camera khác trong lúc đó. Thử nghiệm |
+| Tự bật camera | Có | Chọn *Không* nếu muốn chỉ Drive Recorder điều khiển hộp camera |
+| Lớp video | Giữ sẵn | Đổi sang *Tạo mỗi lần* nếu đồng hồ báo từ chối lớp video |
+| Màu, Bố cục, Bộ vẽ | | Giao diện của app trên màn hình giữa |
 
 ## Nếu không lên hình
 

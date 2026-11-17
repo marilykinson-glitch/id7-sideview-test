@@ -31,7 +31,7 @@
 
 namespace sidecam {
 
-enum View { kNone = 0, kLeft = 1, kRight = 2, kAll = 3, kViews = 4 };
+enum View { kNone = 0, kLeft = 1, kRight = 2, kAll = 3, kFront = 4, kViews = 5 };
 const char *view_name(View v);
 View view_from(const std::string &name);
 

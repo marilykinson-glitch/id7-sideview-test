@@ -80,7 +80,7 @@ class Rig:
         self.app_env = dict(os.environ, XINHAN_STATUS=self.status_file)
         self.app_env.update(app_env or {})
         self.helper = self.app = None
-        self.rows, self.logs, self.ecu = {}, [], []
+        self.rows, self.logs, self.ecu, self.model = {}, [], [], {}
         self.start_helper()
         self.start_app()
 
@@ -103,6 +103,8 @@ class Rig:
                 continue
             if 'ui' in j:
                 self.rows[j['ui'][0]] = j['ui'][1]
+            elif 'model' in j:
+                self.model = j['model']
             elif 'log' in j:
                 self.logs.append(tuple(j['log']))
             elif 'ecu' in j:
@@ -170,8 +172,8 @@ def t_drive():
     try:
         check(r.wait(lambda: r.native().get('pictures', 0) > 5 and r.native().get('cr') == 'connected', 15), 'the helper started the decoder; pictures decoded, renderer connected')
         c = r.control().get('config') or {}
-        check(c.get('w') == 320 and c.get('h') == 320 and c.get('left_round') == 1 and c.get('left') == '62,500,375,500' and c.get('target') == 'panel',
-              'as installed: round, 320x320, the middle of the lower-left quarter, on the whole cluster')
+        check(c.get('w') == 320 and c.get('h') == 320 and c.get('left_round') == 1 and c.get('left') == '0,500,375,500' and c.get('right') == '625,500,375,500' and c.get('target') == 'panel',
+              'as installed: round, 320x320, the rearward part of each mirror camera, on the whole cluster')
         r.cmd(light=[0, LEFT_ON])
         ok = r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('vw') == 320 and r.shown()[0] is not None, 3)
         check(ok and r.shown()[1].get('x') == 220 and r.shown()[1].get('y') == 240, 'left signal: in the speedometer (220,240)')
@@ -268,7 +270,7 @@ def t_drive():
             check(near(q[0], RED) and near(q[1], GREEN) and near(q[2], BLUE) and near(q[3], YELLOW), 'button "all four cameras": the whole picture')
         else:
             check(False, 'button "all four cameras": shown')
-        check(r.wait(lambda: 'cả 4 camera' in r.rows.get('ROW_STATE', ''), 2), 'the page says so: ' + r.rows.get('ROW_STATE', ''))
+        check(r.wait(lambda: 'cả 4 camera' in r.rows.get('ROW_STATE', '') and r.model.get('shown') == 'all', 2), 'the page says so: ' + r.rows.get('ROW_STATE', ''))
         r.cmd(click='BTN_RIGHT')
         check(r.wait(lambda: r.shows(YELLOW), 3), 'button "right": the right camera, over the running test')
         r.cmd(set=['enabled', 'off'])
@@ -291,6 +293,47 @@ def t_drive():
                     and near(colour(r.shown()[0], 640, 480, 0, 0, 120, 480), (0, 0, 0), 8) and near(colour(r.shown()[0], 640, 480, 200, 0, 440, 480), RED), 4)
         check(ok, 'settings: turned 90 degrees while shown: a 360x480 picture between black bars')
         r.cmd(light=[0, OFF])
+        # the Position page: the side being placed shows live; buttons and taps move it
+        r.cmd(set=['shape', 'round']); r.cmd(set=['place', 'gauge']); r.cmd(set=['size', 'fit']); r.cmd(set=['quadLeft', 'bl']); r.cmd(set=['rotLeft', '0'])
+        r.cmd(tab=1)
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 220 and r.shows(BLUE, 60), 4), 'Position page: the left camera shows on the cluster by itself, in the speedometer')
+        time.sleep(3.0)
+        check(r.shown()[1] is not None and r.model.get('note') == 'Đang hiện trên đồng hồ', 'and stays for as long as the page is open')
+        r.cmd(act='moveRight'); r.cmd(act='moveRight'); r.cmd(act='down')
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 240 and r.shown()[1].get('y') == 250, 4), 'buttons: 20 towards the middle, 10 down: the layer moves (240,250)')
+        check(r.model.get('discs', {}).get('left', {}).get('x') == 240 and r.model['discs']['right']['x'] == 1920 - 240 - 320, 'the picture on the page follows, mirrored for the right side')
+        r.cmd(act='side')
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 1360 and r.shows(YELLOW, 60), 4), 'button "side": the right camera shows, in the rev counter, with the same offsets')
+        # a tap at the picture's (1500,300) cluster point: PICS[1] is at 56,92 scaled 0.5
+        r.cmd(tap=[56 + 1500 * 0.5, 92 + 300 * 0.5])
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 1340 and r.shown()[1].get('y') == 140, 4), 'a tap on the picture: the view\'s middle goes there (1500,300)')
+        r.cmd(act='larger')
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('vw') == 384, 4), 'button "larger": 384')
+        r.cmd(act='reset')
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('vw') == 320 and r.shown()[1].get('x') == 1380 and r.shown()[1].get('y') == 240, 4), 'button "default": back in the dial\'s middle, 320')
+        r.cmd(tab=0)
+        check(r.wait(lambda: not r.cr.visible(), 4), 'leaving the page: the view goes')
+
+        # the front camera in the middle of the cluster (the "front" setting), and a turn signal over it
+        r.cmd(speed=int(20 / 0.015625))
+        r.cmd(set=['front', 'slow30'])
+        ok = r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'map' and r.shown()[1].get('vw') == 512 and r.shows(RED), 4)
+        check(ok, 'front camera below 30 km/h, at 20: the front camera (red) 512x384 on the map area')
+        check(r.wait(lambda: r.model.get('shown') == 'front' and r.model.get('frontRect') is not None, 2), 'the page shows it')
+        r.cmd(light=[0, RIGHT_ON])
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'panel' and r.shows(YELLOW, 60), 4), 'right signal: the right mirror camera takes over, in the rev counter')
+        r.cmd(light=[0, OFF])
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'map' and r.shows(RED), 6), 'signal off: the front camera is back')
+        r.cmd(speed=int(45 / 0.015625))
+        check(r.wait(lambda: not r.cr.visible(), 3), 'at 45 km/h: gone')
+        r.cmd(set=['front', 'always'])
+        check(r.wait(lambda: r.shows(RED), 4), 'front camera "always": shown at any speed')
+        r.cmd(light=[0, HAZARD])
+        time.sleep(0.6)
+        check(r.shows(RED), 'hazards: the front camera stays')
+        r.cmd(light=[0, OFF])
+        r.cmd(set=['front', 'off'])
+        check(r.wait(lambda: not r.cr.visible(), 3), 'front camera off: gone')
         errors = [l for l in r.logs if l[0] in ('error', 'raw')]
         check(not errors, 'no errors in the app\'s log %s' % errors[:3])
     finally:
@@ -325,7 +368,7 @@ def t_parking_and_single():
         r.cmd(light=[0, RIGHT_ON])
         check(r.wait(lambda: any(c[0] == 'changeState' and c[1]['desiredState']['perspective'] == 4 for c in r.ecu[n:]), 2), 'single mode, right signal: the unit is asked for the right camera (4)')
         check(r.wait(lambda: r.shown()[0] is not None, 3), 'shown once the unit says it is on')
-        check((r.control().get('config') or {}).get('right') == '313,0,375,1000', 'as the middle of that camera\'s picture (round)')
+        check((r.control().get('config') or {}).get('right') == '625,0,375,1000', 'as the rearward part of that camera\'s picture (round)')
         r.cmd(light=[0, OFF])
         check(r.wait(lambda: not r.cr.visible(), 4), 'signal off: gone')
         check(r.wait(lambda: r.ecu[-1][0] == 'changeState' and r.ecu[-1][1]['desiredState']['perspective'] == 7, 3), 'and the unit is given back the four-camera view (7)')

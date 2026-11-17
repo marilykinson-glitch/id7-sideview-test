@@ -8,7 +8,7 @@
  * over stdin which view to show, from the turn signals the app reads.
  *
  * stdin, one flat JSON object a line:
- *   {"op":"view","side":"left"}         left | right | all | none; said again at least every 3 s
+ *   {"op":"view","side":"left"}         left | right | front | all | none; said again at least every 3 s
  *                                       while a view is wanted (else it goes: the parent is gone)
  *   {"op":"config","target":"map","w":512,"h":384,"x":-1,"y":-1,"fps":12,"klass":"overlay",
  *    "exclusive":1,"contend":1,"persist":1,"pair":1,"pair_swap":0,   (pair: pipeline.h)
@@ -300,7 +300,7 @@ void apply_config(App &a, const cr::Json &j)
     const long fps = to_long(j, "fps", c.out.fps);
     if (fps >= 1 && fps <= 30)
         c.out.fps = (unsigned)fps;
-    static const char *const names[] = {nullptr, "left", "right", "all"};
+    static const char *const names[] = {nullptr, "left", "right", "all", "front"};
     for (int v = kLeft; v < kViews; v++) {
         ViewSpec &vs = c.out.views[v];
         auto it = j.find(names[v]);
@@ -430,6 +430,7 @@ int main(int argc, char **argv)
     /* the mirror cameras of the all-cameras picture: its lower half (the app sends what the car has) */
     parse_crop("0,500,500,500", &a.cfg.out.views[kLeft]);
     parse_crop("500,500,500,500", &a.cfg.out.views[kRight]);
+    parse_crop("0,0,500,500", &a.cfg.out.views[kFront]);   /* the front camera: its upper left quarter */
     a.gen = a.pipe.set_output(a.cfg.out);
 
     const int wake = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);

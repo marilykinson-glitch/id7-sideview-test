@@ -25,6 +25,7 @@ const themes = require('./themes');
 const { Display } = require('./display');
 const { HmiText } = require('./hmi-text');
 const { listSheet } = require('./sheet');
+const i18n = require('./i18n');
 
 const sdkLog = logging.getSDKLogger();
 const SPEC = JSON.parse(fs.readFileSync(path.join(__dirname, 'app-spec.json'), 'utf8'));
@@ -89,6 +90,10 @@ class Settings {
         this.listeners = [];
         for (const s of this.schema) this.values[s.key] = s.default;
         try { Object.assign(this.values, JSON.parse(fs.readFileSync(this.file, 'utf8'))); } catch (e) {}
+        // "aliases": { old value: new value } - a value saved before the setting's values were renamed
+        for (const s of this.schema) {
+            if (s.aliases && Object.prototype.hasOwnProperty.call(s.aliases, this.values[s.key])) this.values[s.key] = s.aliases[this.values[s.key]];
+        }
         // one-time move of saved settings to the new default theme (M Tricolour); later choices are kept
         const th = this.item('theme');
         if (th && this.values._themeV !== 2) {
@@ -116,12 +121,21 @@ class Settings {
     }
     onChange(fn) { this.listeners.push(fn); }
     item(key) { return this.schema.find((s) => s.key === key); }
+    /**
+     * Whether a setting is offered: not "hidden", and its "when" holds - { key: value or [values] }, each other
+     * setting at one of them (e.g. "when": { "diagPage": true }, "when": { "torqueUnit": "kgm" }). Its value
+     * stays as it is while it is not offered.
+     */
+    shown(s) {
+        if (!s || s.hidden) return false;
+        return !s.when || Object.keys(s.when).every((k) => [].concat(s.when[k]).indexOf(this.values[k]) >= 0);
+    }
     /** Human text for the current value of a setting. */
     display(key) {
         const s = this.item(key), v = this.values[key];
         if (!s) return String(v);
         if (s.type === 'choice') { const o = (s.options || []).find((x) => x[0] === v); return o ? o[1] : String(v); }
-        if (s.type === 'number') return String(v) + (s.unit ? ' ' + s.unit : '') + (s.markDefault && v === s.default ? ' (default)' : '');
+        if (s.type === 'number') return (s.labels && s.labels[String(v)] !== undefined ? s.labels[String(v)] : String(v) + (s.unit ? ' ' + s.unit : '')) + (s.markDefault && v === s.default ? ' (default)' : '');
         if (s.type === 'bool') return v ? 'On' : 'Off';
         return String(v);
     }
@@ -441,6 +455,9 @@ function wireSettings(ctx) {
     const values = (s) => (s.type === 'choice' ? (s.options || []).map((o) => o[0]) : s.type === 'number' ? s.steps || [] : null);
     const refresh = () => Promise.all(schema.map((s) => {
         const comp = 'SET_' + s.key.toUpperCase();
+        if (!ui.comp(comp)) return null;
+        // one another setting offers it ("when"): shown or not as that one is
+        if (s.when) ui.visible(comp, settings.shown(s));
         if (s.type === 'bool') return Promise.all([ui.text(comp, s.label), ui.checked(comp, !!settings.get(s.key))]);
         if (values(s)) return ui.selected(comp, Math.max(0, values(s).indexOf(settings.get(s.key))));
         // other types: two-row buttons in the wide settings state, label above, value below
@@ -522,6 +539,12 @@ async function runInner(impl) {
     }
     const ui = new Ui(app);
     const settings = new Settings(SPEC.settings);
+    // a "language" setting: English or the build's language, switched while the app runs (drawn text;
+    // the HMI's own texts follow the car's language)
+    if (settings.item('language') && i18n.setLanguage) {
+        i18n.setLanguage(settings.get('language'));
+        settings.onChange((key, value) => { if (key === 'language' && i18n.setLanguage(value)) log.info('language: ' + i18n.getLanguage()); });
+    }
     const display = new Display(ui, log, SPEC, settings, () => themes.theme(settings.get('theme')));
     ui.display = display;
     const ctx = {
@@ -657,15 +680,24 @@ async function runInner(impl) {
         .then(() => { mapped[uuid] = true; log.info('mapped entry ' + uuid + ' -> ' + mainName); })
         .catch((e) => log.error('map entry state', e))));
     let opening = null;
-    const openEntry = (uuid) => {
+    // tries: right after a tap started the app the HMI can still refuse the state (INVALID_UUID /
+    // INVALID_COMPONENTID) - then it is asked again, 0.8 s apart, instead of needing a second tap
+    const openEntry = (uuid, tries) => {
         if (opening) return opening;   // MainApp can send the same tap twice
+        let again = false;
         const map = mapped[uuid] ? Promise.resolve() : ui.rhmi.mapEntryState(uuid, mainState).then(() => { mapped[uuid] = true; });
         opening = map
             .then(() => (mainState && mainState.updateResources ? mainState.updateResources().catch(() => {}) : null))
             .then(() => ui.rhmi.openEntryState(uuid))
             .then(() => ui._setVisible(mainName, true))
-            .catch((e) => log.error('open entry state', e))
-            .then(() => { opening = null; });
+            .catch((e) => {
+                if ((tries || 1) > 1 && /INVALID/.test(String(e && e.message ? e.message : e) + ' ' + JSON.stringify(e || {}))) again = true;
+                else log.error('open entry state', e);
+            })
+            .then(() => {
+                opening = null;
+                if (again) setTimeout(() => openEntry(uuid, tries - 1), 800);
+            });
         return opening;
     };
     // a tap on the home-screen widget opens the app
@@ -700,7 +732,7 @@ async function runInner(impl) {
     // launched by a tile tap / bookmark: the execute event came before we
     // listened, so open the screen ourselves (M Laptimer does the same)
     const lastEntry = app.getLastExecutedEntryPointUuid && app.getLastExecutedEntryPointUuid();
-    if (lastEntry && ['ENTRY_POINT', 'BOOKMARK', 'LUM'].indexOf(String(app.startReason)) >= 0) openEntry(lastEntry);
+    if (lastEntry && ['ENTRY_POINT', 'BOOKMARK', 'LUM'].indexOf(String(app.startReason)) >= 0) openEntry(lastEntry, 6);
     process.on('unhandledRejection', (e) => log.error('unhandled', e));
     return ctx;
 }

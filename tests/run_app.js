@@ -8,12 +8,13 @@
  * stdin, one JSON object a line:
  *   {"light":[0,{...}]}      an indicator event (0: StatusFunctionsIndicators, 1: ...2)
  *   {"speed":1920}           statusCarSpeed2's raw value
- *   {"click":"BTN_LEFT"}     a button of the page
+ *   {"click":"BTN_LEFT"}     a button of the HMI's bar;  {"act":"up"} a button drawn on the page (ui.js act)
+ *   {"tab":1}                a page tab;  {"tap":[x,y]} a tap on the page
  *   {"set":["mode","single"]} a setting
  *   {"ecu":{...}}            the camera unit's state from now on (as CurrentState reports it)
  *   {"visible":true}         the page opened / closed
  *   {"shutdown":true}        MainApp stops the app
- * stdout: {"ui":[name,text]}, {"log":[level,text]}, {"ecu":[call,...]} lines.
+ * stdout: {"ui":[name,text]} (the page's state and rows), {"model":{...}}, {"log":[level,text]}, {"ecu":[call,...]} lines.
  * The stand-in camera unit: ECU_NAMES=0 refuses enum names (numbers only), ECU_DELAY ms before a
  * requested view is on, ECU_OBEYS=0 never follows.
  */
@@ -78,22 +79,47 @@ const settings = {
     onChange(fn) { listeners.push(fn); },
 };
 const clicks = {}, vis = [];
-let visible = false;
+let visible = false, drawFn = null, tabFn = null, tapFn = null, acts = {};
 const ui = {
     text(name, text) { out({ ui: [name, text] }); return Promise.resolve(); },
+    image() { return Promise.resolve(); },
     onClick(name, fn) { clicks[name] = fn; },
     onVisible(fn) { vis.push(fn); },
     isVisible: () => visible,
 };
+settings.display = (k) => { const s = spec.settings.find((x) => x.key === k); const o = s && (s.options || []).find((x) => x[0] === values[k]); return o ? o[1] : String(values[k]); };
+settings.item = (k) => spec.settings.find((s) => s.key === k);
+settings.cycle = (k) => { const l = settings.item(k).options.map((o) => o[0]); settings.set(k, l[(l.indexOf(values[k]) + 1) % l.length]); };
+// the screen: ui.js's draw is not run; what it would be given (the model) goes out as the rows the tests read
+const realUI = require(path.join(APP, 'ui.js'));
+const fakeUI = Object.assign({}, realUI, {
+    draw(cv, G, t, v, a) {
+        acts = a || {};
+        out({ ui: ['ROW_STATE', 'Trạng thái: ' + v.title + (v.subtitle ? ' - ' + v.subtitle : '')] });
+        (v.rows || []).forEach((r, i) => out({ ui: [['ROW_SIGNAL', 'ROW_CAMERA', 'ROW_VIDEO', 'ROW_CLUSTER'][i], r.label + ': ' + r.text] }));
+        out({ model: { page: v.page, edit: v.edit, shown: v.shown, discs: v.discs, frontRect: v.frontRect || null, round: v.round, note: v.note || '' } });
+        return cv;
+    },
+});
 const log = {};
 ['info', 'warn', 'error', 'debug'].forEach((l) => { log[l] = function () { out({ log: [l, Array.prototype.slice.call(arguments).join(' ')] }); }; });
 const app = new EventEmitter();
-const ctx = { ui, settings, log, signals, dataDir, app, spec };
+const ctx = {
+    ui, settings, log, signals, dataDir, app, spec,
+    canvas: () => ({}), theme: () => ({}), hideButton() {},
+    onTab(fn) { tabFn = fn; }, onTap(fn) { tapFn = fn; },
+    loop(name, fps, fn) { drawFn = fn; setInterval(() => { if (visible) fn(); }, 250); return { kick() { if (visible) fn(); }, stop() {} }; },
+};
 const mgu = { run(impl) { return Promise.resolve().then(() => impl.start(ctx)).catch((e) => { out({ log: ['error', 'start: ' + (e && e.stack || e)] }); process.exit(1); }); } };
 
 const load = Module._load;
 Module._load = function (request, parent) {
-    if (request === './kit/mgu' && parent && parent.filename === path.join(APP, 'main.js')) return mgu;
+    if (parent && parent.filename === path.join(APP, 'main.js')) {
+        if (request === './kit/mgu') return mgu;
+        if (request === './kit/gauges') return {};
+        if (request === './kit/canvas') return { Canvas: function () {} };
+        if (request === './ui') return fakeUI;
+    }
     return load.apply(this, arguments);
 };
 require(path.join(APP, 'main.js'));
@@ -107,6 +133,9 @@ process.stdin.on('data', (d) => {
         if (c.light) { const h = watchers['de.bmw.body.Light']; h[c.light[0] ? 'StatusFunctionsIndicators2' : 'StatusFunctionsIndicators'](c.light[1]); }
         if (c.speed !== undefined) watchers['de.bmw.infotainment.vehicle.Vehicle2'].statusCarSpeed2({ speedVehicleCentreOfGravity: c.speed });
         if (c.click) Promise.resolve().then(() => clicks[c.click]({}));
+        if (c.act) Promise.resolve().then(() => acts[c.act]());            // a button drawn on the page
+        if (c.tab !== undefined && tabFn) tabFn(c.tab);
+        if (c.tap && tapFn) tapFn(c.tap[0], c.tap[1]);
         if (c.set) settings.set(c.set[0], c.set[1]);
         if (c.ecu) ecu = c.ecu;
         if (c.visible !== undefined) { visible = !!c.visible; vis.forEach((fn) => fn('MAIN', visible)); }

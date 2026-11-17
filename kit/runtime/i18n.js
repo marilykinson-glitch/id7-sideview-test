@@ -1,16 +1,58 @@
 'use strict';
 // Local display translation only. Never use this on signal names, IDs or stored settings.
 const locale = require('./locale.json');
-const dict = locale.strings || {};
-const language = locale.language || 'en';
-const localizedValues = new Set(Object.values(dict));
+// The build's language and catalog. A package built with a language setting switches between
+// English and this language while it runs (setLanguage); any other package keeps its language.
+const builtLanguage = locale.language || 'en';
+const builtDict = locale.strings || {};
+let dict = builtDict;
+let language = builtLanguage;
+let localizedValues, folded, pattern;
 const cache = new Map();
 function getLanguage() { return language; }
-const folded = Object.create(null);
-Object.keys(dict).forEach((key) => { folded[key.toLowerCase()] = dict[key]; });
+// Plural forms live in the locale catalogs: "fault|faults<TAB>ошибка|ошибки|ошибок".
+// The key is the English text for 1 and for many, exactly as English shows it (both the same
+// when English does not change, e.g. "items|items"). Without a row the English form is returned
+// and the drawn line goes through t() as before, so catalogs without plural rows (zh-CN) render unchanged.
+// The rule picks the form index; Node 8 on the car has no Intl.PluralRules.
+const PLURAL_RULES = {
+    en: (n) => (n === 1 ? 0 : 1),
+    ru: (n) => { // one | few | many
+        const mod100 = Math.abs(n) % 100, mod10 = mod100 % 10;
+        if (mod100 >= 11 && mod100 <= 14) return 2;
+        if (mod10 === 1) return 0;
+        return mod10 >= 2 && mod10 <= 4 ? 1 : 2;
+    },
+    'zh-CN': () => 0,
+    ko: () => 0,
+    vi: () => 0,
+};
+function plural(n, one, other, lang) {
+    const key = one + '|' + other, lng = lang || language;
+    const translated = lng !== 'en' && Object.prototype.hasOwnProperty.call(dict, key) && (!lang || lang === language);
+    if (!translated) return n === 1 ? one : other;
+    const forms = dict[key].split('|'), rule = PLURAL_RULES[lng] || PLURAL_RULES.en;
+    return forms[Math.min(rule(n), forms.length - 1)];
+}
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const phrases = Object.keys(dict).filter((s) => s.length >= 4).sort((a, b) => b.length - a.length);
-const pattern = new RegExp('(^|[^A-Za-z0-9_./])(' + phrases.map(escape).join('|') + ')(?=$|[^A-Za-z0-9_./])', 'gi');
+function index() {
+    localizedValues = new Set(Object.values(dict));
+    folded = Object.create(null);
+    Object.keys(dict).forEach((key) => { folded[key.toLowerCase()] = dict[key]; });
+    const phrases = Object.keys(dict).filter((s) => s.length >= 4 && s.indexOf('|') < 0).sort((a, b) => b.length - a.length);
+    pattern = phrases.length ? new RegExp('(^|[^A-Za-z0-9_./])(' + phrases.map(escape).join('|') + ')(?=$|[^A-Za-z0-9_./])', 'gi') : null;
+    cache.clear();
+}
+index();
+/** 'en' or the build's language (anything else counts as English). Returns whether it changed. */
+function setLanguage(lang) {
+    const next = lang === builtLanguage ? builtLanguage : 'en';
+    if (next === language) return false;
+    language = next;
+    dict = next === 'en' ? {} : builtDict;
+    index();
+    return true;
+}
 function t(value) {
     const s = String(value == null ? '' : value);
     if (language === 'en') return s;
@@ -26,12 +68,19 @@ function t(value) {
         out = s.slice(0, s.indexOf(key)) + folded[key.toLowerCase()] + s.slice(s.indexOf(key) + key.length);
     } else {
         // Short words need context: "min 70" is a minimum, "12 min" is minutes.
-        out = language === 'zh-CN' ? s.replace(/\bmin(?=\s+-?\d)/g, '最小').replace(/\bmax(?=\s+-?\d)/g, '最大')
-            .replace(/\bAVG(?=\s+[+-]?\d)/g, '平均').replace(/\bACC\b/g, '加速') : s;
-        out = out.replace(pattern, (_, before, word) => before + (dict[word] || folded[word.toLowerCase()]));
+        // Keep numeric battery capacity values/units while removing the English "of".
+        out = language === 'ko' ? s.replace(/(\d+(?:\.\d+)?)\s+of\s+(\d+(?:\.\d+)?)\s+Ah\b/gi, '$1 / $2 Ah') :
+            language === 'zh-CN' ? s.replace(/\bmin(?=\s+-?\d)/g, '最小').replace(/\bmax(?=\s+-?\d)/g, '最大')
+            .replace(/\bAVG(?=\s+[+-]?\d)/g, '平均').replace(/\bACC\b/g, '加速') :
+            language === 'ru' ? s.replace(/\bmin(?=\s+-?\d)/g, 'мин.').replace(/\bmax(?=\s+-?\d)/g, 'макс.')
+                .replace(/\bAVG(?=\s+[+-]?\d)/g, 'СРЕД.').replace(/\bACC\b/g, 'РАЗГОН') : s;
+        if (pattern) out = out.replace(pattern, (_, before, word) => before + (dict[word] || folded[word.toLowerCase()]));
     }
     if (cache.size >= 2048) cache.clear();
     cache.set(s, out);
     return out;
 }
-module.exports = { t, dict, getLanguage };
+module.exports = { t, plural, PLURAL_RULES, getLanguage };
+Object.defineProperty(module.exports, 'dict', { enumerable: true, get: () => dict });
+// a package built with a language setting (build.py --language-setting) switches; others are fixed
+if (locale.switchable) module.exports.setLanguage = setLanguage;

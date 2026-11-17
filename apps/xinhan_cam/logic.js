@@ -173,8 +173,9 @@ function zoomCrop(x, y, w, h, zoom) {
  * the wanted mirror camera alone and the view is the whole picture.
  * targets: the cluster renderer's (parseTargets); side: the side shown, for "place: side".
  */
-function viewConfig(settings, targets, side) {
+function viewConfig(settings, targets, side, view) {
     const s = settings || {};
+    if (view === 'front') return frontConfig(s, targets);
     // "gauge": the view sits inside the dial on the signal's side (left: the speedometer, right: the rev
     // counter), which only the whole-cluster target reaches
     const gauge = s.place === 'gauge' || s.place === undefined;
@@ -190,14 +191,24 @@ function viewConfig(settings, targets, side) {
     // "stretch" widens it when the camera unit squeezed the picture sideways
     const base = single ? 8 / 3 : 4 / 3;
     const wide = base * stretch / 100;
-    // round: the middle of the picture, as wide as it is high on the cluster (a part 1 / wide of its width)
-    const part = (x, y, w, h) => {
-        if (!round || wide <= 1) return zoomCrop(x, y, w, h, s.zoom);
-        const nw = w / wide;
-        return zoomCrop(Math.round(x + (w - nw) / 2), y, Math.round(nw), h, s.zoom);
+    // round: a part of the picture as wide as it is high on the cluster (1 / wide of its width), zoomed.
+    // "aim" slides that part along the car: a mirror camera looks straight out sideways, so the road
+    // behind is at the edge of its picture away from the car's front - the left edge of the left camera's
+    // picture, the right edge of the right one's ('rear', what a blind-spot monitor shows); 'front' the
+    // other edge, 'side' the middle.
+    const aim = s.aim === 'side' || s.aim === 'front' ? s.aim : 'rear';
+    const part = (x, y, w, h, isLeft) => {
+        const z = Math.max(100, Math.min(400, Number(s.zoom) || 100));
+        let nw = (round && wide > 1 ? w / wide : w) * 100 / z;
+        const nh = Math.max(50, h * 100 / z);
+        nw = Math.max(50, nw);
+        const slack = w - nw;
+        const towardsLeft = (aim === 'rear') === isLeft;         // rear: left camera -> left edge, right camera -> right edge
+        const nx = aim === 'side' ? x + slack / 2 : towardsLeft ? x : x + slack;
+        return [Math.round(nx), Math.round(y + (h - nh) / 2), Math.round(nw), Math.round(nh)].join(',');
     };
-    const left = single ? part(0, 0, 1000, 1000) : part(ql[0], ql[1], 500, 500);
-    const right = single ? part(0, 0, 1000, 1000) : part(qr[0], qr[1], 500, 500);
+    const left = single ? part(0, 0, 1000, 1000, true) : part(ql[0], ql[1], 500, 500, true);
+    const right = single ? part(0, 0, 1000, 1000, false) : part(qr[0], qr[1], 500, 500, false);
     const turned = (r) => r === 90 || r === 270;
     const shape = (r) => (round ? 1 : turned(r) ? 1 / wide : wide);
     // one layer for both sides: as wide as the wider of the two
@@ -217,7 +228,7 @@ function viewConfig(settings, targets, side) {
         // the dials' free middles on the 1920x720 cluster of a G30 (Live Cockpit Professional), measured
         // from photos of the car: GAUGE.cx in from each side, GAUGE.cy down; gaugeDx moves the view towards
         // the middle of the cluster (negative: outwards), gaugeDy down
-        const dx = Math.max(-120, Math.min(120, Number(s.gaugeDx) || 0)), dy = Math.max(-120, Math.min(120, Number(s.gaugeDy) || 0));
+        const dx = Math.max(-400, Math.min(400, Number(s.gaugeDx) || 0)), dy = Math.max(-200, Math.min(200, Number(s.gaugeDy) || 0));
         const cx = side === 'right' ? t.w - GAUGE.cx - dx : GAUGE.cx + dx;
         x = Math.round(cx - w / 2);
         y = Math.round(GAUGE.cy + dy - h / 2);
@@ -233,9 +244,36 @@ function viewConfig(settings, targets, side) {
         left, left_rot: rot('rotLeft'), left_flip: flip, left_sar: stretch, left_round: round ? 1 : 0,
         right, right_rot: rot('rotRight'), right_flip: flip, right_sar: stretch, right_round: round ? 1 : 0,
         all: '0,0,1000,1000', all_rot: 0, all_flip: 0, all_sar: 100,
+        front: FRONT_CROP, front_rot: 0, front_flip: 0, front_sar: 100, front_round: 0,
         // a car whose camera unit sends the four cameras as two wide pictures by turns: the helper puts
         // them one above the other, and the quarters above are of that picture
         pair: single ? 0 : 1, pair_swap: s.pairSwap === 'on' ? 1 : 0,
+    };
+}
+
+const FRONT_CROP = '0,0,500,500';      // the front camera: the upper left quarter of the four-camera picture
+const FRONT_SIZES = { small: [384, 288], medium: [512, 384], large: [640, 480] };
+
+/**
+ * The config while the front camera shows (the "front" setting): a 4:3 rectangle in the middle of the
+ * cluster's map area, over the map. Its own layer geometry: the helper makes the layer again when a
+ * turn signal brings a mirror camera up, and again after it.
+ */
+function frontConfig(s, targets) {
+    const t = (targets && targets.map) || { w: 1088, h: 480 };
+    const size = FRONT_SIZES[s.frontSize] || FRONT_SIZES.medium;
+    let w = Math.min(size[0], t.w), h = Math.min(size[1], t.h);
+    w -= w % 4;
+    h -= h % 2;
+    let x = Math.round((t.w - w) / 2), y = Math.round((t.h - h) / 2);
+    x -= x % 2;
+    y -= y % 2;
+    const fps = [8, 10, 12, 15].indexOf(Number(s.fps)) >= 0 ? Math.min(Number(s.fps), 10) : 10;   // a large picture: easy on the link
+    return {
+        op: 'config', target: 'map', w, h, x, y, fps, klass: 'overlay', exclusive: 1, contend: 1, persist: s.layer === 'make' ? 0 : 1,
+        front: FRONT_CROP, front_rot: 0, front_flip: 0, front_sar: 100, front_round: 0,
+        all: '0,0,1000,1000', all_rot: 0, all_flip: 0, all_sar: 100,
+        pair: 1, pair_swap: s.pairSwap === 'on' ? 1 : 0,
     };
 }
 
@@ -248,10 +286,20 @@ function viewConfig(settings, targets, side) {
  *   speed (km/h or null), maxSpeed (0: any), cam (camState()),
  *   helper: { ok, pictureAge, pictureW, pictureH } (the helper's status; ok false: not running)
  * }
- * -> { view: 'left' | 'right' | 'all' | 'none', why (when none, or what holds it up), want }
+ * (also front: 'off' | 'always' | 'slow30' | 'slow60', and test may be 'front')
+ * -> { view: 'left' | 'right' | 'front' | 'all' | 'none', why (when none, or what holds it up), want }
  * want: the perspective to ask the camera unit for (7 all four, 3 left, 4 right), or null to ask for
  * nothing (off, or "passive": use what another app has on).
  */
+/** Whether the "front" setting wants the front camera now: 'always', or 'slow30' / 'slow60' below that speed. */
+function frontWanted(i) {
+    const f = i.front;
+    if (f === 'always') return true;
+    const m = /^slow(\d+)$/.exec(String(f || ''));
+    if (!m) return false;
+    return i.speed !== null && i.speed !== undefined && i.speed <= Number(m[1]);
+}
+
 function plan(i) {
     const none = (why, want) => ({ view: 'none', why, want: want === undefined ? null : want });
     if (!i.enabled && !i.test) return none('Đang tắt');
@@ -261,7 +309,10 @@ function plan(i) {
     // what the camera unit should send: in single mode the wanted mirror camera while a side is on,
     // else (and always in mosaic mode) all four, which is also what Drive Recorder keeps on
     const want = !ask ? null : single && side ? (side === 'left' ? 3 : 4) : 7;
-    if (!side && i.test !== 'all') return none('Chờ xi nhan', want);
+    // the front camera in the middle of the cluster while no signal is on (the "front" setting, or its test
+    // button): only from the four-camera picture, so never in the moments single mode has one camera on
+    const frontOn = i.test === 'front' || (!i.test && !side && i.enabled && frontWanted(i));
+    if (!side && i.test !== 'all' && !frontOn) return none(i.frontWhy || 'Chờ xi nhan', want);
     if (!i.test && i.maxSpeed && i.speed !== null && i.speed !== undefined && i.speed > i.maxSpeed) {
         return none('Xe chạy nhanh hơn ' + i.maxSpeed + ' km/h', want);
     }
@@ -273,6 +324,11 @@ function plan(i) {
     if (h.pictureAge === null || h.pictureAge === undefined || h.pictureAge < 0) return none('Chưa có hình từ camera', want);
     if (h.pictureAge > 1500) return none('Luồng camera đang dừng', want);
     if (i.test === 'all') return { view: 'all', why: '', want };
+    if (frontOn) {
+        const four = (i.cam || {}).kind === 'all4' || ((i.cam || {}).kind === 'unknown' && (h.pictureH >= 800 || (!!h.pair && h.pair !== 'off')));
+        if (!four) return none('Chờ xi nhan', want);
+        return { view: 'front', why: '', want };
+    }
     // the four-camera picture is 1280x960, or two 1280x480 pictures by turns (the helper pairs them); one camera is 1280x480
     const tall = h.pictureH >= 800 || (!!h.pair && h.pair !== 'off');
     if (single) {
@@ -289,4 +345,4 @@ function plan(i) {
     return { view: side, why: '', want };
 }
 
-module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, plan, CONTROL, HEIGHTS, GAUGE };
+module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES };

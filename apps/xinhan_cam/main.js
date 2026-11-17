@@ -13,15 +13,19 @@
  *                view that is not confirmed for 2 s: an app that stopped never leaves a camera on)
  *   the tool  -> /run/xinhan-cam/status.json   what the stream, the decoder and the cluster say
  *
- * Starts with the head unit and keeps running in the background (app.json "startType": "autostart");
- * its page shows the state and has buttons to try each camera with the car parked.
+ * Starts with the head unit and keeps running in the background (app.json "startType": "autostart").
+ * Its screen (ui.js) shows the state on a picture of the cluster, has buttons to try each view, and a
+ * Position page where the view is placed by hand while it shows live on the cluster.
  * Node 8.
  */
 const fs = require('fs');
 const path = require('path');
 const mgu = require('./kit/mgu');
+const G = require('./kit/gauges');
+const { Canvas } = require('./kit/canvas');
 const L = require('./logic');
 const camera = require('./camera');
+const UI = require('./ui');
 
 const STATUS = process.env.XINHAN_STATUS || '/run/xinhan-cam/status.json';
 const STATUS_STALE_MS = 4000;       // the tool writes at least once a second
@@ -43,9 +47,12 @@ mgu.run({
     async start(ctx) {
         const { ui, settings, log, signals } = ctx;
         const controlFile = path.join(ctx.dataDir, 'control.json');
+        // the settings the page's Position tab keeps besides the listed ones: where in the dial the view sits
+        const EXTRA = ['gaugeDx', 'gaugeDy'];
         const cfg = () => {
             const o = {};
             settings.schema.forEach((s) => { o[s.key] = settings.get(s.key); });
+            EXTRA.forEach((k) => { o[k] = settings.get(k); });
             return o;
         };
 
@@ -139,6 +146,7 @@ mgu.run({
 
         /* ---- the decision, ten times a second and on every indicator event ---- */
         let test = null, testUntil = 0;
+        let page = 0, edit = 'left';
         let lastControl = '', lastWriteAt = 0, seq = 0;
         let lastPlan = { view: 'none', why: 'Đang khởi động', want: null }, lastSide = null;
         let camTickAt = 0, lastWant, lastBusy;
@@ -154,8 +162,11 @@ mgu.run({
                 fs.renameSync(controlFile + '.tmp', controlFile);
             } catch (e) { log.warn('control file: ' + errText(e)); }
         };
+        const positioning = () => page === 1 && ui.isVisible('MAIN');
         function tick() {
             const now = Date.now();
+            // the Position page: the side being placed shows on the cluster for as long as the page is open
+            if (positioning()) { test = edit; testUntil = now + 1500; }
             if (test && now >= testUntil) { test = null; log.info('test ended'); }
             const side = blinker.side(now);
             if (side) lastSide = side;
@@ -163,7 +174,7 @@ mgu.run({
             const st = readStatus(now);
             const n = st && st.native;
             const p = L.plan({
-                enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test,
+                enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test, front: s.front,
                 speed: speed !== null && now - speedAt < 3000 ? speed : null, maxSpeed: Number(s.maxSpeed) || 0,
                 cam: cam.info().cam,
                 helper: { ok: !!n, pictureAge: n ? n.picture_age_ms : null, pictureW: n ? n.picture_w : 0, pictureH: n ? n.picture_h : 0, pair: n ? n.pair : null },
@@ -172,7 +183,7 @@ mgu.run({
             lastPlan = p;
             const targets = L.parseTargets(n && n.targets);
             const shownSide = p.view === 'left' || p.view === 'right' ? p.view : test === 'left' || test === 'right' ? test : lastSide;
-            writeControl(p.view, L.viewConfig(s, targets, shownSide), now);
+            writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view), now);
             // the camera unit: at once when what is wanted changes or a side comes on, twice a second
             // while a view is wanted or the unit is not in its mode yet, else every 2 s
             const busy = !!(side || test) || cam.info().phase !== 'on';
@@ -184,73 +195,127 @@ mgu.run({
             }
         }
         setInterval(tick, TICK_MS);
-        settings.onChange(() => { applyBlinker(); tick(); refresh(); });
 
-        /* ---- the page ---- */
+        /* ---- the screen ---- */
         const SIDE = { LEFT: 'Trái', RIGHT: 'Phải', HAZARD: 'Đèn khẩn cấp', OFF: 'Tắt', WAITING: 'Chưa nhận tín hiệu' };
-        const VIEW = { left: 'camera TRÁI', right: 'camera PHẢI', all: 'cả 4 camera' };
-        let shownRows = {};
-        const row = (name, text) => {
-            if (shownRows[name] === text) return Promise.resolve();
-            shownRows[name] = text;
-            return ui.text(name, text);
-        };
-        function refresh() {
-            if (!ui.isVisible('MAIN')) return Promise.resolve();
+        const VIEW = { left: 'Camera trái', right: 'Camera phải', all: 'Cả 4 camera', front: 'Camera trước' };
+        const PHASE = { on: 'đúng chế độ', idle: 'không yêu cầu', asked: 'đã yêu cầu', waiting: 'xe chưa cho, chờ thử lại', starting: 'đang khởi động', 'parking view': 'đang hiện camera đỗ xe', 'asked (state unreadable)': 'đã yêu cầu (không đọc được trạng thái)' };
+        const label = (key) => settings.display(key);
+        function model() {
             const now = Date.now();
-            const st = readStatus(now), n = st && st.native, info = cam.info();
-            let state;
+            const s = cfg(), st = readStatus(now), n = st && st.native, info = cam.info();
+            const targets = L.parseTargets(n && n.targets);
+            const v = { page, edit, enabled: s.enabled !== 'off', round: s.shape !== 'square', gauge: s.place === 'gauge' || s.place === undefined,
+                sizeLabel: label('size'), front: String(label('front')).toLowerCase() };
+            // where each view sits: the helper's own config for that side
+            v.discs = {};
+            ['left', 'right'].forEach((side) => {
+                const c = L.viewConfig(s, targets, side);
+                if (c.target === 'panel') v.discs[side] = { x: c.x, y: c.y, w: c.w, h: c.h };
+                else if (c.target === 'map') v.discs[side] = { x: UI.MAP.x + c.x, y: UI.MAP.y + c.y, w: c.w, h: c.h };
+            });
+            if (s.front !== 'off' || lastPlan.view === 'front') {
+                const f = L.frontConfig(s, targets);
+                v.frontRect = { x: UI.MAP.x + f.x, y: UI.MAP.y + f.y, w: f.w, h: f.h };
+            }
+            const showing = lastPlan.view !== 'none' && n && n.shown;
+            v.shown = showing ? lastPlan.view : null;
             if (lastPlan.view !== 'none') {
-                // "shown" is the helper's: the layer is on and gets pictures; the cluster itself may still hold them back
-                if (n && n.shown && n.layer === 'shown') state = 'Đang hiện ' + VIEW[lastPlan.view];
-                else if (n && n.shown) state = 'Đang gửi hình ' + VIEW[lastPlan.view] + ', đồng hồ chưa hiện (' + n.layer + (n.layer_reason ? ': ' + n.layer_reason : '') + ')';
-                else state = 'Đang bật ' + VIEW[lastPlan.view] + (n && n.why ? ' - ' + n.why : '');
-            } else state = lastPlan.why;
-            let video = 'Trợ thủ xinhan-cam chưa chạy (cài công cụ xinhan-cam trong Store, rồi khởi động lại màn hình)';
-            if (st && !n) video = 'Trợ thủ: ' + (st.note || 'đang khởi động bộ giải mã');
-            if (n) {
-                video = n.picture_age_ms >= 0 && n.picture_age_ms < 1500
-                    ? 'Luồng camera: ' + n.picture_w + 'x' + n.picture_h + ', ' + (st.fps || 0) + ' hình/giây'
-                        + (n.pair && n.pair !== 'off' ? ', ghép 2 khung xen kẽ (' + n.pair + ')' : '')
-                    : 'Luồng camera: chưa có hình (' + (n.avb === 'ok' ? 'đã nối, hộp camera chưa phát' : 'chưa nối được: ' + (n.avb || 'đang thử')) + ')';
+                if (showing && n.layer === 'shown') { v.title = 'Đang hiện ' + VIEW[lastPlan.view].toLowerCase(); v.titleKind = 'go'; }
+                else if (showing) { v.title = VIEW[lastPlan.view]; v.titleKind = 'warn'; v.subtitle = 'Đang gửi hình, đồng hồ chưa hiện (' + n.layer + (n.layer_reason ? ': ' + n.layer_reason : '') + ')'; }
+                else { v.title = VIEW[lastPlan.view]; v.titleKind = 'warn'; v.subtitle = 'Đang bật' + (n && n.why ? ': ' + n.why : ''); }
+            } else {
+                v.title = lastPlan.why;
+                v.titleKind = lastPlan.why === 'Chờ xi nhan' ? 'dim' : 'warn';
+                if (lastPlan.why === 'Chờ xi nhan') v.subtitle = 'Bật xi nhan để xem camera gương bên đó trên đồng hồ';
             }
-            let cluster = 'Đồng hồ: chờ trợ thủ';
-            if (n) {
-                cluster = n.cr !== 'connected' ? 'Đồng hồ: chưa nối được cluster-render (cài cluster-render trong Store)'
-                    : n.layer === 'refused' ? 'Đồng hồ: từ chối lớp video - ' + n.layer_reason
-                        : 'Đồng hồ: sẵn sàng, ' + n.target + ' ' + n.layer_w + 'x' + n.layer_h + (n.target_holder && ['none', 'us'].indexOf(n.target_holder) < 0 ? ' (đang do ' + n.target_holder + ' giữ)' : '');
+            const fresh = n && n.picture_age_ms >= 0 && n.picture_age_ms < 1500;
+            const signalOk = lightState === 'Đã kết nối';
+            v.rows = [
+                { label: 'Xi nhan', text: SIDE[blinker.state()] + (signalOk ? '' : ' (' + lightState + ')'), kind: signalOk ? (blinker.state() === 'WAITING' ? 'dim' : 'go') : 'warn' },
+                { label: 'Hộp camera', kind: info.phase === 'on' ? 'go' : info.phase === 'idle' ? 'dim' : 'warn',
+                    text: (info.cam.known ? info.cam.text : link.icam === 'ok' || link.xv === 'ok' ? 'chưa đọc được' : 'chưa nối (' + (link.icam || '-') + ')') + ' · ' + (PHASE[info.phase] || info.phase) },
+                { label: 'Luồng hình', kind: fresh ? 'go' : 'warn',
+                    text: !st ? 'Trợ thủ xinhan-cam chưa chạy' : !n ? 'Trợ thủ: ' + (st.note || 'đang khởi động') : fresh
+                        ? n.picture_w + 'x' + n.picture_h + ' · ' + (st.fps || 0) + ' hình/giây' + (n.pair && n.pair !== 'off' ? ' · ghép 2 khung (' + n.pair + ')' : '')
+                        : 'chưa có hình (' + (n.avb === 'ok' ? 'đã nối, hộp camera chưa phát' : 'chưa nối: ' + (n.avb || 'đang thử')) + ')' },
+                { label: 'Đồng hồ', kind: n && n.cr === 'connected' && n.layer !== 'refused' ? 'go' : 'warn',
+                    text: !n ? 'chờ trợ thủ' : n.cr !== 'connected' ? 'chưa nối được cluster-render' : n.layer === 'refused' ? 'từ chối lớp video: ' + n.layer_reason
+                        : 'sẵn sàng · ' + n.target + ' ' + n.layer_w + 'x' + n.layer_h },
+            ];
+            v.version = 'Bản ' + ctx.spec.version + (st && st.version ? ' · trợ thủ ' + st.version : '');
+            if (page === 1) {
+                v.note = showing ? 'Đang hiện trên đồng hồ' : lastPlan.why || '';
+                v.noteKind = showing ? 'go' : 'warn';
             }
-            const camText = 'Hộp camera: ' + (info.cam.known ? info.cam.text : link.icam === 'ok' || link.xv === 'ok' ? 'chưa đọc được trạng thái' : 'chưa nối (' + (link.icam || '-') + ')')
-                + ' - ' + ({ on: 'đúng chế độ', idle: 'không yêu cầu', asked: 'đã yêu cầu', waiting: 'xe chưa cho, chờ thử lại', starting: 'đang khởi động', 'parking view': 'đang hiện camera đỗ xe' }[info.phase] || info.phase)
-                + (info.attached ? ' (app này giữ)' : '');
-            return Promise.all([
-                row('ROW_STATE', 'Trạng thái: ' + state),
-                row('ROW_SIGNAL', 'Xi nhan: ' + SIDE[blinker.state()] + ' (' + lightState + ', ' + lightEvents + ' tín hiệu)'),
-                row('ROW_CAMERA', camText),
-                row('ROW_VIDEO', video),
-                row('ROW_CLUSTER', cluster),
-                row('ROW_NOTE', 'Bản ' + ctx.spec.version + (st && st.version ? ', trợ thủ ' + st.version : '') + (n && n.sei ? ', SEI ' + String(n.sei).slice(32, 56) + (n.sei_prev ? ' / ' + String(n.sei_prev).slice(32, 56) : '') : ', không có SEI')),
-            ]).catch((e) => log.warn('page: ' + errText(e)));
+            return v;
         }
+
         const startTest = (view, secs) => () => {
-            test = view;
-            testUntil = Date.now() + secs * 1000;
-            log.info('test ' + view + ' for ' + secs + ' s');
+            // a second press of the view that is on ends it
+            if (test === view && !positioning()) { test = null; testUntil = 0; } else { test = view; testUntil = Date.now() + secs * 1000; log.info('test ' + view + ' for ' + secs + ' s'); }
             tick();
-            return refresh();
+            repaint();
         };
-        ui.onClick('BTN_LEFT', startTest('left', 8));
-        ui.onClick('BTN_RIGHT', startTest('right', 8));
-        ui.onClick('BTN_ALL', startTest('all', 15));
-        ui.onVisible((name, visible) => { if (name === 'MAIN' && visible) { shownRows = {}; refresh(); } });
-        setInterval(refresh, 500);
+        const cycle = (key) => () => { settings.cycle(key); };
+        const num = (key) => Number(settings.get(key)) || 0;
+        const move = (dx, dy) => () => {
+            if (settings.get('place') !== 'gauge') settings.set('place', 'gauge');
+            settings.set('gaugeDx', Math.max(-400, Math.min(400, num('gaugeDx') + dx)));
+            settings.set('gaugeDy', Math.max(-200, Math.min(200, num('gaugeDy') + dy)));
+            log.info('view at ' + num('gaugeDx') + ', ' + num('gaugeDy') + ' from the dial\'s middle');
+        };
+        const sizes = settings.item('size').options.map((o) => o[0]);
+        const resize = (d) => () => { const i = Math.max(0, Math.min(sizes.length - 1, sizes.indexOf(settings.get('size')) + d)); settings.set('size', sizes[i]); };
+        const acts = {
+            left: startTest('left', 8), right: startTest('right', 8), all: startTest('all', 15),
+            // "Camera trước": its setting, off -> below 30 -> below 60 -> always
+            front: cycle('front'),
+            toggle: () => settings.set('enabled', settings.get('enabled') === 'off' ? 'on' : 'off'),
+            side: () => { edit = edit === 'left' ? 'right' : 'left'; tick(); repaint(); },
+            up: move(0, -UI.STEP), down: move(0, UI.STEP),
+            // gaugeDx counts towards the middle of the cluster: to the right for the left dial, to the left for the right one
+            moveLeft: () => move(edit === 'left' ? -UI.STEP : UI.STEP, 0)(),
+            moveRight: () => move(edit === 'left' ? UI.STEP : -UI.STEP, 0)(),
+            smaller: resize(-1), larger: resize(1), shape: cycle('shape'),
+            reset: () => { settings.set('gaugeDx', 0); settings.set('gaugeDy', 0); settings.set('place', 'gauge'); settings.set('size', 'fit'); },
+        };
+        ctx.onTab((i) => { page = i; tick(); repaint(); });
+        // a tap on the cluster's picture (Position page): the view of the half tapped goes there
+        ctx.onTap((x, y) => {
+            if (page !== 1) return;
+            const h = UI.hit(x, y);
+            if (!h) return;
+            edit = h.x < UI.PANEL.w / 2 ? 'left' : 'right';
+            const cx = edit === 'left' ? h.x : UI.PANEL.w - h.x;
+            if (settings.get('place') !== 'gauge') settings.set('place', 'gauge');
+            settings.set('gaugeDx', Math.round(Math.max(-400, Math.min(400, cx - L.GAUGE.cx))));
+            settings.set('gaugeDy', Math.round(Math.max(-200, Math.min(200, h.y - L.GAUGE.cy))));
+            tick();
+            repaint();
+        });
+
+        const render = async () => {
+            const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);
+            UI.draw(cv, G, ctx.theme(), model(), acts);
+            await ui.image('MAIN_GFX', cv);
+        };
+        const loop = ctx.loop('MAIN', 4, render);
+        function repaint() { return loop && loop.kick ? loop.kick() : render(); }
+        ['BTN_LEFT', 'BTN_RIGHT', 'BTN_ALL', 'BTN_FRONT'].forEach((b) => { if (ctx.hideButton) ctx.hideButton(b); });
+        ui.onClick('BTN_LEFT', acts.left);
+        ui.onClick('BTN_RIGHT', acts.right);
+        ui.onClick('BTN_ALL', acts.all);
+        ui.onClick('BTN_FRONT', acts.front);
+        settings.onChange(() => { applyBlinker(); tick(); repaint(); });
 
         // MainApp asks the app to stop: the camera unit gets its mode back, the tool is told at once
-        ctx.app.on('shutdown', () => {
+        if (ctx.app && ctx.app.on) ctx.app.on('shutdown', () => {
             try { fs.writeFileSync(controlFile, JSON.stringify({ at: new Date().toISOString(), seq: ++seq, view: 'none', config: null })); } catch (e) { /* the tool drops the view by itself */ }
             cam.release();
         });
         tick();
+        await render();
         log.info('xinhan_cam ready (mode ' + settings.get('mode') + ', ' + (settings.get('enabled') !== 'off' ? 'on' : 'off') + ')');
     },
 });

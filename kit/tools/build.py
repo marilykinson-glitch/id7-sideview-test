@@ -13,11 +13,11 @@ The RHMI layout (application.xml + uiDescription.json) is GENERATED from the
 "screens" + "settings" in app.json, using only widget templates that BMW's own
 apps use on this firmware (see reference/rhmi-widget-cells.md).
 """
-import json, os, re, shutil, sys, tarfile, tempfile, uuid
+import gzip, json, os, re, shutil, sys, tarfile, tempfile, uuid
 from xml.sax.saxutils import escape
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pack_data  # noqa: E402
-from localize import unicode_resources, localize_spec, load_locale, languages, zh_credit
+from localize import unicode_resources, localize_spec, load_locale, languages, credit, credit_name, normalize_language
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
@@ -119,13 +119,15 @@ def hmi_text(s):
 
 def setting_options(s):
     """(values, labels) of a choice / number setting, in order - the drop-down's rows.
-    "markDefault": true adds " (default)" to the default's row."""
+    "markDefault": true adds " (default)" to the default's row; "labels": {"0": "Auto"} names
+    single number values (shown as is, no unit)."""
     if s['type'] == 'choice':
         values, labels = [o[0] for o in s['options']], [o[1] for o in s['options']]
     else:
         steps = s.get('steps') or []
         unit = (' ' + s['unit']) if s.get('unit') else ''
-        values, labels = list(steps), [('%g' % v) + unit for v in steps]
+        named = s.get('labels') or {}
+        values, labels = list(steps), [named.get('%g' % v, ('%g' % v) + unit) for v in steps]
     if s.get('markDefault'):
         labels = [lb + ' (default)' if v == s.get('default') else lb for v, lb in zip(values, labels)]
     return values, labels
@@ -191,6 +193,8 @@ def build_ui(spec, language='en'):
 
     def settings_items(items):
         for s in spec['settings']:
+            if s.get('hidden'):
+                continue
             name = 'SET_' + s['key'].upper()
             if s['type'] == 'bool':
                 items.append(comp('checkbox', name, rows=[text_row('SET_' + s['key'], s['label'])]))
@@ -209,11 +213,12 @@ def build_ui(spec, language='en'):
                 strings[sid(app, 'SET_' + s['key'])] = s['label']
                 items.append(comp('tworow', name, rows=[{'Text1stRow': {'value': s['label'], 'type': 'Text'},
                                                         'Text2ndRow': {'value': '', 'type': 'Text'}}]))
-        # Chinese builds only: credit for the Chinese translation (localize.py sets the Chinese title)
-        if language == 'zh-CN':
-            credit_title, credit_link = sid(app, 'CN_CREDITS_TITLE'), sid(app, 'CN_CREDITS_LINK')
-            strings[credit_title], strings[credit_link] = zh_credit()['settingsTitle'], zh_credit()['settingsLink']
-            items.append(comp('tworow', 'CN_CREDITS', rows=[{
+        # Translated builds with a credit file only: credit for the translation (localize.py keeps its title)
+        if credit(language):
+            name = credit_name(language)
+            credit_title, credit_link = sid(app, name + '_TITLE'), sid(app, name + '_LINK')
+            strings[credit_title], strings[credit_link] = credit(language)['settingsTitle'], credit(language)['settingsLink']
+            items.append(comp('tworow', name, rows=[{
                 'Text1stRow': {'value': credit_title, 'type': 'StringId'},
                 'Text2ndRow': {'value': credit_link, 'type': 'StringId'},
             }]))
@@ -324,8 +329,16 @@ def make_icon(spec, out):
 WIDGET_COMPONENT_ID = 501
 
 
-def build_start_widget(spec, app_id, icon_src, out):
+def build_start_widget(spec, app_id, icon_src, out, pkg_out=None):
     """app.json "startWidget" -> rhmiDataStartWidget/ (installed format), the home-screen widget.
+
+    With pkg_out, also the package format inside source/ (application.json with uiDescriptions
+    and variantGroups, like the package's rhmiData). MainApp's AppManagement installs it the way
+    it installs rhmiData (its config "rhmiDataStartWidget": source -> installed, then
+    mergeVariants), so an app installed through MainApp from the .tgz alone, as the MGU Store
+    does, gets its widget too. VERIFIED on a G05 (2026-11-03): after a Store install the widget
+    is in the home screen's widget list. deploy/mgu-app-install.sh still copies the installed
+    format beside source/ from the .mgu, as before.
 
     Same shape as BMW's own widgets on this firmware (Drive Recorder, Weather, News): a logical
     container with one startWidget component whose "Widget" cell names an HMI layout template.
@@ -364,15 +377,69 @@ def build_start_widget(spec, app_id, icon_src, out):
     for lang in LANGS:
         json.dump({sid_name: name}, open(os.path.join(out, 'strings', lang + '.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False)
     shutil.copy(icon_src, os.path.join(out, 'resources', icon))
+    if pkg_out:
+        shutil.rmtree(pkg_out, ignore_errors=True)
+        os.makedirs(os.path.join(pkg_out, 'uiDescriptions', 'ID7'))
+        os.makedirs(os.path.join(pkg_out, 'variantGroups', 'Common', 'texts'))
+        os.makedirs(os.path.join(pkg_out, 'variantGroups', 'Common', 'images'))
+        a = app_json['application']
+        pj = {'schemaVersion': app_json['schemaVersion'], 'application': {k: a[k] for k in (
+            'uuid', 'type', 'name', 'vendor', 'version', 'defaultLanguage', 'stringBundleUuid', 'resourceBundleUuid', 'entryPoints')}}
+        pj['application']['uiDescriptions'] = [{'applicationFilePath': './uiDescriptions/ID7/application.xml',
+                                                'uiDescriptionFilePath': './uiDescriptions/ID7/uiDescription.json', 'hmi': ['ID7']}]
+        pj['application']['variantGroups'] = [{'stringsPath': './variantGroups/Common/texts',
+                                               'resourcesPath': './variantGroups/Common/images', 'hmi': ['ID7'], 'brands': ['BMW']}]
+        json.dump(pj, open(os.path.join(pkg_out, 'application.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
+        open(os.path.join(pkg_out, 'uiDescriptions', 'ID7', 'application.xml'), 'w', encoding='utf-8', newline='\n').write(xml)
+        json.dump(ui, open(os.path.join(pkg_out, 'uiDescriptions', 'ID7', 'uiDescription.json'), 'w', encoding='utf-8', newline='\n'), indent=1)
+        for lang in LANGS:
+            json.dump({sid_name: name}, open(os.path.join(pkg_out, 'variantGroups', 'Common', 'texts', lang + '.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False)
+        shutil.copy(icon_src, os.path.join(pkg_out, 'variantGroups', 'Common', 'images', icon))
     return {'component': comp, 'layout': ui['containers']['500']['components'][str(WIDGET_COMPONENT_ID)]['cells']['Widget']['value']}
 
 
-def build(app_id, language='en'):
-    spec = json.load(open(os.path.join(APPS, app_id, 'app.json'), encoding='utf-8'))
+# the HMI's bundle for a build language
+HMI_LANG = {'vi': 'vi_VN', 'ru': 'ru_RU', 'ko': 'ko_KR', 'zh-CN': 'zh_CN'}
+
+
+# --language-setting: the setting's label and the language's own name
+LANGUAGE_WORD = {'vi': 'Ngôn ngữ', 'ru': 'Язык', 'ko': '언어', 'zh-CN': '语言'}
+LANGUAGE_NAME = {'vi': 'Tiếng Việt', 'ru': 'Русский', 'ko': '한국어', 'zh-CN': '简体中文'}
+
+
+def add_language_setting(spec, language):
+    """A "language" setting first in the settings: English or this build's language (its default),
+    switched while the app runs. For a translated build only (build.py --language-setting)."""
+    spec['settings'] = [{'key': 'language', 'label': 'Language · ' + LANGUAGE_WORD.get(language, language),
+                         'type': 'choice', 'default': language,
+                         'options': [['en', 'English'], [language, LANGUAGE_NAME.get(language, language)]]}] + \
+        [s for s in spec.get('settings', []) if s.get('key') != 'language']
+
+
+def build(app_id, language='en', preview_only=False, plain_version=False, language_choice=False):
+    language = normalize_language(language)
+    if not preview_only and not all(os.path.isfile(os.path.join(SDK, name)) for name in ('index.js', 'package.json')):
+        raise SystemExit('BMW oap-sdk is missing. Extract it from your own head unit with kit/tools/extract_sdk.js, '
+                         'or use --preview-only for an offline preview (no installable package).')
+    adir = os.path.join(APPS, app_id)
+    spec = json.load(open(os.path.join(adir, 'app.json'), encoding='utf-8'))
+    english_version = spec.get('version')
+    # an app built with a language setting switches English <-> this language while it runs: its runtime
+    # spec stays English (the kit translates what it draws), and the HMI's texts are this language in
+    # the car language's bundle, English in the others
+    switchable = language_choice and language != 'en'
+    if switchable:
+        add_language_setting(spec, language)
+    english = json.loads(json.dumps(spec))
     spec = localize_spec(spec, language)
+    if plain_version:
+        spec['version'] = english_version    # a source that builds one language only (mgu-repo.json args)
     spec.setdefault('id', app_id)
+    english.update(id=spec['id'], version=spec['version'])
     ver = spec['version']
     stage = os.path.join(DIST, app_id)
+    # The source folder may use display casing; keep the installed identity stable.
+    app_id = spec['id']
     shutil.rmtree(stage, ignore_errors=True)
     src = os.path.join(stage, 'source')
     os.makedirs(os.path.join(src, 'javascript', 'kit'))
@@ -384,6 +451,14 @@ def build(app_id, language='en'):
     unicode_resources(uidesc, strings, language)
     for lang, tbl in spec.get('strings', {}).items():
         strings.update(tbl)
+    strings_en = strings
+    if switchable:
+        _, uidesc_en, strings_en, _ = build_ui(english, 'en')
+        unicode_resources(uidesc_en, strings_en, 'en')
+        for lang, tbl in english.get('strings', {}).items():
+            strings_en.update(tbl)
+        assert set(strings_en) == set(strings), 'English and %s HMI strings differ in their ids' % language
+    bundle = lambda lang: strings if not switchable or lang == HMI_LANG.get(language) else strings_en
 
     # --- source/ (the npm package) ---
     pkg = {
@@ -397,18 +472,6 @@ def build(app_id, language='en'):
             'userLoginRequired': False, 'backgroundPriority': 200, 'someipManifest': 'manifest.json',
         },
     }
-    # app.json "startType": how the MGU Store's manager lists the app - "manually" (default: opened from its tile),
-    # "autostart" (starts with the head unit, started again if it stops, never stopped for being in the
-    # background) or "lum"
-    st = spec.get('startType')
-    if st is not None:
-        if st not in ('manually', 'autostart', 'lum'):
-            sys.exit(app_id + ': startType must be manually, autostart or lum, not ' + str(st))
-        pkg['mguAppStartType'] = st
-    # app.json "internet": true - the app gets the network through mgu-uplink (the Store's deploy tool adds it to
-    # the uplink's allowed apps from this)
-    if spec.get('internet'):
-        pkg['mguInternet'] = True
     json.dump(pkg, open(os.path.join(src, 'package.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
     json.dump(manifest, open(os.path.join(src, 'manifest.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
     shutil.copy(os.path.join(KIT, 'platform', 'permissions.json'), os.path.join(src, 'permissions.json'))
@@ -419,7 +482,6 @@ def build(app_id, language='en'):
     json.dump({'rhmiLoadingEnabled': True, 'entryPointLoadingEnabled': True, 'settings': {app_id: spec.get('config', {})}},
               open(os.path.join(src, 'config', 'base.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
     # app code
-    adir = os.path.join(APPS, app_id)
     fetch_assets(adir, spec.get('assets', []))
     for f in os.listdir(adir):
         if f.endswith('.js'):
@@ -437,10 +499,11 @@ def build(app_id, language='en'):
             shutil.copy(os.path.join(adir, f), os.path.join(src, 'javascript', f))
             print('  %s (committed)' % f)
     # kit runtime
-    if app_id == 'dtc_scanner' and language == 'zh-CN':
-        from build_diagnostic_zh import catalog
+    if app_id == 'dtc_scanner' and language in ('zh-CN', 'ru'):
+        module = 'build_diagnostic_zh' if language == 'zh-CN' else 'build_diagnostic_ru'
+        catalog = __import__(module).catalog
         with tempfile.TemporaryDirectory(prefix='mgu-diagnostic-') as temporary:
-            data = os.path.join(temporary, 'zh-CN.json')
+            data = os.path.join(temporary, language + '.json')
             with open(data, 'w', encoding='utf-8', newline='\n') as file:
                 json.dump(catalog(), file, ensure_ascii=False, separators=(',', ':'))
             pack_data.pack(temporary, os.path.join(src, 'javascript', 'diagnostic_i18n.pack'))
@@ -451,25 +514,50 @@ def build(app_id, language='en'):
             shutil.copytree(p, os.path.join(src, 'javascript', 'kit', f))
         else:
             shutil.copy(p, os.path.join(src, 'javascript', 'kit', f))
+    if language != 'ru':
+        for name in ('ru.json', 'ru.tsv'):
+            p = os.path.join(src, 'javascript', 'kit', 'locales', name)
+            if os.path.exists(p):
+                os.remove(p)
+    if language == 'ru':
+        shutil.copy(os.path.join(KIT, 'localization', 'fonts', 'cyrillic-ru.json'),
+                    os.path.join(src, 'javascript', 'kit', 'fonts', 'cyrillic.json'))
+    if language == 'vi':
+        for name in ('vietnamese.json', 'vietnamese-bold.json', 'OFL-Inter.txt'):
+            shutil.copy(os.path.join(KIT, 'localization', 'fonts', name),
+                        os.path.join(src, 'javascript', 'kit', 'fonts', name))
+    if language == 'ko':
+        # Korean and Chinese are separate fixed-language packages. Loading both large
+        # atlases could fragment the renderer's two 1024x4096 glyph shelves.
+        os.remove(os.path.join(src, 'javascript', 'kit', 'fonts', 'cjk.json'))
+        for name in ('korean.json', 'OFL-NotoSansKR.txt'):
+            shutil.copy(os.path.join(KIT, 'localization', 'fonts', name),
+                        os.path.join(src, 'javascript', 'kit', 'fonts', name))
     if language == 'zh-CN':
         # Diagnostic glyphs are Chinese-only; keep the English runtime atlas intact.
         if app_id == 'dtc_scanner':
             shutil.copy(os.path.join(KIT, 'localization', 'fonts', 'diagnostic-zh-CN.json'),
                         os.path.join(src, 'javascript', 'kit', 'fonts', 'cjk.json'))
-        # The translation credit in the installed Chinese entry code, as plain comments.
+    if credit(language):
+        # The translation credit in the installed entry code, as plain comments.
         entry = os.path.join(src, 'javascript', 'app.js')
-        credit = ''.join('// %s\n' % line for line in zh_credit()['comment'])
+        comment = ''.join('// %s\n' % line for line in credit(language)['comment'])
         with open(entry, 'rb') as file:
             body = file.read()
         with open(entry, 'wb') as file:
-            file.write(credit.encode('utf-8') + body)
-    rt_spec = {k: spec.get(k) for k in ('id', 'title', 'version', 'screens', 'settings', 'config', 'startWidget')}
+            file.write(comment.encode('utf-8') + body)
+    rt_spec = {k: (english if switchable else spec).get(k) for k in ('id', 'title', 'version', 'screens', 'settings', 'config', 'startWidget')}
     rt_spec['stateIds'] = state_ids
     json.dump(rt_spec, open(os.path.join(src, 'javascript', 'kit', 'app-spec.json'), 'w', encoding='utf-8', newline='\n'), indent=1)
     locale = {'language': language, 'strings': load_locale(language)}
-    if language == 'zh-CN':
-        locale['credit'] = zh_credit()['corner']
+    if switchable:
+        locale['switchable'] = True
+    if credit(language):
+        locale['credit'] = credit(language)['corner']
     json.dump(locale, open(os.path.join(src, 'javascript', 'kit', 'locale.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False)
+    if preview_only:
+        print('%s %s: offline preview in %s (NO SDK, NOT INSTALLABLE)' % (app_id, ver, stage))
+        return
     shutil.copy(os.path.join(SDK, 'index.js'), os.path.join(src, 'node_modules', 'oap-sdk', 'index.js'))
     shutil.copy(os.path.join(SDK, 'package.json'), os.path.join(src, 'node_modules', 'oap-sdk', 'package.json'))
 
@@ -502,7 +590,7 @@ def build(app_id, language='en'):
     open(os.path.join(pr, 'uiDescriptions', 'ID7', 'application.xml'), 'w', encoding='utf-8', newline='\n').write(xml)
     json.dump(uidesc, open(os.path.join(pr, 'uiDescriptions', 'ID7', 'uiDescription.json'), 'w', encoding='utf-8', newline='\n'), indent=1)
     for lang in LANGS:
-        json.dump(strings, open(os.path.join(pr, 'variantGroups', 'Common', 'texts', lang + '.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False)
+        json.dump(bundle(lang), open(os.path.join(pr, 'variantGroups', 'Common', 'texts', lang + '.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False)
     make_icon(spec, os.path.join(pr, 'variantGroups', 'Common', 'images', icon))
 
     ir = os.path.join(stage, 'rhmiData')
@@ -519,10 +607,11 @@ def build(app_id, language='en'):
     open(os.path.join(ir, 'uiDescription', 'application.xml'), 'w', encoding='utf-8', newline='\n').write(xml)
     json.dump(uidesc, open(os.path.join(ir, 'uiDescription', 'uiDescription.json'), 'w', encoding='utf-8', newline='\n'), indent=1)
     for lang in LANGS:
-        json.dump(strings, open(os.path.join(ir, 'strings', lang + '.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False)
+        json.dump(bundle(lang), open(os.path.join(ir, 'strings', lang + '.json'), 'w', encoding='utf-8', newline='\n'), ensure_ascii=False)
     shutil.copy(os.path.join(pr, 'variantGroups', 'Common', 'images', icon), os.path.join(ir, 'resources', icon))
     if spec.get('startWidget'):
-        info = build_start_widget(spec, app_id, os.path.join(ir, 'resources', icon), os.path.join(stage, 'rhmiDataStartWidget'))
+        info = build_start_widget(spec, app_id, os.path.join(ir, 'resources', icon), os.path.join(stage, 'rhmiDataStartWidget'),
+                                  os.path.join(src, 'rhmiDataStartWidget'))
         print('  home-screen widget: %s (%s)' % (info['component'], info['layout']))
 
     # --- installer helpers + metadata ---
@@ -538,26 +627,40 @@ def build(app_id, language='en'):
     # --- archives ---
     os.makedirs(DIST, exist_ok=True)
     bundle = os.path.join(DIST, f'{app_id}@{ver}.mgu')
-    with tarfile.open(bundle, 'w:gz') as tf:
+    with gz_header_free(bundle) as gz, tarfile.open(fileobj=gz, mode='w') as tf:
         for n in ('meta.json', 'source', 'rhmiData', 'rhmiDataStartWidget', 'oapgen'):
             if os.path.exists(os.path.join(stage, n)):
                 tf.add(os.path.join(stage, n), arcname=n)
     npm = os.path.join(DIST, f'{app_id}@{ver}.tgz')
-    with tarfile.open(npm, 'w:gz') as tf:
+    with gz_header_free(npm) as gz, tarfile.open(fileobj=gz, mode='w') as tf:
         tf.add(src, arcname='package')
     print(f'{app_id} {ver}: {os.path.relpath(bundle, ROOT)} ({os.path.getsize(bundle) // 1024} KiB), '
           f'{len(uidesc["containers"])} screens, states {state_ids}')
 
 
+def gz_header_free(path):
+    """A gzip stream whose header carries no clock time (mtime 0). The header holds 32 bits, so on a
+    head unit whose clock is past 2106 (a car once showed 2179) every build failed.
+    Use: with gz_header_free(p) as gz, tarfile.open(fileobj=gz, mode='w') as tf"""
+    return gzip.GzipFile(path, 'wb', mtime=0)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--language', choices=languages(), default='en')
+    parser.add_argument('--language', type=normalize_language, choices=languages(), default='en',
+                        help='UI language; Korean also accepts ko-KR, ko-kr and ko_KR')
+    parser.add_argument('--preview-only', action='store_true', help='stage an offline preview without BMW SDK or installable archives')
+    parser.add_argument('--language-setting', action='store_true',
+                        help='add a Language setting: English or --language, switched while the app runs')
+    parser.add_argument('--plain-version', action='store_true',
+                        help="keep app.json's version for a translated build (a Store source that builds one language)")
     parser.add_argument('apps', nargs='*')
     args = parser.parse_args()
     ids = args.apps or sorted(d for d in os.listdir(APPS) if os.path.exists(os.path.join(APPS, d, 'app.json')))
     for i in ids:
-        build(i, args.language)
+        build(i, args.language, preview_only=args.preview_only, plain_version=args.plain_version,
+              language_choice=args.language_setting)
 
 
 if __name__ == '__main__':

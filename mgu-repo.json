@@ -11,11 +11,16 @@
         "ID7"
       ],
       "requires": {
-        "xinhan-cam": "0.3.2"
+        "xinhan-cam": "0.4.0",
+        "idrive7-renderd": "2.1.7",
+        "mgu-inputgate": "1.0.0"
       },
       "build": {
         "python": "kit/tools/build.py",
         "args": [
+          "--language",
+          "vi",
+          "--plain-version",
           "{id}"
         ],
         "sdk": "oap-sdk",
@@ -28,7 +33,6 @@
           "kit/tools/pack_data.py",
           "kit/tools/localize.py",
           "kit/tools/locale-revisions.json",
-          "kit/tools/make_icon.js",
           "kit/tools/oapgen",
           "oap-sdk"
         ]

@@ -138,7 +138,7 @@ t('camState: two services that disagree - a parking view wins, else the usable v
 });
 
 /* ---------------- the helper's config ---------------- */
-const DEF = { enabled: 'on', shape: 'square', size: 'medium', place: 'center', target: 'map', quadLeft: 'bl', quadRight: 'br', rotLeft: '0', rotRight: '0', mirror: 'off', zoom: '100', stretch: '100', fps: '12', mode: 'mosaic', layer: 'keep' };
+const DEF = { enabled: 'on', aim: 'side', shape: 'square', size: 'medium', place: 'center', target: 'map', quadLeft: 'bl', quadRight: 'br', rotLeft: '0', rotRight: '0', mirror: 'off', zoom: '100', stretch: '100', fps: '12', mode: 'mosaic', layer: 'keep' };
 const set = (o) => Object.assign({}, DEF, o);
 t('viewConfig: the defaults - the lower quarters, 512x384 in the middle of the map', () => {
     const c = L.viewConfig(DEF, L.parseTargets('map:1088x480,panel:1920x720,hud:800x480'), null);
@@ -195,7 +195,7 @@ t('viewConfig: round (the default) - a square layer, the middle of each camera\'
     c = L.viewConfig({ place: 'center' }, T);                                              // no shape or size saved: round, medium
     assert.deepStrictEqual([c.w, c.h, c.left_round], [384, 384, 1]);
     c = L.viewConfig(set({ shape: 'round', size: 'large', zoom: '150' }), T);
-    assert.deepStrictEqual([c.w, c.h, c.left], [480, 480, '125,584,250,333']);
+    assert.deepStrictEqual([c.w, c.h, c.left], [480, 480, '125,583,250,333']);
     c = L.viewConfig(set({ shape: 'round', rotLeft: '90', stretch: '200' }), T);           // squeezed pictures: the middle 3/8
     assert.deepStrictEqual([c.w, c.h, c.left, c.left_sar], [384, 384, '156,500,188,500', 200]);
     c = L.viewConfig(set({ shape: 'round', mode: 'single' }), T);                          // one 8:3 camera: its middle 3/8
@@ -223,6 +223,36 @@ t('viewConfig: inside the dial on the signal\'s side (the default place), on the
     assert.deepStrictEqual([c.x, c.y], [140, 220]);
     c = L.viewConfig({}, T, 'right');                                                              // nothing saved: this
     assert.deepStrictEqual([c.target, c.w, c.x, c.y, c.left_round], ['panel', 320, 1380, 240, 1]);
+});
+t('viewConfig: where the view looks (aim) - back along the car by default, as Hyundai/Kia', () => {
+    const T = L.parseTargets('map:1088x480,panel:1920x720');
+    const a = (o) => { const c = L.viewConfig(Object.assign({ shape: 'round', place: 'gauge', size: 'fit' }, o), T, 'left'); return [c.left, c.right]; };
+    assert.deepStrictEqual(a({}), ['0,500,375,500', '625,500,375,500']);                   // nothing saved: rear
+    assert.deepStrictEqual(a({ aim: 'rear' }), ['0,500,375,500', '625,500,375,500']);
+    assert.deepStrictEqual(a({ aim: 'side' }), ['62,500,375,500', '563,500,375,500']);
+    assert.deepStrictEqual(a({ aim: 'front' }), ['125,500,375,500', '500,500,375,500']);
+    assert.deepStrictEqual(a({ aim: 'rear', mode: 'single' }), ['0,0,375,1000', '625,0,375,1000']);
+});
+t('frontConfig / plan: the front camera in the middle of the cluster', () => {
+    const T = L.parseTargets('map:1088x480,panel:1920x720');
+    let f = L.frontConfig({}, T);
+    assert.deepStrictEqual([f.target, f.w, f.h, f.x, f.y, f.front, f.pair], ['map', 512, 384, 288, 48, '0,0,500,500', 1]);
+    assert.ok(f.fps <= 10);
+    f = L.frontConfig({ frontSize: 'large' }, T);
+    assert.deepStrictEqual([f.w, f.h, f.x, f.y], [640, 480, 224, 0]);
+    const ok = { known: true, kind: 'all4', text: 'DR_ACTIVE/MODE_MOSAIK/7' };
+    const hp = { ok: true, pictureAge: 50, pictureW: 1280, pictureH: 480, pair: 'sei@19' };
+    const P = (o) => L.plan(Object.assign({ enabled: true, mode: 'mosaic', source: 'auto', side: null, test: null, speed: 20, maxSpeed: 0, cam: ok, helper: hp }, o));
+    assert.strictEqual(P({ front: 'off' }).view, 'none');
+    assert.strictEqual(P({ front: 'slow30' }).view, 'front');
+    assert.strictEqual(P({ front: 'slow30', speed: 31 }).view, 'none');
+    assert.strictEqual(P({ front: 'slow60', speed: 45 }).view, 'front');
+    assert.strictEqual(P({ front: 'slow30', speed: null }).view, 'none');                  // no speed known: not shown
+    assert.strictEqual(P({ front: 'always', speed: null }).view, 'front');
+    assert.strictEqual(P({ front: 'always', side: 'right' }).view, 'right');               // a signal comes first
+    assert.strictEqual(P({ front: 'off', test: 'front' }).view, 'front');                  // the test
+    assert.strictEqual(P({ front: 'always', enabled: false }).view, 'none');
+    assert.strictEqual(P({ front: 'always', cam: { known: true, kind: 'left', text: 'x' } }).view, 'none');   // one camera alone has no front
 });
 t('parseTargets, zoomCrop', () => {
     assert.deepStrictEqual(L.parseTargets('map:1088x480,hud:800x480'), { map: { w: 1088, h: 480 }, hud: { w: 800, h: 480 } });

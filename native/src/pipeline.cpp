@@ -23,6 +23,7 @@ const char *view_name(View v)
     case kLeft: return "left";
     case kRight: return "right";
     case kAll: return "all";
+    case kFront: return "front";
     default: return "none";
     }
 }
@@ -32,6 +33,7 @@ View view_from(const std::string &name)
     if (name == "left") return kLeft;
     if (name == "right") return kRight;
     if (name == "all") return kAll;
+    if (name == "front") return kFront;
     return kNone;
 }
 

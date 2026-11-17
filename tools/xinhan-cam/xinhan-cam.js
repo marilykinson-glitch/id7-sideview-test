@@ -24,7 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.3.2';
+const VERSION = '0.4.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -36,7 +36,7 @@ const CFG = {
     log: env('XINHAN_LOG', '/var/opt/xinhan-cam/xinhan-cam.log'),
 };
 const APP = /^xinhan_cam\d*$/;      // the app's id (the Store may install it as xinhan_cam2)
-const VIEWS = ['none', 'left', 'right', 'all'];
+const VIEWS = ['none', 'left', 'right', 'all', 'front'];
 const RESTART_MS = 2000, RESTART_MAX_MS = 60000, YOUNG_MS = 10000, LOG_MAX = 512 * 1024;
 const STATUS_FILE = () => path.join(CFG.run, 'status.json');
 
@@ -97,9 +97,9 @@ function staleSlack() { return 1000; }
 function configLine(config) {
     if (!config) return null;
     const out = { op: 'config' };
-    const str = ['target', 'klass', 'left', 'right', 'all'];
+    const str = ['target', 'klass', 'left', 'right', 'all', 'front'];
     const num = ['w', 'h', 'x', 'y', 'fps', 'exclusive', 'contend', 'persist', 'left_rot', 'right_rot', 'all_rot',
-        'left_flip', 'right_flip', 'all_flip', 'left_sar', 'right_sar', 'all_sar', 'pair', 'pair_swap', 'left_round', 'right_round'];
+        'left_flip', 'right_flip', 'all_flip', 'left_sar', 'right_sar', 'all_sar', 'pair', 'pair_swap', 'left_round', 'right_round', 'front_rot', 'front_flip', 'front_sar', 'front_round'];
     str.forEach((k) => { if (typeof config[k] === 'string' && /^[a-z0-9_,]{1,40}$/i.test(config[k])) out[k] = config[k]; });
     num.forEach((k) => { if (Number.isFinite(config[k])) out[k] = Math.round(config[k]); });
     return JSON.stringify(out);

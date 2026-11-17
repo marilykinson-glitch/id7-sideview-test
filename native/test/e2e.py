@@ -161,6 +161,9 @@ def t_views():
             check(near(q[0], RED) and near(q[1], GREEN) and near(q[2], BLUE) and near(q[3], YELLOW), 'all: red, green, blue, yellow quadrants %s' % (q,))
         else:
             check(False, 'all: an atlas')
+        c.hold('front', 0.8)
+        a, lay = c.atlas()
+        check(a is not None and near(mean_rgb(a, 512, 384, 0, 0, 512, 384), RED), 'front: the top-left camera (red)')
         c.send(op='view', side='none')
         check(c.wait(lambda s: s.get('shown') == 0 and s.get('view') == 'none', 2), 'none: status says hidden')
         time.sleep(0.3)
