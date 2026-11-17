@@ -196,7 +196,7 @@ mgu.run({
             // drawn; nav: whether the helper should read the navigation at all
             const kmh = p.ar === 'route' && speed !== null && now - speedAt < 3000 ? Math.round(speed / 5) * 5 : -1;
             const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
-            writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view), ar, p.aux ? L.auxConfig(s, targets, p.aux) : null, now);
+            writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view, !!p.aux), ar, p.aux ? L.auxConfig(s, targets, p.aux) : null, now);
             // the camera unit: at once when what is wanted changes or a side comes on, twice a second
             // while a view is wanted or the unit is not in its mode yet, else every 2 s
             const busy = !!(side || test) || p.view === 'front' || cam.info().phase !== 'on';
@@ -282,7 +282,7 @@ mgu.run({
                 const NS = { 'not started': 'chưa bật', starting: 'đang mở', found: 'đã thấy trong xe, đang mở', reading: 'đang đọc', 'no interface': 'xe không có dịch vụ dẫn đường', ended: 'bộ đọc dừng, sẽ thử lại', 'failed to start': 'không chạy được bộ đọc' };
                 v.navRows = [
                     { label: 'Đọc dẫn đường', text: !st ? 'Trợ thủ chưa chạy' : !nv ? 'Trợ thủ bản cũ, cần khởi động lại màn hình' : (NS[nv.state] || nv.state) + (nv.note ? ' · ' + nv.note : ''), kind: nv && nv.state === 'reading' ? 'go' : 'warn' },
-                    { label: 'Nguồn', text: last ? (PROV[last.provider] || last.provider || 'không rõ') + (last.state ? ' · ' + last.state : '') : (nv && nv.proxies && nv.proxies.length ? nv.proxies.join(' · ') : 'chưa có'), kind: last ? 'go' : 'dim' },
+                    { label: 'Nguồn', text: last ? (PROV[last.provider] || last.provider || 'không rõ') + (last.state && (!last.provider || last.provider === 'NONE') ? ' · ' + last.state : '') : (nv && nv.proxies && nv.proxies.length ? nv.proxies.join(' · ') : 'chưa có'), kind: last ? 'go' : 'dim' },
                     { label: 'Lệnh kế tiếp', text: turnText, kind: last && last.active ? 'go' : 'dim' },
                     { label: 'Dữ liệu thô', text: nv && nv.raw ? String(nv.raw).slice(0, 110) : (nv && nv.ifaces && nv.ifaces.length ? nv.ifaces.map((x) => x.split('.').pop()).join(', ') : 'chưa có'), kind: 'dim' },
                 ];

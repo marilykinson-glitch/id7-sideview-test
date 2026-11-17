@@ -173,9 +173,9 @@ function zoomCrop(x, y, w, h, zoom) {
  * the wanted mirror camera alone and the view is the whole picture.
  * targets: the cluster renderer's (parseTargets); side: the side shown, for "place: side".
  */
-function viewConfig(settings, targets, side, view) {
+function viewConfig(settings, targets, side, view, dual) {
     const s = settings || {};
-    if (view === 'front') return frontConfig(s, targets);
+    if (view === 'front') return frontConfig(s, targets, dual);
     // "gauge": the view sits inside the dial on the signal's side (left: the speedometer, right: the rev
     // counter), which only the whole-cluster target reaches
     const gauge = s.place === 'gauge' || s.place === undefined;
@@ -278,7 +278,7 @@ const FRONT_SIZES = { small: [384, 288], medium: [512, 384], large: [640, 480], 
  * cluster's map area, over the map. Its own layer geometry: the helper makes the layer again when a
  * turn signal brings a mirror camera up, and again after it.
  */
-function frontConfig(s, targets) {
+function frontConfig(s, targets, dual) {
     const t = (targets && targets.map) || { w: 1088, h: 480 };
     const size = FRONT_SIZES[s.frontSize] || FRONT_SIZES.medium;
     let w = Math.min(size[0], t.w), h = Math.min(size[1], t.h);
@@ -288,8 +288,20 @@ function frontConfig(s, targets) {
     x -= x % 2;
     y -= y % 2;
     const fps = [8, 10, 12, 15].indexOf(Number(s.fps)) >= 0 ? Math.min(Number(s.fps), 10) : 10;   // a large picture: easy on the link
+    // with a mirror camera beside it (dual) the front camera goes onto the whole-cluster target too, at the
+    // place the map area has there (the cluster's middle): two videos on one target share one of the display's
+    // two video buffers, so a phone's map on the cluster (a third video) no longer leaves the pair without room
+    let target = 'map';
+    if (dual) {
+        const p = (targets && targets.panel) || { w: 1920, h: 720 };
+        target = 'panel';
+        x += Math.round((p.w - t.w) / 2);
+        y += Math.round((p.h - t.h) / 2);
+        x -= x % 2;
+        y -= y % 2;
+    }
     return {
-        op: 'config', target: 'map', w, h, x, y, fps, klass: 'overlay', exclusive: 1, contend: 1, persist: s.layer === 'make' ? 0 : 1,
+        op: 'config', target, w, h, x, y, fps, klass: 'overlay', exclusive: 1, contend: 1, persist: s.layer === 'make' ? 0 : 1,
         front: frontCrop(s), front_rot: 0, front_flip: 0, front_sar: 100, front_round: 0,
         all: '0,0,1000,1000', all_rot: 0, all_flip: 0, all_sar: 100,
         pair: 1, pair_swap: s.pairSwap === 'on' ? 1 : 0,

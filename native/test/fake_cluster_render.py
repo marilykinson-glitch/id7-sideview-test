@@ -92,8 +92,10 @@ class FakeClusterRender(threading.Thread):
             self.send(conn, {'ev': 'hello', 'proto': 1, 'backend': 'id7', 'targets': self.targets, 'repeat': 1})
         elif op == 'layer':
             self.note('layer', j)
-            if self.refuse_layers > 0:
-                self.refuse_layers -= 1
+            # refuse_vw: every layer whose video is that wide, for as long as it is set
+            if getattr(self, 'refuse_vw', 0) == j.get('vw') or self.refuse_layers > 0:
+                if getattr(self, 'refuse_vw', 0) != j.get('vw'):
+                    self.refuse_layers -= 1
                 self.send(conn, {'ev': 'error', 'op': 'layer', 'ref': j['ref'], 'reason': 'too many video buffers on the display'})
                 return
             with self.lock:

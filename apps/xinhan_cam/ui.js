@@ -160,7 +160,7 @@ function drawNav(cv, G, t, v, act) {
     const go = t.go || '#2fd27a';
     const x0 = 56, y0 = G.TOP + 44;
     cv.text('MŨI TÊN DẪN ĐƯỜNG TRÊN CAMERA TRƯỚC', x0, y0, 26, t.text, { literal: true, font: 'bold', spacing: 1.2 });
-    cv.text('Khi bản đồ BMW, CarPlay hoặc Android Auto đang dẫn đường, camera trước hiện giữa đồng hồ với mũi tên xanh chạy trên mặt đường và bẻ vào chỗ rẽ.',
+    cv.text('Khi bản đồ BMW, CarPlay hoặc Android Auto đang dẫn đường, camera trước hiện giữa đồng hồ, dải mũi tên trắng nằm ở chỗ rẽ và chỉ vào hướng rẽ.',
         x0, y0 + 34, 17, t.dim, { literal: true, font: 'label' });
     (v.navRows || []).forEach((r, i) => {
         const y = y0 + 92 + i * 46;
