@@ -261,8 +261,8 @@ mgu.run({
             if (page === 2) {
                 v.calCam = calCam;
                 if (calCam === 'front') {
-                    const U = { calH: ' cm', calPitch: '°', calFov: '°', calYaw: '°', calShift: ' cm', calCurve: '', frontZoom: ' %' };
-                    const N = { calH: 'Độ cao camera', calPitch: 'Chúc xuống', calFov: 'Góc nhìn', calYaw: 'Lệch trái / phải', calShift: 'Dịch ngang', calCurve: 'Độ cong (mắt cá)', frontZoom: 'Phóng to' };
+                    const U = { calH: ' cm', calPitch: '°', calFov: '°', calYaw: '°', calShift: ' cm', calCurve: '', frontZoom: ' %', frontPanY: '' };
+                    const N = { calH: 'Độ cao camera', calPitch: 'Chúc xuống', calFov: 'Góc nhìn', calYaw: 'Lệch trái / phải', calShift: 'Dịch ngang', calCurve: 'Độ cong (mắt cá)', frontZoom: 'Phóng to', frontPanY: 'Dịch hình xuống' };
                     v.calRows = Object.keys(L.CALIB).map((k) => ({ key: k, label: N[k], text: L.calib(s, k) + U[k] }));
                 } else {
                     const L_ = calCam === 'left';

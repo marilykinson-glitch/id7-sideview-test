@@ -39,6 +39,8 @@ struct Overlay {
     int exit = 0;            /* roundabout: the exit's number, 0 unknown */
     bool card = true;
     bool white = true;       /* the arrows white (as BMW's), else blue */
+    int style = 0;           /* 0: a band of chevrons at the turn, as BMW's Augmented View; 1: chevrons on the road */
+    bool fade = false;       /* the picture's left and right edges fade to black (also with mode off) */
 };
 
 /* Draws o into an atlas of w x h (Y, then U and V side by side at half size). t_ms: the

@@ -261,9 +261,17 @@ const FRONT_CROP = '0,0,500,500';      // the front camera: the upper left quart
 /** The front camera's part shown: the middle of its quarter, by the Calibrate page's "frontZoom" (percent). */
 function frontCrop(s) {
     const z = Math.max(100, Math.min(300, Number(s && s.frontZoom) || 100));
+    if (s && s.frontSize === 'wide') {
+        // a strip as wide as the camera's picture and 0.6 of that high (20:9 on the cluster), moved up or
+        // down by "frontPanY" so the horizon can be put where BMW's own view has it
+        const w = 500 * 100 / z, h = w * 0.6;
+        const y = Math.max(0, Math.min(500 - h, 250 - h / 2 + calib(s, 'frontPanY') * 500 / 1000));
+        return [Math.round((500 - w) / 2), Math.round(y), Math.round(w), Math.round(h)].join(',');
+    }
     return z === 100 ? FRONT_CROP : zoomCrop(0, 0, 500, 500, z);
 }
-const FRONT_SIZES = { small: [384, 288], medium: [512, 384], large: [640, 480] };
+// wide: BMW's Augmented View fills the cluster's middle from dial to dial, its edges fading out
+const FRONT_SIZES = { small: [384, 288], medium: [512, 384], large: [640, 480], wide: [960, 432] };
 
 /**
  * The config while the front camera shows (the "front" setting): a 4:3 rectangle in the middle of the
@@ -330,6 +338,7 @@ const CALIB = {
     calShift: { d: 0, min: -100, max: 100, step: 5 },     // cm to the right of the car's middle
     calCurve: { d: 40, min: 0, max: 100, step: 10 },      // 0 straight lines .. 100 fisheye
     frontZoom: { d: 100, min: 100, max: 300, step: 10 },  // percent
+    frontPanY: { d: 0, min: -200, max: 200, step: 10 },   // the wide view's strip moved down, thousandths of the camera's picture
 };
 const calib = (s, k) => {
     const c = CALIB[k], v = Number(s && s[k]);
@@ -347,6 +356,7 @@ function arConfig(s, mode, speed) {
         yaw_x10: Math.round(calib(s, 'calYaw') * 10), shift_cm: calib(s, 'calShift'), curve: calib(s, 'calCurve'),
         card: s && s.arCard === 'off' ? 0 : 1,
         white: s && s.arColor === 'blue' ? 0 : 1,
+        style: s && s.arStyle === 'road' ? 1 : 0, fade: s && s.frontSize === 'wide' ? 1 : 0,
         speed: typeof speed === 'number' && speed >= 0 ? Math.round(speed) : -1,
     };
 }

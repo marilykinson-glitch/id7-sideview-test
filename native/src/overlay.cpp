@@ -31,6 +31,7 @@ Color rgb(int r, int g, int b)
 struct Surface {
     uint8_t *y, *uv;
     int w, h;
+    int clip0 = 0, clip1 = 1 << 30;   /* columns drawn into (inclusive) */
 };
 
 /* One row of pixels x0..x1 (inclusive) blended with c at alpha a (0..256). */
@@ -38,8 +39,8 @@ void span(const Surface &s, int row, int x0, int x1, const Color &c, int a)
 {
     if (row < 0 || row >= s.h || a <= 0)
         return;
-    x0 = std::max(x0, 0);
-    x1 = std::min(x1, s.w - 1);
+    x0 = std::max(x0, std::max(0, s.clip0));
+    x1 = std::min(x1, std::min(s.w - 1, s.clip1));
     if (x0 > x1)
         return;
     uint8_t *p = s.y + (size_t)row * s.w;
@@ -272,7 +273,57 @@ void draw_route(const Surface &s, const Road &r, const Overlay &o, int64_t t_ms)
     }
 }
 
-/* The card in the picture's top-left corner: the turn's arrow and the distance. */
+/* The turn as BMW's own Augmented View marks it: a band of white chevrons on black, flat on the picture,
+ * at the place of the turn and pointing into it; small while the turn is far, larger as it comes near, the
+ * chevrons running along the band. */
+void draw_band(const Surface &s0, const Road &r, const Overlay &o, int64_t t_ms)
+{
+    if (o.kind == kStraight || o.kind == kDestination || fabs(o.angle) < 10 || o.meters < 0 || o.meters > 90)
+        return;
+    const int dir = o.angle < 0 ? -1 : 1;
+    Pt p;
+    if (!r.at(0, 1.0, std::max(6.0, o.meters), &p))
+        p = {s0.w / 2.0, s0.h * 0.45};
+    const double bh = s0.h * std::max(0.085, std::min(0.2, 0.215 - 0.0018 * o.meters));
+    const int n = 4;
+    const double cw = bh * 0.72, len = n * cw + bh * 0.3;
+    /* the band starts a little before the turn's place and runs into the turn; kept inside the picture */
+    double x0 = p.x - len / 2 - dir * len * 0.15, y0 = p.y - bh / 2;
+    x0 = std::max(s0.w * 0.03, std::min(s0.w * 0.97 - len, x0));
+    y0 = std::max(s0.h * 0.12, std::min(s0.h * 0.8 - bh, y0));
+    const Color black = rgb(10, 10, 10), white = rgb(255, 255, 255);
+    const int edge = std::max(1, (int)(bh * 0.06));
+    rect(s0, (int)x0 - edge, (int)y0 - edge, (int)len + 2 * edge, (int)bh + 2 * edge, white, 200);
+    rect(s0, (int)x0, (int)y0, (int)len, (int)bh, black, 256);
+    Surface s = s0;
+    s.clip0 = (int)x0;
+    s.clip1 = (int)(x0 + len) - 1;
+    const double phase = fmod((double)(t_ms % 100000) / 1000.0 * 1.6, 1.0) * cw;   /* 1.6 chevrons a second */
+    const double thick = cw * 0.56, ym = y0 + bh / 2, in = bh * 0.1;
+    for (int i = -1; i <= n; i++) {
+        /* the chevron's back edge at xb, its point bh/2 further along the way it points */
+        const double xb = dir > 0 ? x0 + i * cw + phase : x0 + len - i * cw - phase;
+        const double a = xb, b = xb + dir * thick, tip = dir * (bh / 2 - in);
+        quad(s, {a, y0 + in}, {b, y0 + in}, {b + tip, ym}, {a + tip, ym}, white, 256);
+        quad(s, {a, y0 + bh - in}, {b, y0 + bh - in}, {b + tip, ym}, {a + tip, ym}, white, 256);
+    }
+}
+
+/* The picture's left and right edges fade to black, as the camera does between the cluster's dials. */
+void draw_fade(const Surface &s)
+{
+    const int band = s.w * 14 / 100;
+    const Color black = rgb(0, 0, 0);
+    for (int x = 0; x < band; x += 2) {
+        const int a = 235 * (band - x) / band;
+        for (int row = 0; row < s.h; row++) {
+            span(s, row, x, x + 1, black, a);
+            span(s, row, s.w - 2 - x, s.w - 1 - x, black, a);
+        }
+    }
+}
+
+/* The card: the turn's arrow and the distance. */
 void draw_card(const Surface &s, const Overlay &o)
 {
     const int k = s.w >= 480 ? 3 : 2;
@@ -285,9 +336,11 @@ void draw_card(const Surface &s, const Overlay &o)
     }
     const int icon = 14 * k, pad = 4 * k;
     const int cw = pad + icon + (dist[0] ? pad + text_width(dist, k) : 0) + pad, ch = icon + 2 * pad;
-    const int x0 = 3 * k, y0 = 3 * k;
+    /* at the top: in the middle (BMW's style), else in the left corner */
+    const int x0 = o.style == 0 ? (s.w - cw) / 2 : 3 * k, y0 = 3 * k;
     rect(s, x0, y0, cw, ch, rgb(8, 12, 20), 190);
-    rect(s, x0, y0 + ch - k, cw, k, o.white ? rgb(255, 255, 255) : rgb(40, 150, 255), 256);
+    if (o.style != 0)
+        rect(s, x0, y0 + ch - k, cw, k, o.white ? rgb(255, 255, 255) : rgb(40, 150, 255), 256);
     const Color white = rgb(255, 255, 255);
     /* the arrow: a shaft up from the bottom, then a head turned by the turn's angle */
     const double cx = x0 + pad + icon / 2.0, cy = y0 + pad + icon / 2.0, u = icon / 14.0;
@@ -344,15 +397,26 @@ bool project(const Calib &c, int w, int h, double x, double up, double z, double
 
 void draw_overlay(uint8_t *atlas, int w, int h, const Overlay &o, int64_t t_ms)
 {
-    if (o.mode == kArOff || w < 64 || h < 64)
+    if (w < 64 || h < 64 || (o.mode == kArOff && !o.fade))
         return;
-    Surface s = {atlas, atlas + (size_t)w * h, w, h};
+    Surface s;
+    s.y = atlas;
+    s.uv = atlas + (size_t)w * h;
+    s.w = w;
+    s.h = h;
     Road r = {o.calib, w, h};
+    if (o.fade)
+        draw_fade(s);
+    if (o.mode == kArOff)
+        return;
     if (o.mode == kArMarks) {
         draw_marks(s, r);
         return;
     }
-    draw_route(s, r, o, t_ms);
+    if (o.style == 0)
+        draw_band(s, r, o, t_ms);
+    else
+        draw_route(s, r, o, t_ms);
     if (o.card)
         draw_card(s, o);
 }

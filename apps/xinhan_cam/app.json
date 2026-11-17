@@ -2,7 +2,7 @@
   "id": "xinhan_cam",
   "title": "Camera xi nhan",
   "description": "Bật xi nhan bên nào thì đồng hồ hiện camera gương bên đó (kiểu Hyundai/Kia); có thể hiện camera trước ở giữa đồng hồ. Cần xe có camera 360, trợ thủ xinhan-cam (tự cài kèm) và cluster-render.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "startType": "autostart",
   "vendor": "custom",
   "loggingId": "OAXN",
@@ -93,8 +93,12 @@
       "key": "frontSize",
       "label": "Cỡ cam trước",
       "type": "choice",
-      "default": "medium",
+      "default": "wide",
       "options": [
+        [
+          "wide",
+          "Rộng kiểu BMW"
+        ],
         [
           "small",
           "Nhỏ"
@@ -107,7 +111,8 @@
           "large",
           "Lớn"
         ]
-      ]
+      ],
+      "reset": 1
     },
     {
       "key": "ar",
@@ -126,6 +131,22 @@
         [
           "off",
           "Tắt"
+        ]
+      ]
+    },
+    {
+      "key": "arStyle",
+      "label": "Kiểu mũi tên",
+      "type": "choice",
+      "default": "bmw",
+      "options": [
+        [
+          "bmw",
+          "Dải chevron BMW"
+        ],
+        [
+          "road",
+          "Trên mặt đường"
         ]
       ]
     },
