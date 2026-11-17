@@ -3,7 +3,10 @@
  * xinhan-cam.js - the root helper of the Camera xi nhan app (apps/xinhan_cam): keeps the decoder
  * (mgu-sidecam, beside this file) running and passes on what the app wants.
  *
- *   the app   -> <its folder>/data/control.json   { at, seq, view, config }
+ *   the app   -> <its folder>/data/control.json   { at, seq, view, config, ar }
+ *   nav.js (a child, only while the app wants the navigation's turns: ar.nav) -> the next turn, which goes
+ *                                                  to the decoder as {"op":"ar",...} with the app's calibration,
+ *                                                  counted nearer by the car's speed between two messages
  *   this      -> mgu-sidecam's stdin               {"op":"config",...} when it changes,
  *                                                  {"op":"view","side":...} on change and once a second
  *   mgu-sidecam's stdout (its status lines) -> /run/xinhan-cam/status.json (0644), which the app shows:
@@ -24,7 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -34,6 +37,8 @@ const CFG = {
     pollMs: Number(env('XINHAN_POLL_MS', 50)),
     staleMs: Number(env('XINHAN_STALE_MS', 2000)),
     log: env('XINHAN_LOG', '/var/opt/xinhan-cam/xinhan-cam.log'),
+    nav: env('XINHAN_NAV', path.join(__dirname, 'nav.js')),
+    navArgs: env('XINHAN_NAV_ARGS', 'read').split(' ').filter(Boolean),
 };
 const APP = /^xinhan_cam\d*$/;      // the app's id (the Store may install it as xinhan_cam2)
 const VIEWS = ['none', 'left', 'right', 'all', 'front'];
@@ -83,11 +88,12 @@ function wanted(app, now) {
     const c = readJson(path.join(app.root, 'data', 'control.json'));
     if (!c || typeof c !== 'object') return { view: 'none', config: null, why: 'the app has not started yet' };
     const config = c.config && typeof c.config === 'object' ? c.config : null;
+    const ar = c.ar && typeof c.ar === 'object' ? c.ar : null;
     const view = VIEWS.indexOf(c.view) >= 0 ? c.view : 'none';
-    if (view === 'none') return { view, config, why: '' };
+    if (view === 'none') return { view, config, ar, why: '' };
     const age = now - Date.parse(c.at);
-    if (!(age >= -staleSlack() && age <= CFG.staleMs)) return { view: 'none', config, why: 'the app stopped confirming the view' };
-    return { view, config, why: '' };
+    if (!(age >= -staleSlack() && age <= CFG.staleMs)) return { view: 'none', config, ar, why: 'the app stopped confirming the view' };
+    return { view, config, ar, why: '' };
 }
 // the head unit sets its clock a while after it starts: a control file "from the future" by less than
 // this is still the app's (the jump is seen by both at once; the next write is in step again)
@@ -105,6 +111,48 @@ function configLine(config) {
     return JSON.stringify(out);
 }
 
+/**
+ * The decoder's "ar" line: what it draws on the front camera now.
+ * ar: the app's (mode 'off' | 'marks' | 'route' | 'demo', the calibration, speed in km/h or -1);
+ * nav: the navigation's last word ({ active, kind, angle, meters, exit, at: when }), or null; now: ms.
+ * Between two distances from the navigation the turn comes nearer by the car's speed.
+ */
+function arLine(ar, nav, now) {
+    const out = { op: 'ar', mode: 'off' };
+    if (!ar || typeof ar !== 'object') return JSON.stringify(out);
+    const n = (k, lo, hi, d) => (Number.isFinite(ar[k]) ? Math.max(lo, Math.min(hi, Math.round(ar[k]))) : d);
+    out.height_cm = n('height_cm', 20, 200, 70);
+    out.pitch_x10 = n('pitch_x10', -200, 600, 80);
+    out.fov = n('fov', 30, 200, 100);
+    out.yaw_x10 = n('yaw_x10', -300, 300, 0);
+    out.shift_cm = n('shift_cm', -150, 150, 0);
+    out.curve = n('curve', 0, 100, 40);
+    out.card = ar.card === 0 ? 0 : 1;
+    if (ar.mode === 'marks') { out.mode = 'marks'; return JSON.stringify(out); }
+    if (ar.mode === 'demo') {
+        // a made-up turn 90 m ahead coming nearer at 30 km/h, then the next: right, left, a roundabout
+        const T = 13000, k = Math.floor(now / T) % 3, t = (now % T) / 1000;
+        out.mode = 'route';
+        out.kind = k === 2 ? 'roundabout' : 'turn';
+        out.angle = k === 0 ? 90 : k === 1 ? -90 : 0;
+        out.exit = k === 2 ? 2 : 0;
+        out.meters = Math.max(0, Math.round(90 - t * 8.3));
+        return JSON.stringify(out);
+    }
+    if (ar.mode !== 'route' || !nav || !nav.active || !nav.kind) return JSON.stringify(out);
+    out.mode = 'route';
+    out.kind = nav.kind;
+    out.angle = Math.round(Number(nav.angle) || 0);
+    out.exit = Math.round(Number(nav.exit) || 0);
+    let m = Number.isFinite(nav.meters) ? nav.meters : -1;
+    if (m >= 0 && Number.isFinite(ar.speed) && ar.speed > 0 && Number.isFinite(nav.at)) {
+        const dt = Math.max(0, Math.min(8000, now - nav.at));
+        m = Math.max(0, m - ar.speed / 3.6 * dt / 1000);
+    }
+    out.meters = m < 0 ? -1 : Math.round(m);
+    return JSON.stringify(out);
+}
+
 /* ---------------- the service ---------------- */
 
 function run() {
@@ -117,6 +165,44 @@ function run() {
     let sentConfig = null, sentView = null, sentViewAt = 0;
     let pictures = null, picturesAt = 0, fps = 0;
     let lastWhy = null, lastApp;
+    // the navigation reader (nav.js): started when the app first wants it, again 30 s after it ends
+    let navChild = null, navOut = '', navDue = 0, sentAr = null, sentArAt = 0;
+    const nav = { wanted: false, state: 'not started', ifaces: [], proxies: [], note: '', last: null, raw: '', at: 0 };
+    const navLog = (m) => {
+        const f = CFG.log.replace(/[^/]*$/, 'nav.log');
+        try { if (fs.statSync(f).size > LOG_MAX) fs.renameSync(f, f + '.1'); } catch (e) { /* no file yet */ }
+        try { fs.appendFileSync(f, new Date().toISOString() + ' ' + m + '\n'); } catch (e) { /* no folder (tests) */ }
+    };
+    function navLine(line, now) {
+        let j;
+        try { j = JSON.parse(line); } catch (e) { return; }
+        navLog(line.length > 6000 ? line.slice(0, 6000) + '…' : line);
+        if (j.ev === 'catalog') { nav.ifaces = (j.ifaces || []).map((i) => i.name); nav.state = nav.ifaces.length ? 'found' : 'no interface'; }
+        else if (j.ev === 'proxy') { nav.proxies.push((j.ok ? 'ok ' : 'failed ') + String(j.iface).split('.').pop() + '@' + j.inst + (j.ok ? '' : ': ' + j.note)); if (j.ok) nav.state = 'reading'; }
+        else if (j.ev === 'value') { if (/dart|maneuver/i.test(j.name)) nav.raw = String(j.value).slice(0, 400); }
+        else if (j.ev === 'nav' && j.nav) { nav.last = Object.assign({}, j.nav, { at: now }); nav.at = now; }
+        else if (j.ev === 'note') { nav.note = String(j.text).slice(0, 200); log('nav: ' + nav.note); }
+    }
+    function startNav(now) {
+        navDue = now + 30000;
+        nav.proxies = [];
+        try {
+            navChild = cp.spawn(process.execPath, [CFG.nav].concat(CFG.navArgs), { stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) { nav.state = 'failed to start'; nav.note = String(e.message).slice(0, 200); navChild = null; return; }
+        nav.state = 'starting';
+        log('nav reader started (pid ' + navChild.pid + ')');
+        const me = navChild;
+        me.stdout.on('data', (d) => {
+            navOut += d.toString('utf8');
+            let i;
+            while ((i = navOut.indexOf('\n')) >= 0) { const l = navOut.slice(0, i); navOut = navOut.slice(i + 1); if (l) navLine(l, Date.now()); }
+            if (navOut.length > 200000) navOut = '';
+        });
+        me.stderr.on('data', (d) => navLog('stderr ' + d.toString('utf8').slice(0, 2000)));
+        const gone = (why) => { if (navChild !== me) return; navChild = null; navOut = ''; nav.last = null; if (nav.state === 'reading' || nav.state === 'starting') nav.state = 'ended'; navDue = Date.now() + 30000; log('nav reader ended (' + why + ')'); };
+        me.on('error', (e) => gone(e.message));
+        me.on('exit', (code, sig) => gone(sig || 'code ' + code));
+    }
 
     function writeStatus(now) {
         const app = findApp(now);
@@ -124,6 +210,8 @@ function run() {
             at: new Date(now).toISOString(), version: VERSION, app: app ? app.id : null,
             view: sentView || 'none', fps, note: child ? '' : note,
             native: child && native && now - nativeAt < 3000 ? native : null,
+            nav: { wanted: nav.wanted, state: nav.state, ifaces: nav.ifaces.slice(0, 6), proxies: nav.proxies.slice(-4), note: nav.note, raw: nav.raw,
+                last: nav.last, age: nav.last ? now - nav.last.at : -1 },
         };
         try {
             fs.writeFileSync(STATUS_FILE() + '.tmp', JSON.stringify(body));
@@ -156,7 +244,7 @@ function run() {
             return;
         }
         startedAt = Date.now();
-        sentConfig = null; sentView = null; native = null; pictures = null; fps = 0;
+        sentConfig = null; sentView = null; sentAr = null; native = null; pictures = null; fps = 0;
         // can it start here at all? (--version only loads it: a library or symbol the head unit lacks shows
         // up now, with the loader's own words, which the app's page then shows)
         if (!/\.js$/.test(CFG.bin)) {
@@ -216,6 +304,9 @@ function run() {
         if (child) {
             const cl = configLine(w.config);
             if (cl && cl !== sentConfig && send(cl)) sentConfig = cl;
+            // what is drawn on the front camera: when it changes, at most 5 times a second
+            const al = arLine(w.view === 'front' ? w.ar : null, nav.last, now);
+            if (al !== sentAr && now - sentArAt >= 200 && send(al)) { sentAr = al; sentArAt = now; }
             // the view: when it changes, and once a second while one is on (the decoder drops a view
             // nobody confirms for 3 s)
             if (w.view !== sentView || (w.view !== 'none' && now - sentViewAt >= 1000)) {
@@ -226,6 +317,9 @@ function run() {
                 }
             }
         }
+        nav.wanted = !!(w.ar && w.ar.nav);
+        if (nav.wanted && !navChild && now >= navDue) startNav(now);
+        if (!nav.wanted && navChild) { try { navChild.kill(); } catch (e) { /* gone */ } }
         // the decoder writes the status with each of its lines; without it, this does, every second
         if (!child || now - nativeAt > 1500) { if (now - (tick.wrote || 0) >= 1000) { tick.wrote = now; writeStatus(now); } }
     }
@@ -234,6 +328,7 @@ function run() {
         quitting = true;
         if (restartTimer) clearTimeout(restartTimer);
         if (child) { try { child.stdin.end(); } catch (e) { /* gone */ } }
+        if (navChild) { try { navChild.kill(); } catch (e) { /* gone */ } }
         try { fs.unlinkSync(STATUS_FILE()); } catch (e) { /* none */ }
         setTimeout(() => process.exit(0), 300);
     };
@@ -252,4 +347,4 @@ if (require.main === module) {
     else { process.stderr.write('usage: node xinhan-cam.js run|status\n'); process.exit(2); }
 }
 
-module.exports = { VERSION, CFG, findApp, wanted, configLine, run, _reset: () => { appCache = null; appScanAt = 0; } };
+module.exports = { VERSION, CFG, findApp, wanted, configLine, arLine, run, _reset: () => { appCache = null; appScanAt = 0; } };

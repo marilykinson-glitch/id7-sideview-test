@@ -1,10 +1,22 @@
-# Camera xi nhan 0.4.0 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.5.0 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 
 Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. Hình lấy từ chính luồng 4 camera mà Drive Recorder Next đang dùng, nên hai app chạy song song được.
 
 > **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
+
+## Mới trong 0.5.0
+
+Chưa phần nào của 0.5.0 được thử trên xe.
+
+- **Tab Canh chỉnh.** Chọn *Gương trái*, *Gương phải* hoặc *Camera trước*; camera đó hiện trên đồng hồ suốt lúc mở tab.
+  - Camera gương: dịch phần hình được lấy (lên, xuống, trái, phải) và phóng to riêng từng bên.
+  - Camera trước: độ cao, chúc xuống, góc nhìn, lệch trái/phải, dịch ngang, độ cong mắt cá, phóng to. Trên hình có hai vạch vàng (mép làn rộng 3 m) và vạch ngang ở 5, 10, 20 m: chỉnh đến khi chúng nằm đúng trên mặt đường. Mũi tên dẫn đường dùng chính các số này.
+- **Tab Dẫn đường: mũi tên trên camera trước.** Khi sắp tới chỗ rẽ (mặc định còn 250 m) camera trước hiện giữa đồng hồ, chevron xanh chạy trên mặt đường rồi bẻ vào hướng rẽ, ba mũi tên đứng ở chỗ rẽ, góc trên có thẻ mũi tên và khoảng cách. Chọn *Khi sắp rẽ*, *Suốt đường* hoặc *Tắt*. Nút *Xem thử 25 giây* vẽ một chỗ rẽ giả để xem hình dáng mà không cần dẫn đường.
+  - Lệnh rẽ được trợ thủ đọc từ dịch vụ dẫn đường của chính đầu xe (giao diện `...Guidance`, trường `conclusiveDart`), chỉ đọc. Bản đồ BMW chắc chắn đưa dữ liệu vào đó. CarPlay và Android Auto thì tùy đầu xe có nhận lệnh rẽ của điện thoại hay không; trên iDrive 7 chưa ai xác nhận. Waze không gửi lệnh rẽ cho xe nên sẽ không có mũi tên.
+  - Tab này hiện đang đọc được gì (dòng *Đọc dẫn đường*, *Nguồn*, *Lệnh kế tiếp*, *Dữ liệu thô*). Nhật ký đầy đủ: `/var/opt/xinhan-cam/nav.log` trên đầu xe.
+  - Khác bản gốc BMW: xe chỉ cho biết "rẽ gì, còn bao xa", không cho hình dạng ngã rẽ, nên mũi tên đặt theo khoảng cách chứ không bám đúng mép đường; không có tên đường trên thẻ.
 
 ## Mới trong 0.4.0
 
@@ -59,6 +71,8 @@ Nếu hình bị nghiêng, ngược hay bị bóp hẹp: chỉnh *Xoay cam*, *L�
 |---|---|---|
 | Bật theo xi nhan | Bật | Tắt thì chỉ còn nút thử |
 | Camera trước | Tắt | Dưới 30 km/h, Dưới 60 km/h, Luôn hiện. Hiện ở vùng bản đồ giữa đồng hồ khi không xi nhan |
+| Mũi tên dẫn đường | Khi sắp rẽ | Suốt đường, Tắt. Xem tab Dẫn đường |
+| Thẻ rẽ | Hiện | Thẻ mũi tên + khoảng cách ở góc hình camera trước |
 | Cỡ cam trước | Vừa (512x384) | Nhỏ 384x288, Lớn 640x480 |
 | Hướng nhìn | Chếch về sau | Ngang (như bản 0.3), Chếch về trước |
 | Phóng to | Không | 1,25 / 1,5 / 2 lần |

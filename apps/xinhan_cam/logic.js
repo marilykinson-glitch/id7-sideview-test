@@ -197,15 +197,21 @@ function viewConfig(settings, targets, side, view) {
     // picture, the right edge of the right one's ('rear', what a blind-spot monitor shows); 'front' the
     // other edge, 'side' the middle.
     const aim = s.aim === 'side' || s.aim === 'front' ? s.aim : 'rear';
+    const fine = (k) => Math.max(-500, Math.min(500, Number(s[k]) || 0));
     const part = (x, y, w, h, isLeft) => {
-        const z = Math.max(100, Math.min(400, Number(s.zoom) || 100));
+        // zoomL / zoomR (the Calibrate page, per camera) come on top of the "zoom" setting
+        const z = Math.max(100, Math.min(400, (Number(s.zoom) || 100) * Math.max(100, Math.min(300, Number(s[isLeft ? 'zoomL' : 'zoomR']) || 100)) / 100));
         let nw = (round && wide > 1 ? w / wide : w) * 100 / z;
         const nh = Math.max(50, h * 100 / z);
         nw = Math.max(50, nw);
         const slack = w - nw;
         const towardsLeft = (aim === 'rear') === isLeft;         // rear: left camera -> left edge, right camera -> right edge
-        const nx = aim === 'side' ? x + slack / 2 : towardsLeft ? x : x + slack;
-        return [Math.round(nx), Math.round(y + (h - nh) / 2), Math.round(nw), Math.round(nh)].join(',');
+        let nx = aim === 'side' ? x + slack / 2 : towardsLeft ? x : x + slack;
+        let ny = y + (h - nh) / 2;
+        // the Calibrate page's fine setting of this camera: moved by thousandths of its own picture, kept inside it
+        nx = Math.max(x, Math.min(x + w - nw, nx + fine(isLeft ? 'panLx' : 'panRx') * w / 1000));
+        ny = Math.max(y, Math.min(y + h - nh, ny + fine(isLeft ? 'panLy' : 'panRy') * h / 1000));
+        return [Math.round(nx), Math.round(ny), Math.round(nw), Math.round(nh)].join(',');
     };
     const left = single ? part(0, 0, 1000, 1000, true) : part(ql[0], ql[1], 500, 500, true);
     const right = single ? part(0, 0, 1000, 1000, false) : part(qr[0], qr[1], 500, 500, false);
@@ -244,7 +250,7 @@ function viewConfig(settings, targets, side, view) {
         left, left_rot: rot('rotLeft'), left_flip: flip, left_sar: stretch, left_round: round ? 1 : 0,
         right, right_rot: rot('rotRight'), right_flip: flip, right_sar: stretch, right_round: round ? 1 : 0,
         all: '0,0,1000,1000', all_rot: 0, all_flip: 0, all_sar: 100,
-        front: FRONT_CROP, front_rot: 0, front_flip: 0, front_sar: 100, front_round: 0,
+        front: frontCrop(s), front_rot: 0, front_flip: 0, front_sar: 100, front_round: 0,
         // a car whose camera unit sends the four cameras as two wide pictures by turns: the helper puts
         // them one above the other, and the quarters above are of that picture
         pair: single ? 0 : 1, pair_swap: s.pairSwap === 'on' ? 1 : 0,
@@ -252,6 +258,11 @@ function viewConfig(settings, targets, side, view) {
 }
 
 const FRONT_CROP = '0,0,500,500';      // the front camera: the upper left quarter of the four-camera picture
+/** The front camera's part shown: the middle of its quarter, by the Calibrate page's "frontZoom" (percent). */
+function frontCrop(s) {
+    const z = Math.max(100, Math.min(300, Number(s && s.frontZoom) || 100));
+    return z === 100 ? FRONT_CROP : zoomCrop(0, 0, 500, 500, z);
+}
 const FRONT_SIZES = { small: [384, 288], medium: [512, 384], large: [640, 480] };
 
 /**
@@ -271,7 +282,7 @@ function frontConfig(s, targets) {
     const fps = [8, 10, 12, 15].indexOf(Number(s.fps)) >= 0 ? Math.min(Number(s.fps), 10) : 10;   // a large picture: easy on the link
     return {
         op: 'config', target: 'map', w, h, x, y, fps, klass: 'overlay', exclusive: 1, contend: 1, persist: s.layer === 'make' ? 0 : 1,
-        front: FRONT_CROP, front_rot: 0, front_flip: 0, front_sar: 100, front_round: 0,
+        front: frontCrop(s), front_rot: 0, front_flip: 0, front_sar: 100, front_round: 0,
         all: '0,0,1000,1000', all_rot: 0, all_flip: 0, all_sar: 100,
         pair: 1, pair_swap: s.pairSwap === 'on' ? 1 : 0,
     };
@@ -300,6 +311,45 @@ function frontWanted(i) {
     return i.speed !== null && i.speed !== undefined && i.speed <= Number(m[1]);
 }
 
+/** How near the next turn has to be for "ar: near" to bring the front camera up, in metres. */
+const AR_NEAR_M = 250;
+/** Whether the "ar" setting wants the front camera with the route on it now. i.nav: the helper's (navState()). */
+function arWanted(i) {
+    const n = i.nav;
+    if (!n || !n.active || (i.arMode !== 'near' && i.arMode !== 'always')) return false;
+    if (i.arMode === 'always') return true;
+    return typeof n.meters === 'number' && n.meters >= 0 && n.meters <= AR_NEAR_M;
+}
+
+/** The numbers of the Calibrate page for the front camera, with their limits, steps and defaults. */
+const CALIB = {
+    calH: { d: 70, min: 30, max: 150, step: 5 },          // cm above the road
+    calPitch: { d: 8, min: -10, max: 45, step: 1 },       // degrees down
+    calFov: { d: 100, min: 40, max: 190, step: 5 },       // degrees across the picture
+    calYaw: { d: 0, min: -20, max: 20, step: 1 },         // degrees to the right
+    calShift: { d: 0, min: -100, max: 100, step: 5 },     // cm to the right of the car's middle
+    calCurve: { d: 40, min: 0, max: 100, step: 10 },      // 0 straight lines .. 100 fisheye
+    frontZoom: { d: 100, min: 100, max: 300, step: 10 },  // percent
+};
+const calib = (s, k) => {
+    const c = CALIB[k], v = Number(s && s[k]);
+    return Number.isFinite(v) && s[k] !== '' && s[k] !== null && s[k] !== undefined ? Math.max(c.min, Math.min(c.max, v)) : c.d;
+};
+/**
+ * What the helper draws on the front camera: mode 'off' | 'marks' (the Calibrate page) | 'route' (the
+ * navigation's next turn, which the helper has itself) | 'demo' (a made-up turn coming nearer).
+ * speed (km/h or null): between two distances from the navigation the helper counts the turn nearer by it.
+ */
+function arConfig(s, mode, speed) {
+    return {
+        mode: ['marks', 'route', 'demo'].indexOf(mode) >= 0 ? mode : 'off',
+        height_cm: calib(s, 'calH'), pitch_x10: Math.round(calib(s, 'calPitch') * 10), fov: calib(s, 'calFov'),
+        yaw_x10: Math.round(calib(s, 'calYaw') * 10), shift_cm: calib(s, 'calShift'), curve: calib(s, 'calCurve'),
+        card: s && s.arCard === 'off' ? 0 : 1,
+        speed: typeof speed === 'number' && speed >= 0 ? Math.round(speed) : -1,
+    };
+}
+
 function plan(i) {
     const none = (why, want) => ({ view: 'none', why, want: want === undefined ? null : want });
     if (!i.enabled && !i.test) return none('Đang tắt');
@@ -311,7 +361,11 @@ function plan(i) {
     const want = !ask ? null : single && side ? (side === 'left' ? 3 : 4) : 7;
     // the front camera in the middle of the cluster while no signal is on (the "front" setting, or its test
     // button): only from the four-camera picture, so never in the moments single mode has one camera on
-    const frontOn = i.test === 'front' || (!i.test && !side && i.enabled && frontWanted(i));
+    // also while the navigation's next turn is near (the "ar" setting), and for the Calibrate page and the demo
+    const arOn = !i.test && !side && i.enabled && arWanted(i);
+    const frontTest = i.test === 'front' || i.test === 'calfront' || i.test === 'ardemo';
+    const frontOn = frontTest || arOn || (!i.test && !side && i.enabled && frontWanted(i));
+    const ar = i.test === 'calfront' ? 'marks' : i.test === 'ardemo' ? 'demo' : arOn ? 'route' : 'off';
     if (!side && i.test !== 'all' && !frontOn) return none(i.frontWhy || 'Chờ xi nhan', want);
     if (!i.test && i.maxSpeed && i.speed !== null && i.speed !== undefined && i.speed > i.maxSpeed) {
         return none('Xe chạy nhanh hơn ' + i.maxSpeed + ' km/h', want);
@@ -327,7 +381,7 @@ function plan(i) {
     if (frontOn) {
         const four = (i.cam || {}).kind === 'all4' || ((i.cam || {}).kind === 'unknown' && (h.pictureH >= 800 || (!!h.pair && h.pair !== 'off')));
         if (!four) return none('Chờ xi nhan', want);
-        return { view: 'front', why: '', want };
+        return { view: 'front', why: '', want, ar };
     }
     // the four-camera picture is 1280x960, or two 1280x480 pictures by turns (the helper pairs them); one camera is 1280x480
     const tall = h.pictureH >= 800 || (!!h.pair && h.pair !== 'off');
@@ -345,4 +399,4 @@ function plan(i) {
     return { view: side, why: '', want };
 }
 
-module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES };
+module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES, frontCrop, arWanted, arConfig, calib, CALIB, AR_NEAR_M };

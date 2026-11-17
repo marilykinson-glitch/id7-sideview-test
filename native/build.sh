@@ -42,7 +42,7 @@ gcc -shared -nostdlib -fPIC -Wl,-soname,libias-media_transport-avb_ufipc_bridge.
 TP=third_party/idrive-apps
 INC="-Isrc -I$TP/waze-on-cluster/src -I$TP/cluster-render/include -I$TP/cluster-render/src -I$B/ffmpeg/include"
 CXXFLAGS="-std=c++14 $CFLAGS_COMMON -Wall -Wextra -pthread -DSIDECAM_VERSION=\"$VERSION\" -DAVB_RECEIVER_NAME=\"xinhancam.receiver\""
-SRCS="src/main.cpp src/pipeline.cpp src/decoder.cpp src/resample.cpp
+SRCS="src/main.cpp src/pipeline.cpp src/decoder.cpp src/resample.cpp src/overlay.cpp
       $TP/waze-on-cluster/src/avb_source.cpp $TP/waze-on-cluster/src/rtp_h264.cpp
       $TP/cluster-render/client/client.cpp $TP/cluster-render/client/protocol.cpp $TP/cluster-render/src/log.cpp"
 OBJS=""

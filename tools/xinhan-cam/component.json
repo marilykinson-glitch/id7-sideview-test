@@ -1,9 +1,9 @@
 {
   "id": "xinhan-cam",
   "kind": "tool",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "title": "Trợ thủ Camera xi nhan",
-  "description": "Nhận luồng camera của xe (4 camera 360), giải mã và vẽ camera gương lên đồng hồ qua cluster-render khi app Camera xi nhan yêu cầu. Chỉ đọc luồng hình, không ghi gì vào xe. Sau khi cài lần đầu cần khởi động lại màn hình.",
+  "description": "Nhận luồng camera của xe (4 camera 360), giải mã và vẽ camera gương, camera trước lên đồng hồ qua cluster-render khi app Camera xi nhan yêu cầu; đọc lệnh rẽ kế tiếp của dẫn đường để vẽ mũi tên lên camera trước. Chỉ đọc, không ghi gì vào xe. Sau khi cài hoặc cập nhật cần khởi động lại màn hình.",
   "license": "GPL-3.0-or-later",
   "mguHmi": [
     "ID7"
@@ -16,6 +16,14 @@
   "files": [
     {
       "path": "xinhan-cam.js",
+      "mode": "0644"
+    },
+    {
+      "path": "nav.js",
+      "mode": "0644"
+    },
+    {
+      "path": "oapgen-gen.js",
       "mode": "0644"
     },
     {

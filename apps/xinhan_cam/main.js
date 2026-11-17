@@ -48,7 +48,7 @@ mgu.run({
         const { ui, settings, log, signals } = ctx;
         const controlFile = path.join(ctx.dataDir, 'control.json');
         // the settings the page's Position tab keeps besides the listed ones: where in the dial the view sits
-        const EXTRA = ['gaugeDx', 'gaugeDy'];
+        const EXTRA = ['gaugeDx', 'gaugeDy', 'panLx', 'panLy', 'panRx', 'panRy', 'zoomL', 'zoomR'].concat(Object.keys(L.CALIB));
         const cfg = () => {
             const o = {};
             settings.schema.forEach((s) => { o[s.key] = settings.get(s.key); });
@@ -146,27 +146,32 @@ mgu.run({
 
         /* ---- the decision, ten times a second and on every indicator event ---- */
         let test = null, testUntil = 0;
-        let page = 0, edit = 'left';
+        let page = 0, edit = 'left', calCam = 'left';
         let lastControl = '', lastWriteAt = 0, seq = 0;
         let lastPlan = { view: 'none', why: 'Đang khởi động', want: null }, lastSide = null;
         let camTickAt = 0, lastWant, lastBusy;
-        const writeControl = (view, config, now) => {
-            const body = JSON.stringify({ view, config });
+        const writeControl = (view, config, ar, now) => {
+            const body = JSON.stringify({ view, config, ar });
             const active = view !== 'none';
             if (body === lastControl && !(active && now - lastWriteAt >= HEARTBEAT_MS)) return;
             if (body !== lastControl) seq++;
             lastControl = body;
             lastWriteAt = now;
             try {
-                fs.writeFileSync(controlFile + '.tmp', JSON.stringify({ at: new Date(now).toISOString(), seq, view, config }));
+                fs.writeFileSync(controlFile + '.tmp', JSON.stringify({ at: new Date(now).toISOString(), seq, view, config, ar }));
                 fs.renameSync(controlFile + '.tmp', controlFile);
             } catch (e) { log.warn('control file: ' + errText(e)); }
         };
         const positioning = () => page === 1 && ui.isVisible('MAIN');
+        // the Calibrate page: the camera being set shows for as long as the page is open (the front one with its marks)
+        const calibrating = () => page === 2 && ui.isVisible('MAIN');
+        // the navigation's next turn, as the helper read it (fresh: the helper's status is)
+        const navNow = (st) => (st && st.nav && st.nav.last && st.nav.last.active ? st.nav.last : null);
         function tick() {
             const now = Date.now();
             // the Position page: the side being placed shows on the cluster for as long as the page is open
             if (positioning()) { test = edit; testUntil = now + 1500; }
+            if (calibrating()) { test = calCam === 'front' ? 'calfront' : calCam; testUntil = now + 1500; }
             if (test && now >= testUntil) { test = null; log.info('test ended'); }
             const side = blinker.side(now);
             if (side) lastSide = side;
@@ -175,6 +180,7 @@ mgu.run({
             const n = st && st.native;
             const p = L.plan({
                 enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test, front: s.front,
+                arMode: s.ar, nav: navNow(st),
                 speed: speed !== null && now - speedAt < 3000 ? speed : null, maxSpeed: Number(s.maxSpeed) || 0,
                 cam: cam.info().cam,
                 helper: { ok: !!n, pictureAge: n ? n.picture_age_ms : null, pictureW: n ? n.picture_w : 0, pictureH: n ? n.picture_h : 0, pair: n ? n.pair : null },
@@ -183,10 +189,14 @@ mgu.run({
             lastPlan = p;
             const targets = L.parseTargets(n && n.targets);
             const shownSide = p.view === 'left' || p.view === 'right' ? p.view : test === 'left' || test === 'right' ? test : lastSide;
-            writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view), now);
+            // what the helper draws on the front camera; the car's speed (in steps of 5 km/h) only while a route is
+            // drawn; nav: whether the helper should read the navigation at all
+            const kmh = p.ar === 'route' && speed !== null && now - speedAt < 3000 ? Math.round(speed / 5) * 5 : -1;
+            const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
+            writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view), ar, now);
             // the camera unit: at once when what is wanted changes or a side comes on, twice a second
             // while a view is wanted or the unit is not in its mode yet, else every 2 s
-            const busy = !!(side || test) || cam.info().phase !== 'on';
+            const busy = !!(side || test) || p.view === 'front' || cam.info().phase !== 'on';
             if (p.want !== lastWant || busy !== lastBusy || now - camTickAt >= (busy ? CAM_TICK_MS : CAM_IDLE_MS)) {
                 lastWant = p.want;
                 lastBusy = busy;
@@ -244,9 +254,37 @@ mgu.run({
                         : 'sẵn sàng · ' + n.target + ' ' + n.layer_w + 'x' + n.layer_h },
             ];
             v.version = 'Bản ' + ctx.spec.version + (st && st.version ? ' · trợ thủ ' + st.version : '');
-            if (page === 1) {
+            if (page === 1 || page === 2) {
                 v.note = showing ? 'Đang hiện trên đồng hồ' : lastPlan.why || '';
                 v.noteKind = showing ? 'go' : 'warn';
+            }
+            if (page === 2) {
+                v.calCam = calCam;
+                if (calCam === 'front') {
+                    const U = { calH: ' cm', calPitch: '°', calFov: '°', calYaw: '°', calShift: ' cm', calCurve: '', frontZoom: ' %' };
+                    const N = { calH: 'Độ cao camera', calPitch: 'Chúc xuống', calFov: 'Góc nhìn', calYaw: 'Lệch trái / phải', calShift: 'Dịch ngang', calCurve: 'Độ cong (mắt cá)', frontZoom: 'Phóng to' };
+                    v.calRows = Object.keys(L.CALIB).map((k) => ({ key: k, label: N[k], text: L.calib(s, k) + U[k] }));
+                } else {
+                    const L_ = calCam === 'left';
+                    v.calText = 'Dịch ngang ' + (Number(s[L_ ? 'panLx' : 'panRx']) || 0) + ' · dọc ' + (Number(s[L_ ? 'panLy' : 'panRy']) || 0) + ' · phóng ' + (Number(s[L_ ? 'zoomL' : 'zoomR']) || 100) + ' %';
+                }
+            }
+            if (page === 3) {
+                const nv = (st && st.nav) || null, last = nv && nv.last;
+                const PROV = { NONE: 'Bản đồ BMW', CAR_PLAY: 'Apple CarPlay', CARPLAY: 'Apple CarPlay', ANDROID_AUTO: 'Android Auto' };
+                const KIND = { turn: 'Rẽ', roundabout: 'Vòng xuyến', destination: 'Đến nơi', straight: 'Đi thẳng' };
+                const turnText = !last || !last.kind ? 'chưa có' : KIND[last.kind] + (last.kind === 'turn' ? (last.angle < 0 ? ' trái' : ' phải') + (Math.abs(last.angle) <= 45 ? ' nhẹ' : Math.abs(last.angle) >= 170 ? ' (quay đầu)' : '') : last.kind === 'roundabout' && last.exit ? ', lối ra ' + last.exit : '') +
+                    (last.meters >= 0 ? ' · còn ' + (last.meters >= 1000 ? (last.meters / 1000).toFixed(1).replace('.', ',') + ' km' : last.meters + ' m') : '');
+                const NS = { 'not started': 'chưa bật', starting: 'đang mở', found: 'đã thấy trong xe, đang mở', reading: 'đang đọc', 'no interface': 'xe không có dịch vụ dẫn đường', ended: 'bộ đọc dừng, sẽ thử lại', 'failed to start': 'không chạy được bộ đọc' };
+                v.navRows = [
+                    { label: 'Đọc dẫn đường', text: !st ? 'Trợ thủ chưa chạy' : !nv ? 'Trợ thủ bản cũ, cần khởi động lại màn hình' : (NS[nv.state] || nv.state) + (nv.note ? ' · ' + nv.note : ''), kind: nv && nv.state === 'reading' ? 'go' : 'warn' },
+                    { label: 'Nguồn', text: last ? (PROV[last.provider] || last.provider || 'không rõ') + (last.state ? ' · ' + last.state : '') : (nv && nv.proxies && nv.proxies.length ? nv.proxies.join(' · ') : 'chưa có'), kind: last ? 'go' : 'dim' },
+                    { label: 'Lệnh kế tiếp', text: turnText, kind: last && last.active ? 'go' : 'dim' },
+                    { label: 'Dữ liệu thô', text: nv && nv.raw ? String(nv.raw).slice(0, 110) : (nv && nv.ifaces && nv.ifaces.length ? nv.ifaces.map((x) => x.split('.').pop()).join(', ') : 'chưa có'), kind: 'dim' },
+                ];
+                v.arLabel = label('ar');
+                v.arCard = s.arCard !== 'off';
+                v.demo = test === 'ardemo';
             }
             return v;
         }
@@ -279,7 +317,32 @@ mgu.run({
             moveRight: () => move(edit === 'left' ? UI.STEP : -UI.STEP, 0)(),
             smaller: resize(-1), larger: resize(1), shape: cycle('shape'),
             reset: () => { settings.set('gaugeDx', 0); settings.set('gaugeDy', 0); settings.set('place', 'gauge'); settings.set('size', 'fit'); },
+            // the Calibrate page
+            camL: () => { calCam = 'left'; tick(); repaint(); }, camR: () => { calCam = 'right'; tick(); repaint(); }, camF: () => { calCam = 'front'; tick(); repaint(); },
+            panL: () => pan(-20, 0), panR: () => pan(20, 0), panU: () => pan(0, -20), panD: () => pan(0, 20),
+            zoomIn: () => zoomCam(10), zoomOut: () => zoomCam(-10),
+            calReset: () => {
+                if (calCam === 'front') Object.keys(L.CALIB).forEach((k) => settings.set(k, L.CALIB[k].d));
+                else { const S = calCam === 'left' ? 'L' : 'R'; settings.set('pan' + S + 'x', 0); settings.set('pan' + S + 'y', 0); settings.set('zoom' + S, 100); }
+            },
+            // the Navigation page
+            arMode: cycle('ar'), arCard: cycle('arCard'), demo: startTest('ardemo', 26),
         };
+        function pan(dx, dy) {
+            const S = calCam === 'left' ? 'L' : 'R';
+            settings.set('pan' + S + 'x', Math.max(-500, Math.min(500, num('pan' + S + 'x') + dx)));
+            settings.set('pan' + S + 'y', Math.max(-500, Math.min(500, num('pan' + S + 'y') + dy)));
+        }
+        function zoomCam(d) {
+            const k = calCam === 'left' ? 'zoomL' : 'zoomR';
+            settings.set(k, Math.max(100, Math.min(300, (num(k) || 100) + d)));
+        }
+        // the front camera's numbers: 'calH-' / 'calH+' and so on
+        Object.keys(L.CALIB).forEach((k) => {
+            const c = L.CALIB[k];
+            acts[k + '-'] = () => settings.set(k, Math.max(c.min, L.calib(cfg(), k) - c.step));
+            acts[k + '+'] = () => settings.set(k, Math.min(c.max, L.calib(cfg(), k) + c.step));
+        });
         ctx.onTab((i) => { page = i; tick(); repaint(); });
         // a tap on the cluster's picture (Position page): the view of the half tapped goes there
         ctx.onTap((x, y) => {

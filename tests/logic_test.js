@@ -254,6 +254,73 @@ t('frontConfig / plan: the front camera in the middle of the cluster', () => {
     assert.strictEqual(P({ front: 'always', enabled: false }).view, 'none');
     assert.strictEqual(P({ front: 'always', cam: { known: true, kind: 'left', text: 'x' } }).view, 'none');   // one camera alone has no front
 });
+t('Calibrate page: a mirror camera\'s part moved and enlarged, the front camera\'s numbers', () => {
+    const T = L.parseTargets('map:1088x480,panel:1920x720');
+    const v = (o) => L.viewConfig(Object.assign({ shape: 'round', place: 'gauge', size: 'fit' }, o), T, 'left');
+    assert.deepStrictEqual([v({ panLx: 100, panLy: -50, zoomL: 150 }).left, v({ panLx: 100 }).right], ['50,558,250,333', '625,500,375,500']);
+    assert.strictEqual(v({ panLx: -500 }).left, '0,500,375,500');                          // kept inside its own picture
+    assert.strictEqual(v({ panRx: -100 }).right, '575,500,375,500');
+    assert.strictEqual(v({ zoom: '200', zoomL: 150 }).left, v({ zoom: '100', zoomL: 300 }).left);
+    assert.strictEqual(L.frontConfig({}, T).front, '0,0,500,500');
+    assert.strictEqual(L.frontConfig({ frontZoom: 200 }, T).front, '125,125,250,250');
+    assert.deepStrictEqual(L.arConfig({}, 'marks', null), { mode: 'marks', height_cm: 70, pitch_x10: 80, fov: 100, yaw_x10: 0, shift_cm: 0, curve: 40, card: 1, speed: -1 });
+    const a = L.arConfig({ calH: 85, calPitch: 99, calFov: 'x', calYaw: -3, arCard: 'off' }, 'route', 42.4);
+    assert.deepStrictEqual([a.mode, a.height_cm, a.pitch_x10, a.fov, a.yaw_x10, a.card, a.speed], ['route', 85, 450, 100, -30, 0, 42]);
+    assert.strictEqual(L.arConfig({}, 'zz').mode, 'off');
+});
+t('plan: the navigation\'s next turn brings the front camera up (ar), a signal comes first', () => {
+    const cam = { known: true, kind: 'all4', text: 'x' }, helper = { ok: true, pictureAge: 50, pictureW: 1280, pictureH: 480, pair: 'sei@19' };
+    const P = (o) => L.plan(Object.assign({ enabled: true, mode: 'mosaic', source: 'auto', side: null, test: null, speed: 40, maxSpeed: 0, cam, helper, front: 'off' }, o));
+    const nav = (m) => ({ active: true, kind: 'turn', angle: 90, meters: m });
+    assert.strictEqual(P({ arMode: 'near', nav: nav(600) }).view, 'none');
+    assert.deepStrictEqual([P({ arMode: 'near', nav: nav(200) }).view, P({ arMode: 'near', nav: nav(200) }).ar], ['front', 'route']);
+    assert.strictEqual(P({ arMode: 'near', nav: { active: true, kind: 'turn', meters: -1 } }).view, 'none');
+    assert.strictEqual(P({ arMode: 'always', nav: nav(5000) }).ar, 'route');
+    assert.strictEqual(P({ arMode: 'off', nav: nav(100) }).view, 'none');
+    assert.strictEqual(P({ arMode: 'near', nav: { active: false, meters: 100 } }).view, 'none');
+    assert.strictEqual(P({ arMode: 'near', nav: nav(100), side: 'left' }).view, 'left');
+    assert.strictEqual(P({ arMode: 'near', nav: nav(100), enabled: false }).view, 'none');
+    assert.deepStrictEqual([P({ front: 'always' }).view, P({ front: 'always' }).ar], ['front', 'off']);       // the plain front camera
+    assert.strictEqual(P({ test: 'calfront' }).ar, 'marks');
+    assert.strictEqual(P({ test: 'ardemo', enabled: false }).ar, 'demo');
+});
+t('helper: the navigation\'s values, however the unit shapes them; the decoder\'s ar line', () => {
+    const N = require(path.join(__dirname, '..', 'tools', 'xinhan-cam', 'nav.js'));
+    const H = require(path.join(__dirname, '..', 'tools', 'xinhan-cam', 'xinhan-cam.js'));
+    const body = (o) => Object.assign({ uid: 1, guidingStep: 'X', formattedDistance: { distance: '120', unit: 'METER', rawDistance: 118.4 } }, o);
+    assert.deepStrictEqual(N.maneuver({ maneuver: { type: 'intersection', value: body({ direction: 'SLIGHT_LEFT' }) } }), { kind: 'turn', angle: -30, meters: 118, exit: 0 });
+    assert.deepStrictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'UTURN_LEFT' }) } }).angle, -180);
+    assert.deepStrictEqual(N.maneuver({ maneuver: { intersection: body({ direction: { value: 7 } }) } }, { direction: { 7: 'RIGHT' } }).angle, 90);
+    assert.strictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'STRAIGHT_ON' }) } }).kind, 'straight');
+    assert.deepStrictEqual(N.maneuver({ maneuver: { roundabout: { formattedDistance: { distance: '1,2', unit: 1 }, exitNumber: 3, guidingStep: 0 } } }, { unit: { 1: 'KM' } }),
+        { kind: 'roundabout', angle: 0, meters: 1200, exit: 3 });
+    assert.strictEqual(N.maneuver({ maneuver: { destinationManeuver: body({ isCheckeredFlag: true }) } }).kind, 'destination');
+    assert.strictEqual(N.maneuver({ maneuver: { speedCamera: body({}) } }).kind, null);     // not the way ahead
+    assert.strictEqual(N.maneuver({ maneuver: { placeholderElement: {} } }).kind, null);
+    assert.strictEqual(N.maneuver(null).kind, null);
+    assert.strictEqual(N.maneuver({ maneuver: { branch: body({ branchType: 'KEEP_RIGHT' }) } }).angle, 30);
+    // a phone's guidance: the car's own state stays inactive, the manoeuvre counts
+    const dart = { maneuver: { intersection: body({ direction: 'RIGHT' }) } };
+    assert.strictEqual(N.navOf({ dart, state: 'INACTIVE', provider: 'ANDROID_AUTO' }).active, true);
+    assert.strictEqual(N.navOf({ state: 'ACTIVE' }).active, false);
+    const db = { interfaces: { 'de.bmw.x.navigation.Guidance': { fields: { conclusiveDart: {}, guidanceState: {}, guidingProvider: {}, other: {} } }, 'de.bmw.x.Vehicle': {} },
+        datatypes: { a: { type: 'enum', items: { NONE: 0, SLIGHT_LEFT: 2, LEFT: 3, UTURN_LEFT: 5, RIGHT: 7 } }, b: { type: 'enum', items: { METER: { value: 0 }, KM: { value: 1 } } } } };
+    assert.deepStrictEqual(N.findInterfaces(db).map((i) => i.name), ['de.bmw.x.navigation.Guidance']);
+    assert.deepStrictEqual(N.pickFields(N.findInterfaces(db)[0]), { dart: 'conclusiveDart', state: 'guidanceState', provider: 'guidingProvider' });
+    assert.deepStrictEqual([N.enumTables(db).direction[7], N.enumTables(db).unit[1]], ['RIGHT', 'KM']);
+    // the ar line: off without a route; counted nearer by the speed; the demo; the marks
+    const J = (ar, nav, now) => JSON.parse(H.arLine(ar, nav, now));
+    assert.strictEqual(J(null, null, 0).mode, 'off');
+    assert.strictEqual(J({ mode: 'route' }, null, 0).mode, 'off');
+    assert.strictEqual(J({ mode: 'route' }, { active: false, kind: 'turn', meters: 50, at: 0 }, 0).mode, 'off');
+    const r = J({ mode: 'route', height_cm: 85, speed: 36 }, { active: true, kind: 'turn', angle: -90, meters: 100, at: 1000 }, 3000);
+    assert.deepStrictEqual([r.mode, r.kind, r.angle, r.meters, r.height_cm], ['route', 'turn', -90, 80, 85]);
+    assert.strictEqual(J({ mode: 'route', speed: 36 }, { active: true, kind: 'turn', angle: 90, meters: 10, at: 0 }, 60000).meters, 0);
+    assert.strictEqual(J({ mode: 'route', speed: -1 }, { active: true, kind: 'turn', angle: 90, meters: 10, at: 0 }, 5000).meters, 10);
+    assert.deepStrictEqual([J({ mode: 'marks', fov: 999 }, null, 0).mode, J({ mode: 'marks', fov: 999 }, null, 0).fov], ['marks', 200]);
+    const d = J({ mode: 'demo' }, null, 5000);
+    assert.deepStrictEqual([d.mode, d.kind, d.angle, d.meters], ['route', 'turn', 90, 49]);
+});
 t('parseTargets, zoomCrop', () => {
     assert.deepStrictEqual(L.parseTargets('map:1088x480,hud:800x480'), { map: { w: 1088, h: 480 }, hud: { w: 800, h: 480 } });
     assert.deepStrictEqual(L.parseTargets(''), {});

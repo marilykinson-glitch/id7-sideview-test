@@ -103,6 +103,12 @@ void Pipeline::set_view(View v)
     have_ready_ = false;
 }
 
+void Pipeline::set_overlay(const Overlay &o)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    overlay_ = o;
+}
+
 bool Pipeline::take(std::vector<uint8_t> *atlas, AtlasMeta *meta)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -245,6 +251,14 @@ void Pipeline::on_picture(const DecodedFrame &f)
     }
     work_.resize(atlas_bytes(out.w, out.h));
     resampler_.run(src, work_.data());
+    if (view == kFront) {
+        Overlay ov;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            ov = overlay_;
+        }
+        draw_overlay(work_.data(), out.w, out.h, ov, now);
+    }
     const int64_t t1 = now_us();
     {
         std::lock_guard<std::mutex> lock(mutex_);

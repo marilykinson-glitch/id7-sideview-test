@@ -76,7 +76,8 @@ class Rig:
         self.status_file = os.path.join(self.dir, 'run', 'status.json')
         self.helper_env = dict(os.environ, XINHAN_OAP=os.path.join(self.dir, 'oap'), XINHAN_RUN=os.path.join(self.dir, 'run'),
                                XINHAN_BIN=wrapper, XINHAN_ARGS='--socket ' + self.sock, XINHAN_LOG=os.path.join(self.dir, 'helper.log'),
-                               SIDECAM_FAKE_AVB=MOSAIC)
+                               SIDECAM_FAKE_AVB=MOSAIC, XINHAN_NAV=os.path.join(ROOT, 'tests', 'fake_nav.js'),
+                               XINHAN_NAV_ARGS=os.path.join(self.dir, 'nav.json'))
         self.app_env = dict(os.environ, XINHAN_STATUS=self.status_file)
         self.app_env.update(app_env or {})
         self.helper = self.app = None
@@ -145,6 +146,18 @@ class Rig:
     def shows(self, want, tol=45):
         a, l = self.shown()
         return a is not None and near(colour(a, l['vw'], l['vh']), want, tol)
+
+    def nav(self, **kw):
+        """What the (fake) navigation reader reports from now on."""
+        with open(os.path.join(self.dir, 'nav.json.tmp'), 'w') as f:
+            json.dump(kw, f)
+        os.replace(os.path.join(self.dir, 'nav.json.tmp'), os.path.join(self.dir, 'nav.json'))
+
+    def helper_said(self, text):
+        try:
+            return text in open(os.path.join(self.dir, 'helper.out')).read()
+        except OSError:
+            return False
 
     def control(self):
         try:
@@ -334,6 +347,50 @@ def t_drive():
         r.cmd(light=[0, OFF])
         r.cmd(set=['front', 'off'])
         check(r.wait(lambda: not r.cr.visible(), 3), 'front camera off: gone')
+        # the Calibrate page: the camera being set shows; the mirror cameras' part moves, the front camera gets its marks
+        r.cmd(speed=0)
+        r.cmd(tab=2)
+        check(r.wait(lambda: r.shown()[1] is not None and r.shows(BLUE, 60) and (r.control().get('config') or {}).get('left') == '0,500,375,500', 4), 'Calibrate page: the left mirror camera shows')
+        r.cmd(act='panR'); r.cmd(act='panR'); r.cmd(act='panU'); r.cmd(act='zoomIn')
+        check(r.wait(lambda: (r.control().get('config') or {}).get('left') == '20,513,341,455', 3), 'its part moves right and up and is enlarged: ' + str((r.control().get('config') or {}).get('left')))
+        r.cmd(act='calReset')
+        check(r.wait(lambda: (r.control().get('config') or {}).get('left') == '0,500,375,500', 3), '"default" puts it back')
+        r.cmd(act='camF')
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'map' and (r.control().get('ar') or {}).get('mode') == 'marks', 4), 'front camera: shown, with the calibration marks asked for')
+        check(r.wait(lambda: r.helper_said('ar: marks'), 3), 'the decoder draws them')
+        r.cmd(act='calH+'); r.cmd(act='calPitch-'); r.cmd(act='frontZoom+')
+        ok = r.wait(lambda: (r.control().get('ar') or {}).get('height_cm') == 75 and r.control()['ar'].get('pitch_x10') == 70 and (r.control().get('config') or {}).get('front') == '23,23,455,455', 3)
+        check(ok, 'height +5 cm, tilt -1 degree, zoom +10 %%: %s %s' % (r.control().get('ar'), (r.control().get('config') or {}).get('front')))
+        r.cmd(act='calReset')
+        r.cmd(tab=0)
+        check(r.wait(lambda: not r.cr.visible() and r.helper_said('ar: off'), 4), 'leaving the page: gone, marks off')
+
+        # the navigation's next turn on the front camera ("ar: near", the default)
+        r.cmd(speed=int(36 / 0.015625))
+        r.nav(active=True, kind='turn', angle=90, meters=600, exit=0, provider='ANDROID_AUTO', state='INACTIVE')
+        check(r.wait(lambda: ((r.status().get('nav') or {}).get('last') or {}).get('meters') == 600, 4), 'the helper reads the navigation (the app asks it to): a turn 600 m ahead')
+        time.sleep(0.5)
+        check(not r.cr.visible(), 'too far yet: nothing shown')
+        r.nav(active=True, kind='turn', angle=90, meters=180, exit=0, provider='ANDROID_AUTO', state='INACTIVE')
+        check(r.wait(lambda: r.shows(RED) and (r.control().get('ar') or {}).get('mode') == 'route' and r.helper_said('ar: route'), 5), '180 m before the turn: the front camera with the route on it')
+        check(r.control()['ar'].get('speed') == 35 or r.control()['ar'].get('speed') == 40, 'the car\'s speed goes along, for counting the turn nearer: %s' % r.control()['ar'].get('speed'))
+        r.cmd(light=[0, LEFT_ON])
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'panel' and r.shows(BLUE, 60), 4), 'left signal: the left mirror camera takes over')
+        r.cmd(light=[0, OFF])
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'map' and r.shows(RED), 6), 'signal off: the route again')
+        r.nav(active=False, kind=None, angle=0, meters=-1, exit=0, provider='', state='INACTIVE')
+        check(r.wait(lambda: not r.cr.visible(), 4), 'the turn is done, no next one: gone')
+        r.nav(active=True, kind='roundabout', angle=0, meters=900, exit=2, provider='NONE', state='ACTIVE')
+        r.cmd(set=['ar', 'always'])
+        check(r.wait(lambda: r.shows(RED) and (r.control().get('ar') or {}).get('mode') == 'route', 5), '"always": shown for the whole route')
+        r.cmd(set=['ar', 'off'])
+        check(r.wait(lambda: not r.cr.visible() and (r.status().get('nav') or {}).get('wanted') is False, 4), '"off": gone, and the navigation is no longer read')
+        r.cmd(tab=3)
+        r.cmd(act='demo')
+        check(r.wait(lambda: r.shows(RED) and (r.control().get('ar') or {}).get('mode') == 'demo', 5), 'Navigation page, "demo": the front camera with a made-up turn')
+        r.cmd(act='demo')
+        check(r.wait(lambda: not r.cr.visible(), 4), 'pressed again: gone')
+        r.cmd(tab=0)
         errors = [l for l in r.logs if l[0] in ('error', 'raw')]
         check(not errors, 'no errors in the app\'s log %s' % errors[:3])
     finally:

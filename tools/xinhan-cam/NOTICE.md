@@ -23,3 +23,7 @@ At run time it uses the head unit's own IAS AVB bridge library and talks to clus
 over its socket; neither is part of this program or shipped with it.
 
 `xinhan-cam.js` (the service script): MIT, as the app kit in this repository (`kit/LICENSE`).
+
+`nav.js` (the navigation reader): MIT, this project's. `oapgen-gen.js` is `kit/tools/oapgen/gen.js` of
+the app kit (MIT, Copyright (c) 2026 cauliflowermossgrape), unchanged: it loads the head unit's own
+interface generator from the unit's firmware at run time; nothing of BMW's is shipped here.

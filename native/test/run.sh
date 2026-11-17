@@ -11,6 +11,8 @@ gcc -shared -fPIC -O2 -Wl,-soname,libias-media_transport-avb_ufipc_bridge.so.1 \
     -o $B/lib/libias-media_transport-avb_ufipc_bridge.so.1 test/fake_ias_avb.c -lpthread
 g++ -std=c++14 -O2 -Wall -Wextra -Isrc -o $B/resample_test test/resample_test.cpp src/resample.cpp
 $B/resample_test
+g++ -std=c++14 -O2 -Wall -Wextra -fsanitize=address,undefined -Isrc -o $B/overlay_test test/overlay_test.cpp src/overlay.cpp
+$B/overlay_test
 # top-left red (front), top-right green (rear), bottom-left blue (left mirror), bottom-right yellow (right mirror),
 # each with a square moving across it so every picture differs
 Q='[0:v][4:v]overlay=x=mod(t*120\,560):y=200[a];[1:v][4:v]overlay=x=mod(t*90\,560):y=100[b];[2:v][4:v]overlay=x=mod(t*60\,560):y=300[c];[3:v][4:v]overlay=x=mod(t*150\,560):y=50[d];[a][b][c][d]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0'

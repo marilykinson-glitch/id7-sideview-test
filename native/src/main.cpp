@@ -66,6 +66,7 @@ struct Config {
 };
 
 struct App {
+    int ar_mode = 0;
     Config cfg;
     Pipeline pipe;
     cr::Client *cr = nullptr;
@@ -354,6 +355,28 @@ void on_line(App &a, const std::string &line)
         }
     } else if (op == "config") {
         apply_config(a, j);
+    } else if (op == "ar") {
+        /* what is drawn on the front camera (overlay.h); whole numbers: cm, tenths of a degree */
+        Overlay o;
+        const std::string mode = j["mode"];
+        o.mode = mode == "marks" ? kArMarks : mode == "route" ? kArRoute : kArOff;
+        o.calib.height = to_long(j, "height_cm", 70) / 100.0;
+        o.calib.pitch = to_long(j, "pitch_x10", 80) / 10.0;
+        o.calib.fov = (double)to_long(j, "fov", 100);
+        o.calib.yaw = to_long(j, "yaw_x10", 0) / 10.0;
+        o.calib.shift = to_long(j, "shift_cm", 0) / 100.0;
+        o.calib.curve = (double)to_long(j, "curve", 40);
+        const std::string kind = j["kind"];
+        o.kind = kind == "roundabout" ? kRoundabout : kind == "destination" ? kDestination : kind == "straight" ? kStraight : kTurn;
+        o.angle = (double)to_long(j, "angle", 0);
+        o.meters = (double)to_long(j, "meters", -1);
+        o.exit = (int)to_long(j, "exit", 0);
+        o.card = to_long(j, "card", 1) != 0;
+        if (o.mode != a.ar_mode) {
+            log_info("ar: %s", o.mode == kArMarks ? "marks" : o.mode == kArRoute ? "route" : "off");
+            a.ar_mode = o.mode;
+        }
+        a.pipe.set_overlay(o);
     } else if (op == "status") {
         a.dirty = true;
     } else if (op == "quit") {

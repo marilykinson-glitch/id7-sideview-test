@@ -24,6 +24,7 @@
 
 #include "avb_source.h"
 #include "decoder.h"
+#include "overlay.h"
 #include "packet_queue.h"
 #include "pair_tag.h"
 #include "resample.h"
@@ -93,6 +94,8 @@ public:
      * not handed out. */
     uint32_t set_output(const Output &o);
     void set_view(View v);
+    /* What is drawn on the front camera's view (overlay.h); takes effect with the next view made. */
+    void set_overlay(const Overlay &o);
 
     bool take(std::vector<uint8_t> *atlas, AtlasMeta *meta);
     Stats stats();
@@ -116,6 +119,7 @@ private:
     Output out_;
     uint32_t gen_ = 1;
     View view_ = kNone;
+    Overlay overlay_;
     bool fresh_view_ = false;      /* the view or output changed: the next picture gets an atlas at once */
     std::vector<uint8_t> ready_;
     AtlasMeta ready_meta_;

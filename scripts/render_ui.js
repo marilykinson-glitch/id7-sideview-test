@@ -26,6 +26,12 @@ const states = {
     '2-trai': Object.assign({}, base, { title: 'Đang hiện camera trái', titleKind: 'go', rows: rows('Trái'), shown: 'left' }),
     '3-truoc': Object.assign({}, base, { title: 'Đang hiện camera trước', titleKind: 'go', rows: rows('Tắt'), shown: 'front', front: 'dưới 30 km/h', frontRect: { x: UI.MAP.x + f.x, y: UI.MAP.y + f.y, w: f.w, h: f.h } }),
     '4-vitri': Object.assign({}, base, { page: 1, edit: 'left', shown: 'left', discs: discs({ gaugeDx: 40, gaugeDy: -30 }), note: 'Đang hiện trên đồng hồ', noteKind: 'go' }),
+    '5-canhchinh-truoc': Object.assign({}, base, { page: 2, calCam: 'front', note: 'Đang hiện trên đồng hồ', noteKind: 'go',
+        calRows: Object.keys(L.CALIB).map((k) => ({ key: k, label: { calH: 'Độ cao camera', calPitch: 'Chúc xuống', calFov: 'Góc nhìn', calYaw: 'Lệch trái / phải', calShift: 'Dịch ngang', calCurve: 'Độ cong (mắt cá)', frontZoom: 'Phóng to' }[k], text: String(L.CALIB[k].d) })) }),
+    '6-canhchinh-guong': Object.assign({}, base, { page: 2, calCam: 'left', note: 'Đang hiện trên đồng hồ', noteKind: 'go', calText: 'Dịch ngang 40 · dọc -20 · phóng 120 %' }),
+    '7-danduong': Object.assign({}, base, { page: 3, arLabel: 'Khi sắp rẽ', arCard: true, demo: false, navRows: [
+        { label: 'Đọc dẫn đường', text: 'đang đọc', kind: 'go' }, { label: 'Nguồn', text: 'Android Auto', kind: 'go' },
+        { label: 'Lệnh kế tiếp', text: 'Rẽ phải · còn 180 m', kind: 'go' }, { label: 'Dữ liệu thô', text: '{"maneuver":{"intersection":{"direction":"RIGHT","formattedDistance":{"distance":"180","unit":"METER"}}}}', kind: 'dim' }] }),
 };
 Object.keys(states).forEach((k) => {
     const r = new Recorder(UI.W, UI.H, { textScale: 1 });
