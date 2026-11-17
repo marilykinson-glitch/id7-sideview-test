@@ -117,7 +117,7 @@ Module._load = function (request, parent) {
     if (parent && parent.filename === path.join(APP, 'main.js')) {
         if (request === './kit/mgu') return mgu;
         if (request === './kit/gauges') return {};
-        if (request === './kit/canvas') return { Canvas: function () {} };
+        if (request === './kit/canvas') return require(path.join(APP, '..', '..', 'kit', 'runtime', 'canvas.js'));
         if (request === './ui') return fakeUI;
     }
     return load.apply(this, arguments);

@@ -365,6 +365,19 @@ void draw_card(const Surface &s, const Overlay &o)
     }
     if (dist[0])
         text(s, x0 + pad + icon + pad, y0 + (ch - 7 * k) / 2, dist, k, white, 256);
+    /* the road's name under the card, centred on it */
+    if (o.label && o.label_w > 0 && o.label_h > 0 && o.label->size() >= (size_t)o.label_w * o.label_h && o.label_w <= s.w) {
+        const int lw = o.label_w, lh = o.label_h;
+        const int lx = std::max(0, std::min(s.w - lw, x0 + cw / 2 - lw / 2)), ly = y0 + ch + k;
+        rect(s, lx, ly, lw, lh, rgb(8, 12, 20), 190);
+        const uint8_t *m = o.label->data();
+        for (int r = 0; r < lh; r++)
+            for (int c = 0; c < lw; c++) {
+                const int a = m[(size_t)r * lw + c];
+                if (a > 8)
+                    span(s, ly + r, lx + c, lx + c, white, a + 1);
+            }
+    }
 }
 
 }  // namespace

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <memory>
 #include <vector>
 
 #include "overlay.h"
@@ -63,6 +64,18 @@ int main()
     const size_t no_card = changed(o, 1000);
     o.card = true;
     check(no_card + 1000 < changed(o, 1000), "without the card less is drawn");
+    {
+        auto lab = std::make_shared<std::vector<uint8_t>>(200 * 30, 255);
+        const size_t before = changed(o, 1000);
+        o.label = lab;
+        o.label_w = 200;
+        o.label_h = 30;
+        check(changed(o, 1000) > before + 3000, "the road's name under the card: drawn");
+        o.label_w = 4000;
+        check(changed(o, 1000) == before, "a label wider than the picture is left out");
+        o.label.reset();
+        o.label_w = o.label_h = 0;
+    }
     o.meters = -1;
     o.kind = kRoundabout;
     check(changed(o, 0) > 500, "a roundabout without a distance: drawn");

@@ -27,7 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -129,7 +129,7 @@ function auxLine(aux) {
  * nav: the navigation's last word ({ active, kind, angle, meters, exit, at: when }), or null; now: ms.
  * Between two distances from the navigation the turn comes nearer by the car's speed.
  */
-function arLine(ar, nav, now) {
+function arLine(ar, nav, now, dataDir) {
     const out = { op: 'ar', mode: 'off' };
     if (!ar || typeof ar !== 'object') return JSON.stringify(out);
     const n = (k, lo, hi, d) => (Number.isFinite(ar[k]) ? Math.max(lo, Math.min(hi, Math.round(ar[k]))) : d);
@@ -165,6 +165,14 @@ function arLine(ar, nav, now) {
         m = Math.max(0, m - ar.speed / 3.6 * dt / 1000);
     }
     out.meters = m < 0 ? -1 : Math.round(m);
+    // the road's name, as a picture the app drew into its data folder (label.bin: w x h bytes)
+    const l = ar.label;
+    if (dataDir && l && typeof l === 'object' && Number.isFinite(l.w) && Number.isFinite(l.h) && Number.isFinite(l.seq) && l.street === nav.street) {
+        out.label = path.join(dataDir, 'label.bin');
+        out.label_w = Math.round(l.w);
+        out.label_h = Math.round(l.h);
+        out.label_seq = Math.round(l.seq);
+    }
     return JSON.stringify(out);
 }
 
@@ -323,7 +331,7 @@ function run() {
             const cl = configLine(w.config);
             if (cl && cl !== sentConfig && send(cl)) sentConfig = cl;
             // what is drawn on the front camera: when it changes, at most 5 times a second
-            const al = arLine(w.view === 'front' ? w.ar : null, nav.last, now);
+            const al = arLine(w.view === 'front' ? w.ar : null, nav.last, now, app ? path.join(app.root, 'data') : null);
             if (al !== sentAr && now - sentArAt >= 200 && send(al)) { sentAr = al; sentArAt = now; }
             // the second view: with the front camera only; when it changes, and once a second while on
             const xl = auxLine(w.view === 'front' ? w.aux : null);

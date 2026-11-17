@@ -26,6 +26,7 @@
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
+#include <memory>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -80,6 +81,9 @@ struct AuxLayer {
 
 struct App {
     int ar_mode = 0;
+    std::shared_ptr<const std::vector<uint8_t>> label;
+    long label_seq = -1;
+    int label_w = 0, label_h = 0;
     AuxLayer aux;
     Config cfg;
     Pipeline pipe;
@@ -474,6 +478,32 @@ void on_line(App &a, const std::string &line)
         o.card = to_long(j, "card", 1) != 0;
         o.white = to_long(j, "white", 1) != 0;
         o.style = (int)to_long(j, "style", 0);
+        /* the road's name as a picture the app drew: read again when its number changes */
+        {
+            const std::string path = j.count("label") ? j.at("label") : "";
+            const long lw = to_long(j, "label_w", 0), lh = to_long(j, "label_h", 0), seq = to_long(j, "label_seq", 0);
+            if (path.empty() || lw < 8 || lw > 1920 || lh < 8 || lh > 96) {
+                a.label.reset();
+                a.label_seq = -1;
+            } else if (seq != a.label_seq || lw != a.label_w || lh != a.label_h) {
+                a.label_seq = seq;
+                a.label_w = (int)lw;
+                a.label_h = (int)lh;
+                a.label.reset();
+                FILE *f = std::fopen(path.c_str(), "rb");
+                if (f) {
+                    auto buf = std::make_shared<std::vector<uint8_t>>((size_t)lw * lh);
+                    if (std::fread(buf->data(), 1, buf->size(), f) == buf->size())
+                        a.label = buf;
+                    std::fclose(f);
+                }
+            }
+            if (a.label) {
+                o.label = a.label;
+                o.label_w = a.label_w;
+                o.label_h = a.label_h;
+            }
+        }
         o.fade = to_long(j, "fade", 0) != 0;
         if (o.mode != a.ar_mode) {
             log_info("ar: %s", o.mode == kArMarks ? "marks" : o.mode == kArRoute ? "route" : "off");

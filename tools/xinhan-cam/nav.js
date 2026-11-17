@@ -158,7 +158,13 @@ function maneuver(dart, tables, textOnly) {
         }
     }
     if (meters < 0 && !textOnly && typeof b.rawDistance === 'number' && b.rawDistance >= 0) meters = b.rawDistance;
-    return { kind, angle, meters: meters < 0 ? -1 : Math.round(meters), exit };
+    const out = { kind, angle, meters: meters < 0 ? -1 : Math.round(meters), exit };
+    // the road's name, where the unit gives one: the description's text elements
+    const desc = b['description'];
+    const els = desc && Array.isArray(desc.elements) ? desc.elements : [];
+    const street = els.map((e) => (e && typeof e.text === 'string' ? e.text : e && typeof e.value === 'string' && (e.type === undefined || e.type === 'text') ? e.value : '')).filter(Boolean).join(' ').trim().slice(0, 60);
+    if (street) out.street = street;
+    return out;
 }
 
 /** The events of a queryContent reply, wherever the binding puts them: the first array named eventsInView. */
@@ -207,7 +213,7 @@ function navOf(values, tables) {
     const off = state && /INACTIVE|NOT_ACTIVE|OFF|STOPPED|NONE/.test(state);
     // a phone's guidance leaves the car's own state inactive: a real manoeuvre with a distance counts by itself
     const active = !!m.kind && (m.meters >= 0 || !off);
-    return { active, kind: m.kind, angle: m.angle, meters: m.meters, exit: m.exit, provider: provider || '', state: state || '' };
+    return Object.assign({ active, kind: m.kind, angle: m.angle, meters: m.meters, exit: m.exit, provider: provider || '', state: state || '' }, m.street ? { street: m.street } : {});
 }
 
 /* ---------------- reading it on the unit ---------------- */
@@ -283,8 +289,9 @@ async function read() {
                         busy = false;
                         if (good < 0) { good = k; say({ ev: 'note', text: 'event list: request shape ' + tries[k].join(' ') + ' answered' }); }
                         values.events = r;
-                        const s = cut(JSON.stringify(r), 3000);
-                        if (s !== lastReply) { lastReply = s; say({ ev: 'value', iface: iface.name, name: qm, value: s }); }
+                        // (the unit numbers every answer anew, uid: an answer that differs in that alone is the same one)
+                        const s = cut(JSON.stringify(r), 3000), same = s.replace(/"uid":"?\d+"?/g, '');
+                        if (same !== lastReply) { lastReply = same; say({ ev: 'value', iface: iface.name, name: qm, value: s }); }
                         changed();
                     }, (e) => {
                         busy = false;

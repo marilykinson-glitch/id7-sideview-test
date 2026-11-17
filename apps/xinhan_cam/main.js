@@ -162,6 +162,30 @@ mgu.run({
                 fs.renameSync(controlFile + '.tmp', controlFile);
             } catch (e) { log.warn('control file: ' + errText(e)); }
         };
+        // the road's name for the turn card, drawn here (the kit's letters have every Vietnamese mark) into
+        // data/label.bin, which the helper hands to the decoder: one byte a pixel, 0 nothing to 255 white
+        let labelFor = null, streetPic = null, labelSeq = 0;
+        function streetLabel(street, s) {
+            const size = s.frontSize === 'small' ? 15 : 19;
+            const key = street + '|' + size;
+            if (key === labelFor) return streetPic;
+            labelFor = key;
+            streetPic = null;
+            try {
+                const probe = new Canvas(8, 8);
+                const tw = Math.ceil(probe.textWidth(street, size, { literal: true, font: 'bold' }));
+                const w = Math.min(640, (tw + 16 + 3) & ~3), h = (size + 12) & ~1;
+                const cv = new Canvas(w, h);
+                cv.clear('#000000');
+                cv.text(street, w / 2, Math.round(h / 2 + size * 0.36), size, '#ffffff', { literal: true, font: 'bold', align: 'center' });
+                const out = Buffer.alloc(w * h);
+                for (let i = 0; i < w * h; i++) out[i] = cv.d[i * 4 + 1];
+                fs.writeFileSync(path.join(ctx.dataDir, 'label.bin.tmp'), out);
+                fs.renameSync(path.join(ctx.dataDir, 'label.bin.tmp'), path.join(ctx.dataDir, 'label.bin'));
+                streetPic = { w, h, seq: ++labelSeq, street };
+            } catch (e) { log.warn('street label: ' + errText(e)); }
+            return streetPic;
+        }
         const positioning = () => page === 1 && ui.isVisible('MAIN');
         // the Calibrate page: the camera being set shows for as long as the page is open (the front one with its marks)
         const calibrating = () => page === 2 && ui.isVisible('MAIN');
@@ -195,7 +219,8 @@ mgu.run({
             // what the helper draws on the front camera; the car's speed (in steps of 5 km/h) only while a route is
             // drawn; nav: whether the helper should read the navigation at all
             const kmh = p.ar === 'route' && speed !== null && now - speedAt < 3000 ? Math.round(speed / 5) * 5 : -1;
-            const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
+            const nv = navNow(st);
+            const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), p.ar === 'route' && nv && nv.street && s.arStreet !== 'off' ? { label: streetLabel(nv.street, s) } : {}, { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
             writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view, !!p.aux), ar, p.aux ? L.auxConfig(s, targets, p.aux) : null, now);
             // the camera unit: at once when what is wanted changes or a side comes on, twice a second
             // while a view is wanted or the unit is not in its mode yet, else every 2 s
@@ -289,7 +314,7 @@ mgu.run({
                 const PROV = { NONE: 'Bản đồ BMW', CAR_PLAY: 'Apple CarPlay', CARPLAY: 'Apple CarPlay', ANDROID_AUTO: 'Android Auto' };
                 const KIND = { turn: 'Rẽ', roundabout: 'Vòng xuyến', destination: 'Đến nơi', straight: 'Đi thẳng' };
                 const turnText = !last || !last.kind ? 'chưa có' : KIND[last.kind] + (last.kind === 'turn' ? (last.angle < 0 ? ' trái' : ' phải') + (Math.abs(last.angle) <= 45 ? ' nhẹ' : Math.abs(last.angle) >= 170 ? ' (quay đầu)' : '') : last.kind === 'roundabout' && last.exit ? ', lối ra ' + last.exit : '') +
-                    (last.meters >= 0 ? ' · còn ' + (last.meters >= 1000 ? (last.meters / 1000).toFixed(1).replace('.', ',') + ' km' : last.meters + ' m') : '');
+                    (last.street ? ' vào ' + last.street : '') + (last.meters >= 0 ? ' · còn ' + (last.meters >= 1000 ? (last.meters / 1000).toFixed(1).replace('.', ',') + ' km' : last.meters + ' m') : '');
                 const NS = { 'not started': 'chưa bật', starting: 'đang mở', found: 'đã thấy trong xe, đang mở', reading: 'đang đọc', 'no interface': 'xe không có dịch vụ dẫn đường', ended: 'bộ đọc dừng, sẽ thử lại', 'failed to start': 'không chạy được bộ đọc' };
                 v.navRows = [
                     { label: 'Đọc dẫn đường', text: !st ? 'Trợ thủ chưa chạy' : !nv ? 'Trợ thủ bản cũ, cần khởi động lại màn hình' : (NS[nv.state] || nv.state) + (nv.note ? ' · ' + nv.note : ''), kind: nv && nv.state === 'reading' ? 'go' : 'warn' },

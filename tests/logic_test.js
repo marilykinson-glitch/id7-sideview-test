@@ -349,6 +349,15 @@ t('helper: the navigation\'s values, however the unit shapes them; the decoder\'
     const reply = { GuidanceEventListError: 'NO_ERROR', viewContent: [{ configSequenceId: 0, eventsInView: [{ type: 'speedCamera', value: { formattedDistance: { distance: '90', unit: 'METER' }, guidingStep: 'X' } },
         ev({ direction: 'RIGHT' }), ev({ direction: 'LEFT', formattedDistance: { distance: '', unit: 'NONE', rawDistance: 1 } })] }] };
     assert.deepStrictEqual(N.eventManeuver(reply), { kind: 'turn', angle: 90, meters: 250, exit: 0 });
+    // as the car's Android Auto sends it (G30, 2026-11-17): a keyed union, the road's name in the description
+    const car = { GuidanceEventListError: 'NO_ERROR', viewContent: [{ configSequenceId: 4294967295, indexedPosition: { valid: false }, eventsInView: [{ intersection: { uid: '25', distanceToDestination: 928,
+        formattedDistance: { distance: '50', unit: 'METER', rawDistance: 1 }, description: { elements: [{ text: 'Tân Phú / Đ. Số 23' }] }, guidingStep: 'GS2', direction: 'RIGHT', roadlinks: { nil: 'NO_VALUE' } } }] }] };
+    assert.deepStrictEqual(N.eventManeuver(car), { kind: 'turn', angle: 90, meters: 50, exit: 0, street: 'Tân Phú / Đ. Số 23' });
+    assert.strictEqual(N.navOf({ events: car, provider: 'ANDROID_AUTO' }).street, 'Tân Phú / Đ. Số 23');
+    const lab = JSON.parse(H.arLine({ mode: 'route', label: { w: 200, h: 30, seq: 3, street: 'A' } }, { active: true, kind: 'turn', angle: 90, meters: 50, at: 0, street: 'A' }, 0, '/data'));
+    assert.deepStrictEqual([lab.label, lab.label_w, lab.label_h, lab.label_seq], ['/data/label.bin', 200, 30, 3]);
+    // a label drawn for another road's name is not shown with this turn
+    assert.strictEqual(JSON.parse(H.arLine({ mode: 'route', label: { w: 200, h: 30, seq: 3, street: 'A' } }, { active: true, kind: 'turn', angle: 90, meters: 50, at: 0, street: 'B' }, 0, '/data')).label, undefined);
     assert.strictEqual(N.eventManeuver({ viewContent: [] }).kind, null);
     assert.deepStrictEqual(N.eventManeuver({ out: { viewContent: [{ eventsInView: [{ intersection: ev({ direction: 'SLIGHT_LEFT' }).value }] }] } }).angle, -30);
     const placeholder = { maneuver: { type: 'placeholderElement', value: {} } };

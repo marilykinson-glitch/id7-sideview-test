@@ -16,6 +16,9 @@
 
 #include <stdint.h>
 
+#include <memory>
+#include <vector>
+
 namespace sidecam {
 
 struct Calib {
@@ -40,6 +43,10 @@ struct Overlay {
     bool card = true;
     bool white = true;       /* the arrows white (as BMW's), else blue */
     int style = 0;           /* 0: a band of chevrons at the turn, as BMW's Augmented View; 1: chevrons on the road */
+    /* a line of text under the card (the road's name), drawn by the app: label_w x label_h bytes, 0 nothing
+     * to 255 white */
+    std::shared_ptr<const std::vector<uint8_t>> label;
+    int label_w = 0, label_h = 0;
     bool fade = false;       /* the picture's left and right edges fade to black (also with mode off) */
 };
 
