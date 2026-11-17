@@ -38,6 +38,7 @@ struct Overlay {
     double meters = -1;      /* to the turn; negative: unknown (the card shows no distance) */
     int exit = 0;            /* roundabout: the exit's number, 0 unknown */
     bool card = true;
+    bool white = true;       /* the arrows white (as BMW's), else blue */
 };
 
 /* Draws o into an atlas of w x h (Y, then U and V side by side at half size). t_ms: the

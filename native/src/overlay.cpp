@@ -211,10 +211,10 @@ struct Path {
 
 void draw_route(const Surface &s, const Road &r, const Overlay &o, int64_t t_ms)
 {
-    const Color blue = rgb(40, 150, 255), light = rgb(190, 225, 255);
+    const Color blue = o.white ? rgb(245, 245, 245) : rgb(40, 150, 255), light = rgb(190, 225, 255);
     const bool turn = o.kind != kStraight && o.kind != kDestination && fabs(o.angle) >= 10;
     /* how far ahead the turn is drawn: an unknown or far distance shows the lane only */
-    const double far = 45;
+    const double far = 70;
     const double to_turn = o.meters < 0 ? 1e9 : o.meters;
     Path path;
     path.radius = 7;
@@ -233,32 +233,41 @@ void draw_route(const Surface &s, const Road &r, const Overlay &o, int64_t t_ms)
         const double wing = 1.3, len = 1.6, thick = 0.9;
         const double nx = hz, nz = -hx;   /* to the right of the heading */
         const double tipx = x + hx * len, tipz = z + hz * len;
-        const int alpha = (int)(230 * std::max(0.25, std::min(1.0, 1.15 - d / (end + 6))));
+        const int alpha = (int)((o.white ? 170 : 230) * std::max(0.25, std::min(1.0, 1.15 - d / (end + 6))));
         for (int side = -1; side <= 1; side += 2) {
             const double xs[4] = {x + nx * wing * side, tipx, tipx - hx * thick, x + nx * wing * side - hx * thick};
             const double zs[4] = {z + nz * wing * side, tipz, tipz - hz * thick, z + nz * wing * side - hz * thick};
             ground_quad(s, r, xs, zs, blue, alpha);
         }
     }
-    /* at the turn: three arrows standing over the road, pointing into the new road, pulsing one after another */
+    /* at the turn: a row of large arrows standing over the road, pointing into the new road, lit one after
+     * another. Far away they would be a few pixels high, so they are made larger until they take up about a
+     * fifth of the picture's height (at most five times their real size). */
     if (turn && to_turn < far) {
         double x, z, hx, hz;
-        path.at(path.straight + arc + 2.5, &x, &z, &hx, &hz);
-        const int beat = (int)((t_ms / 220) % 4);
-        for (int i = 0; i < 3; i++) {
-            const double ax = x + hx * i * 3.0, az = z + hz * i * 3.0;
-            const double lo = 0.7, mid = 1.9, hi = 3.1, len = 2.4;
-            Pt back_lo, back_hi, tip, fin_lo, fin_hi;
-            if (!r.at(ax, mid - 0.5, az, &back_lo) || !r.at(ax, mid + 0.5, az, &back_hi) ||
-                !r.at(ax + hx * len, mid, az + hz * len, &tip) || !r.at(ax + hx * 1.1, lo, az + hz * 1.1, &fin_lo) ||
-                !r.at(ax + hx * 1.1, hi, az + hz * 1.1, &fin_hi))
+        path.at(path.straight + arc + 1.5, &x, &z, &hx, &hz);
+        double grow = 1;
+        Pt a, b;
+        if (r.at(x, 0.7, z, &a) && r.at(x, 3.1, z, &b)) {
+            const double px = fabs(a.y - b.y);
+            if (px > 0.5)
+                grow = std::max(1.0, std::min(5.0, s.h * 0.2 / px));
+        }
+        const int count = 4, beat = (int)((t_ms / 180) % (count + 2));
+        const Color &dim = o.white ? rgb(200, 200, 200) : blue, &lit = o.white ? rgb(255, 255, 255) : light;
+        for (int i = count - 1; i >= 0; i--) {
+            const double step = 2.6 * grow, len = 2.2 * grow, neck = 0.9 * grow;
+            const double ax = x + hx * i * step, az = z + hz * i * step;
+            const double lo = 0.7, mid = 0.7 + 1.2 * grow, hi = 0.7 + 2.4 * grow, shaft = 0.45 * grow;
+            Pt back_lo, back_hi, neck_lo, neck_hi, tip, fin_lo, fin_hi;
+            if (!r.at(ax, mid - shaft, az, &back_lo) || !r.at(ax, mid + shaft, az, &back_hi) ||
+                !r.at(ax + hx * neck, mid - shaft, az + hz * neck, &neck_lo) || !r.at(ax + hx * neck, mid + shaft, az + hz * neck, &neck_hi) ||
+                !r.at(ax + hx * len, mid, az + hz * len, &tip) || !r.at(ax + hx * neck, lo, az + hz * neck, &fin_lo) ||
+                !r.at(ax + hx * neck, hi, az + hz * neck, &fin_hi))
                 continue;
-            Pt neck_lo, neck_hi;
-            if (!r.at(ax + hx * 1.1, mid - 0.5, az + hz * 1.1, &neck_lo) || !r.at(ax + hx * 1.1, mid + 0.5, az + hz * 1.1, &neck_hi))
-                continue;
-            const Color &c = i == beat ? light : blue;
-            quad(s, back_lo, back_hi, neck_hi, neck_lo, c, 240);
-            tri(s, fin_lo, fin_hi, tip, c, 240);
+            const bool on = i == beat || i + 1 == beat;
+            quad(s, back_lo, back_hi, neck_hi, neck_lo, on ? lit : dim, on ? 250 : 170);
+            tri(s, fin_lo, fin_hi, tip, on ? lit : dim, on ? 250 : 170);
         }
     }
 }
@@ -278,7 +287,7 @@ void draw_card(const Surface &s, const Overlay &o)
     const int cw = pad + icon + (dist[0] ? pad + text_width(dist, k) : 0) + pad, ch = icon + 2 * pad;
     const int x0 = 3 * k, y0 = 3 * k;
     rect(s, x0, y0, cw, ch, rgb(8, 12, 20), 190);
-    rect(s, x0, y0 + ch - k, cw, k, rgb(40, 150, 255), 256);
+    rect(s, x0, y0 + ch - k, cw, k, o.white ? rgb(255, 255, 255) : rgb(40, 150, 255), 256);
     const Color white = rgb(255, 255, 255);
     /* the arrow: a shaft up from the bottom, then a head turned by the turn's angle */
     const double cx = x0 + pad + icon / 2.0, cy = y0 + pad + icon / 2.0, u = icon / 14.0;

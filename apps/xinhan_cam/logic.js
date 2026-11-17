@@ -346,6 +346,7 @@ function arConfig(s, mode, speed) {
         height_cm: calib(s, 'calH'), pitch_x10: Math.round(calib(s, 'calPitch') * 10), fov: calib(s, 'calFov'),
         yaw_x10: Math.round(calib(s, 'calYaw') * 10), shift_cm: calib(s, 'calShift'), curve: calib(s, 'calCurve'),
         card: s && s.arCard === 'off' ? 0 : 1,
+        white: s && s.arColor === 'blue' ? 0 : 1,
         speed: typeof speed === 'number' && speed >= 0 ? Math.round(speed) : -1,
     };
 }

@@ -27,7 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.5.0';
+const VERSION = '0.5.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -128,6 +128,7 @@ function arLine(ar, nav, now) {
     out.shift_cm = n('shift_cm', -150, 150, 0);
     out.curve = n('curve', 0, 100, 40);
     out.card = ar.card === 0 ? 0 : 1;
+    out.white = ar.white === 0 ? 0 : 1;
     if (ar.mode === 'marks') { out.mode = 'marks'; return JSON.stringify(out); }
     if (ar.mode === 'demo') {
         // a made-up turn 90 m ahead coming nearer at 30 km/h, then the next: right, left, a roundabout

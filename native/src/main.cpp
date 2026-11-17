@@ -372,6 +372,7 @@ void on_line(App &a, const std::string &line)
         o.meters = (double)to_long(j, "meters", -1);
         o.exit = (int)to_long(j, "exit", 0);
         o.card = to_long(j, "card", 1) != 0;
+        o.white = to_long(j, "white", 1) != 0;
         if (o.mode != a.ar_mode) {
             log_info("ar: %s", o.mode == kArMarks ? "marks" : o.mode == kArRoute ? "route" : "off");
             a.ar_mode = o.mode;

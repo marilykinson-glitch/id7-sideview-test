@@ -1,4 +1,4 @@
-# Camera xi nhan 0.5.0 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.5.1 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 
@@ -13,7 +13,7 @@ Chưa phần nào của 0.5.0 được thử trên xe.
 - **Tab Canh chỉnh.** Chọn *Gương trái*, *Gương phải* hoặc *Camera trước*; camera đó hiện trên đồng hồ suốt lúc mở tab.
   - Camera gương: dịch phần hình được lấy (lên, xuống, trái, phải) và phóng to riêng từng bên.
   - Camera trước: độ cao, chúc xuống, góc nhìn, lệch trái/phải, dịch ngang, độ cong mắt cá, phóng to. Trên hình có hai vạch vàng (mép làn rộng 3 m) và vạch ngang ở 5, 10, 20 m: chỉnh đến khi chúng nằm đúng trên mặt đường. Mũi tên dẫn đường dùng chính các số này.
-- **Tab Dẫn đường: mũi tên trên camera trước.** Khi sắp tới chỗ rẽ (mặc định còn 250 m) camera trước hiện giữa đồng hồ, chevron xanh chạy trên mặt đường rồi bẻ vào hướng rẽ, ba mũi tên đứng ở chỗ rẽ, góc trên có thẻ mũi tên và khoảng cách. Chọn *Khi sắp rẽ*, *Suốt đường* hoặc *Tắt*. Nút *Xem thử 25 giây* vẽ một chỗ rẽ giả để xem hình dáng mà không cần dẫn đường.
+- **Tab Dẫn đường: mũi tên trên camera trước.** Khi sắp tới chỗ rẽ (mặc định còn 250 m) camera trước hiện giữa đồng hồ, vệt chevron chạy trên mặt đường rồi bẻ vào hướng rẽ, bốn mũi tên trắng lớn đứng ở chỗ rẽ và sáng lần lượt (0.5.1; đổi sang xanh ở mục *Màu mũi tên*), góc trên có thẻ mũi tên và khoảng cách. Chọn *Khi sắp rẽ*, *Suốt đường* hoặc *Tắt*. Nút *Xem thử 25 giây* vẽ một chỗ rẽ giả để xem hình dáng mà không cần dẫn đường.
   - Lệnh rẽ được trợ thủ đọc từ dịch vụ dẫn đường của chính đầu xe (giao diện `...Guidance`, trường `conclusiveDart`), chỉ đọc. Bản đồ BMW chắc chắn đưa dữ liệu vào đó. CarPlay và Android Auto thì tùy đầu xe có nhận lệnh rẽ của điện thoại hay không; trên iDrive 7 chưa ai xác nhận. Waze không gửi lệnh rẽ cho xe nên sẽ không có mũi tên.
   - Tab này hiện đang đọc được gì (dòng *Đọc dẫn đường*, *Nguồn*, *Lệnh kế tiếp*, *Dữ liệu thô*). Nhật ký đầy đủ: `/var/opt/xinhan-cam/nav.log` trên đầu xe.
   - Khác bản gốc BMW: xe chỉ cho biết "rẽ gì, còn bao xa", không cho hình dạng ngã rẽ, nên mũi tên đặt theo khoảng cách chứ không bám đúng mép đường; không có tên đường trên thẻ.

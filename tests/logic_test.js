@@ -263,7 +263,7 @@ t('Calibrate page: a mirror camera\'s part moved and enlarged, the front camera\
     assert.strictEqual(v({ zoom: '200', zoomL: 150 }).left, v({ zoom: '100', zoomL: 300 }).left);
     assert.strictEqual(L.frontConfig({}, T).front, '0,0,500,500');
     assert.strictEqual(L.frontConfig({ frontZoom: 200 }, T).front, '125,125,250,250');
-    assert.deepStrictEqual(L.arConfig({}, 'marks', null), { mode: 'marks', height_cm: 70, pitch_x10: 80, fov: 100, yaw_x10: 0, shift_cm: 0, curve: 40, card: 1, speed: -1 });
+    assert.deepStrictEqual(L.arConfig({}, 'marks', null), { mode: 'marks', height_cm: 70, pitch_x10: 80, fov: 100, yaw_x10: 0, shift_cm: 0, curve: 40, card: 1, white: 1, speed: -1 });
     const a = L.arConfig({ calH: 85, calPitch: 99, calFov: 'x', calYaw: -3, arCard: 'off' }, 'route', 42.4);
     assert.deepStrictEqual([a.mode, a.height_cm, a.pitch_x10, a.fov, a.yaw_x10, a.card, a.speed], ['route', 85, 450, 100, -30, 0, 42]);
     assert.strictEqual(L.arConfig({}, 'zz').mode, 'off');
