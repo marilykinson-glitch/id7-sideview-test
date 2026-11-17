@@ -2,7 +2,7 @@
   "id": "xinhan_cam",
   "title": "Camera xi nhan",
   "description": "Bật xi nhan bên nào thì đồng hồ hiện camera gương bên đó (kiểu Hyundai/Kia); có thể hiện camera trước ở giữa đồng hồ. Cần xe có camera 360, trợ thủ xinhan-cam (tự cài kèm) và cluster-render.",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "startType": "autostart",
   "vendor": "custom",
   "loggingId": "OAXN",
@@ -138,19 +138,36 @@
       "key": "blinkFront",
       "label": "Khi xi nhan",
       "type": "choice",
-      "default": "nav",
+      "default": "always",
       "options": [
         [
-          "nav",
-          "Giữ cam trước khi có mũi tên"
+          "always",
+          "Giữ cam trước"
         ],
         [
-          "always",
-          "Luôn giữ cam trước"
+          "nav",
+          "Giữ khi có mũi tên"
         ],
         [
           "mirror",
           "Chỉ cam gương"
+        ]
+      ],
+      "reset": 1
+    },
+    {
+      "key": "dualTarget",
+      "label": "Cam trước lúc xi nhan",
+      "type": "choice",
+      "default": "map",
+      "options": [
+        [
+          "map",
+          "Ở vùng bản đồ"
+        ],
+        [
+          "panel",
+          "Chung vùng cam gương"
         ]
       ]
     },

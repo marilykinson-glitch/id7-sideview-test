@@ -292,7 +292,7 @@ function frontConfig(s, targets, dual) {
     // place the map area has there (the cluster's middle): two videos on one target share one of the display's
     // two video buffers, so a phone's map on the cluster (a third video) no longer leaves the pair without room
     let target = 'map';
-    if (dual) {
+    if (dual && s.dualTarget === 'panel') {
         const p = (targets && targets.panel) || { w: 1920, h: 720 };
         target = 'panel';
         x += Math.round((p.w - t.w) / 2);

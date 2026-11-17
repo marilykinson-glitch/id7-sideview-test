@@ -313,7 +313,8 @@ t('plan: with a signal on the front camera stays and the mirror camera gets its 
     assert.deepStrictEqual(L.auxConfig({}, T, 'right'), { side: 'right', target: 'panel', w: 320, h: 320, x: 1380, y: 240, fps: 10, crop: '625,500,375,500', rot: 0, flip: 0, sar: 100, round: 1 });
     assert.strictEqual(L.auxConfig({}, T, null), null);
     // beside a mirror camera the front camera is on the whole-cluster target too, at the map area's place there
-    const fd = L.viewConfig({ frontSize: 'wide' }, T, 'left', 'front', true), f1 = L.viewConfig({ frontSize: 'wide' }, T, 'left', 'front', false);
+    const fd = L.viewConfig({ frontSize: 'wide', dualTarget: 'panel' }, T, 'left', 'front', true), f1 = L.viewConfig({ frontSize: 'wide' }, T, 'left', 'front', false);
+    assert.strictEqual(L.viewConfig({ frontSize: 'wide' }, T, 'left', 'front', true).target, 'map');            // by default it stays in the map area
     assert.deepStrictEqual([f1.target, f1.x, f1.y, fd.target, fd.x, fd.y, fd.w, fd.h], ['map', 64, 24, 'panel', 480, 144, 960, 432]);
     const H = require(path.join(__dirname, '..', 'tools', 'xinhan-cam', 'xinhan-cam.js'));
     assert.strictEqual(H.auxLine(null), '{"op":"aux","side":"none"}');

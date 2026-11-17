@@ -289,9 +289,9 @@ mgu.run({
                 v.rows.push({ label: 'Hai camera',
                     kind: oldHelper || (n && n.aux_state === 'refused') || now - auxRefusedAt < 15000 ? 'warn' : lastPlan.aux && n && n.aux_shown ? 'go' : 'dim',
                     text: oldHelper ? 'trợ thủ còn bản ' + st.version + ': khởi động lại màn hình để lên bản mới'
-                        : lastPlan.aux ? (n && n.aux_shown ? 'đang hiện cả hai' : 'đang bật camera gương (' + ((n && n.aux_state) || '?') + ((n && n.aux_reason) ? ': ' + n.aux_reason : '') + ')')
+                        : lastPlan.aux ? (n && n.aux_shown && n.shown && n.layer === 'shown' ? 'đang hiện cả hai' : 'cam trước ' + (n && n.shown ? 'đã gửi hình' : 'chưa hiện') + ' (' + ((n && n.target) || '?') + ', ' + ((n && n.layer) || '?') + ((n && n.layer_reason) ? ': ' + n.layer_reason : '') + ') · cam gương ' + (n && n.aux_shown ? 'đang hiện' : ((n && n.aux_state) || '?') + ((n && n.aux_reason) ? ': ' + n.aux_reason : '')))
                             : now - auxRefusedAt < 15000 ? 'bộ vẽ từ chối hình thứ hai (' + auxReason + ')'
-                                : lastPlan.dualWhy ? 'không giữ cam trước: ' + lastPlan.dualWhy : 'sẵn sàng (khi xi nhan lúc có mũi tên)' });
+                                : lastPlan.dualWhy ? 'không giữ cam trước: ' + lastPlan.dualWhy : 'sẵn sàng' });
             }
             v.version = 'Bản ' + ctx.spec.version + (st && st.version ? ' · trợ thủ ' + st.version : '');
             if (page === 1 || page === 2) {
