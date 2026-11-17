@@ -388,6 +388,10 @@ function arConfig(s, mode, speed) {
 function plan(i) {
     const none = (why, want) => ({ view: 'none', why, want: want === undefined ? null : want });
     if (!i.enabled && !i.test) return none('Đang tắt');
+    // the speed limit setting is for the mirror cameras: above it a turn signal is as if it were off (the front
+    // camera, the route, stay as they are)
+    const fast = !i.test && i.maxSpeed && i.speed !== null && i.speed !== undefined && i.speed > i.maxSpeed;
+    if (fast && i.side) return plan(Object.assign({}, i, { side: null, frontWhy: 'Xe chạy nhanh hơn ' + i.maxSpeed + ' km/h' }));
     // the front camera kept beside a mirror camera (dual, below) needs the four-camera picture: while that is
     // wanted the single-camera mode steps back (the unit is not switched to the mirror camera alone)
     const keepFront = !i.auxRefused && !i.test && !!i.side && i.enabled &&
@@ -413,9 +417,6 @@ function plan(i) {
         ((i.dual === 'nav' && dualAr) || (i.dual === 'always' && (dualAr || frontWanted(i))));
     const ar = i.test === 'calfront' ? 'marks' : i.test === 'ardemo' ? 'demo' : arOn ? 'route' : 'off';
     if (!side && i.test !== 'all' && !frontOn) return none(i.frontWhy || 'Chờ xi nhan', want);
-    if (!i.test && i.maxSpeed && i.speed !== null && i.speed !== undefined && i.speed > i.maxSpeed) {
-        return none('Xe chạy nhanh hơn ' + i.maxSpeed + ' km/h', want);
-    }
     const h = i.helper || {};
     if (!h.ok) return none('Trợ thủ xinhan-cam chưa chạy', want);
     const cam = i.cam || { kind: 'unknown' };

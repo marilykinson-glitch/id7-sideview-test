@@ -46,7 +46,34 @@ const errText = (e) => String(e && e.message || e).slice(0, 120);
 mgu.run({
     async start(ctx) {
         const { ui, settings, log, signals } = ctx;
-        const controlFile = path.join(ctx.dataDir, 'control.json');
+        // The control file goes to a folder in RAM the helper makes for the app (/run/xinhan-cam/app): it is
+        // rewritten twice a second while a view shows, which on the head unit's flash would wear it for nothing.
+        // Without that folder (a helper older than 0.7.0, or not up yet) the app's data folder, as before.
+        const RUN_DIR = path.join(path.dirname(STATUS), 'app');
+        let runOk = false, runTriedAt = -1e9;
+        // (tried again every 2 s once the helper has made it, as at a start where the app comes up first; else every 30 s)
+        const ctlDir = (now) => (runOk || now - runTriedAt >= 30000 || (now - runTriedAt >= 2000 && fs.existsSync(RUN_DIR)) ? RUN_DIR : ctx.dataDir);
+        // write a file into the control folder: RAM when it can, else the data folder; returns the folder used
+        function put(name, data, now) {
+            const dir = ctlDir(now);
+            if (dir === RUN_DIR) {
+                try {
+                    fs.writeFileSync(path.join(dir, name + '.tmp'), data);
+                    fs.renameSync(path.join(dir, name + '.tmp'), path.join(dir, name));
+                    if (!runOk) { runOk = true; log.info('control file in RAM: ' + dir); dropOld(); }
+                    return dir;
+                } catch (e) {
+                    if (runOk || runTriedAt < 0) log.info('control file in the data folder (' + errText(e) + ')');
+                    runOk = false;
+                    runTriedAt = now;
+                }
+            }
+            fs.writeFileSync(path.join(ctx.dataDir, name + '.tmp'), data);
+            fs.renameSync(path.join(ctx.dataDir, name + '.tmp'), path.join(ctx.dataDir, name));
+            return ctx.dataDir;
+        }
+        // once the RAM folder works, what an earlier version left in the data folder goes
+        function dropOld() { ['control.json', 'label.bin'].forEach((f) => { try { fs.unlinkSync(path.join(ctx.dataDir, f)); } catch (e) { /* none */ } }); }
         // the settings the page's Position tab keeps besides the listed ones: where in the dial the view sits
         const EXTRA = ['gaugeDx', 'gaugeDy', 'panLx', 'panLy', 'panRx', 'panRy', 'zoomL', 'zoomR'].concat(Object.keys(L.CALIB));
         const cfg = () => {
@@ -74,7 +101,7 @@ mgu.run({
         }, log).then((sub) => { lightState = sub.error ? 'Lỗi: ' + errText(sub.error) : 'Đã kết nối'; })
             .catch((e) => { lightState = 'Lỗi: ' + errText(e); });
 
-        /* ---- the speed (only for the "slower than" setting) ---- */
+        /* ---- the speed (the speed limit, the front camera below 30 / 60, the route's distance) ---- */
         let speed = null, speedAt = 0;
         signals.watch(IF.speed, '1', {
             statusCarSpeed2: (v) => {
@@ -83,7 +110,7 @@ mgu.run({
                 speed = raw * 0.015625;             // BMW's scaling, km/h
                 speedAt = Date.now();
             },
-        }, log, { pollMs: 1000, active: () => Number(settings.get('maxSpeed')) > 0 })
+        }, log, { pollMs: 1000 })
             .then((sub) => { if (sub.error) log.warn('speed: ' + sub.error); }).catch((e) => log.warn('speed: ' + e));
 
         /* ---- the camera unit ---- */
@@ -158,12 +185,13 @@ mgu.run({
             lastControl = body;
             lastWriteAt = now;
             try {
-                fs.writeFileSync(controlFile + '.tmp', JSON.stringify({ at: new Date(now).toISOString(), seq, view, config, ar, aux }));
-                fs.renameSync(controlFile + '.tmp', controlFile);
+                const dir = put('control.json', JSON.stringify({ at: new Date(now).toISOString(), seq, view, config, ar, aux }), now);
+                // the road's name drawn for another folder: drawn again into this one
+                if (streetPic && streetPic.dir !== dir) labelFor = null;
             } catch (e) { log.warn('control file: ' + errText(e)); }
         };
         // the road's name for the turn card, drawn here (the kit's letters have every Vietnamese mark) into
-        // data/label.bin, which the helper hands to the decoder: one byte a pixel, 0 nothing to 255 white
+        // label.bin beside the control file, which the helper hands to the decoder: one byte a pixel, 0 nothing to 255 white
         let labelFor = null, streetPic = null, labelSeq = 0;
         function streetLabel(street, s) {
             const size = s.frontSize === 'small' ? 15 : 19;
@@ -180,9 +208,8 @@ mgu.run({
                 cv.text(street, w / 2, Math.round(h / 2 + size * 0.36), size, '#ffffff', { literal: true, font: 'bold', align: 'center' });
                 const out = Buffer.alloc(w * h);
                 for (let i = 0; i < w * h; i++) out[i] = cv.d[i * 4 + 1];
-                fs.writeFileSync(path.join(ctx.dataDir, 'label.bin.tmp'), out);
-                fs.renameSync(path.join(ctx.dataDir, 'label.bin.tmp'), path.join(ctx.dataDir, 'label.bin'));
-                streetPic = { w, h, seq: ++labelSeq, street };
+                const dir = put('label.bin', out, Date.now());
+                streetPic = { w, h, seq: ++labelSeq, street, dir };
             } catch (e) { log.warn('street label: ' + errText(e)); }
             return streetPic;
         }
@@ -220,7 +247,7 @@ mgu.run({
             // drawn; nav: whether the helper should read the navigation at all
             const kmh = p.ar === 'route' && speed !== null && now - speedAt < 3000 ? Math.round(speed / 5) * 5 : -1;
             const nv = navNow(st);
-            const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), p.ar === 'route' && nv && nv.street && s.arStreet !== 'off' ? { label: streetLabel(nv.street, s) } : {}, { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
+            const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), p.ar === 'route' && nv && nv.street && s.arStreet !== 'off' && streetLabel(nv.street, s) ? { label: { w: streetPic.w, h: streetPic.h, seq: streetPic.seq, street: streetPic.street } } : {}, { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
             writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view, !!p.aux), ar, p.aux ? L.auxConfig(s, targets, p.aux) : null, now);
             // the camera unit: at once when what is wanted changes or a side comes on, twice a second
             // while a view is wanted or the unit is not in its mode yet, else every 2 s
@@ -414,7 +441,7 @@ mgu.run({
 
         // MainApp asks the app to stop: the camera unit gets its mode back, the tool is told at once
         if (ctx.app && ctx.app.on) ctx.app.on('shutdown', () => {
-            try { fs.writeFileSync(controlFile, JSON.stringify({ at: new Date().toISOString(), seq: ++seq, view: 'none', config: null })); } catch (e) { /* the tool drops the view by itself */ }
+            try { put('control.json', JSON.stringify({ at: new Date().toISOString(), seq: ++seq, view: 'none', config: null }), Date.now()); } catch (e) { /* the tool drops the view by itself */ }
             cam.release();
         });
         tick();

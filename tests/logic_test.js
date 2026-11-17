@@ -313,7 +313,10 @@ t('plan: with a signal on the front camera stays and the mirror camera gets its 
     assert.strictEqual(P({ dual: 'nav', nav, mode: 'single', cam: { known: true, kind: 'left', text: 'x' } }).view, 'none');   // until the unit is back on all four
     assert.deepStrictEqual([P({ dual: 'mirror', nav, mode: 'single', cam: { known: true, kind: 'left', text: 'x' } }).view, P({ dual: 'mirror', nav, mode: 'single' }).want], ['left', 3]);
     assert.strictEqual(L.auxConfig({ mode: 'single' }, L.parseTargets('map:1088x480,panel:1920x720'), 'left').crop, '0,500,375,500');
-    assert.strictEqual(P({ dual: 'nav', nav, maxSpeed: 30 }).view, 'none');                   // the speed limit holds as before
+    // the speed limit is for the mirror cameras: above it the front camera and the route stay, without the mirror camera
+    assert.deepStrictEqual(P({ dual: 'nav', nav, maxSpeed: 30 }), { view: 'front', why: '', want: 7, ar: 'route' });
+    assert.deepStrictEqual([P({ dual: 'mirror', maxSpeed: 30 }).view, P({ dual: 'mirror', maxSpeed: 30 }).why], ['none', 'Xe chạy nhanh hơn 30 km/h']);
+    assert.strictEqual(P({ dual: 'nav', nav, maxSpeed: 50 }).aux, 'left');                                 // below it: both
     const T = L.parseTargets('map:1088x480,panel:1920x720');
     assert.deepStrictEqual(L.auxConfig({}, T, 'right'), { side: 'right', target: 'panel', w: 320, h: 320, x: 1380, y: 240, fps: 10, crop: '625,500,375,500', rot: 0, flip: 0, sar: 100, round: 1 });
     assert.strictEqual(L.auxConfig({}, T, null), null);
@@ -360,10 +363,37 @@ t('helper: the navigation\'s values, however the unit shapes them; the decoder\'
         formattedDistance: { distance: '50', unit: 'METER', rawDistance: 1 }, description: { elements: [{ text: 'Tân Phú / Đ. Số 23' }] }, guidingStep: 'GS2', direction: 'RIGHT', roadlinks: { nil: 'NO_VALUE' } } }] }] };
     assert.deepStrictEqual(N.eventManeuver(car), { kind: 'turn', angle: 90, meters: 50, exit: 0, street: 'Tân Phú / Đ. Số 23' });
     assert.strictEqual(N.navOf({ events: car, provider: 'ANDROID_AUTO' }).street, 'Tân Phú / Đ. Số 23');
-    const lab = JSON.parse(H.arLine({ mode: 'route', label: { w: 200, h: 30, seq: 3, street: 'A' } }, { active: true, kind: 'turn', angle: 90, meters: 50, at: 0, street: 'A' }, 0, '/data'));
-    assert.deepStrictEqual([lab.label, lab.label_w, lab.label_h, lab.label_seq], ['/data/label.bin', 200, 30, 3]);
-    // a label drawn for another road's name is not shown with this turn
-    assert.strictEqual(JSON.parse(H.arLine({ mode: 'route', label: { w: 200, h: 30, seq: 3, street: 'A' } }, { active: true, kind: 'turn', angle: 90, meters: 50, at: 0, street: 'B' }, 0, '/data')).label, undefined);
+    // the road's name: the app's label.bin, copied into the helper's own folder for the decoder
+    const fs = require('fs'), os = require('os');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'xl-')), appDir = path.join(tmp, 'app'), runDir = path.join(tmp, 'run');
+    fs.mkdirSync(appDir); fs.mkdirSync(runDir);
+    H.CFG.run = runDir; H._reset();
+    const LA = (street, seq, dir) => JSON.parse(H.arLine({ mode: 'route', label: { w: 200, h: 30, seq, street: 'A' } }, { active: true, kind: 'turn', angle: 90, meters: 50, at: 0, street }, 0, dir));
+    assert.strictEqual(LA('A', 3, appDir).label, undefined);                                         // no file yet
+    fs.writeFileSync(path.join(appDir, 'label.bin'), Buffer.alloc(200 * 30, 255));
+    const lab = LA('A', 3, appDir);
+    assert.deepStrictEqual([lab.label, lab.label_w, lab.label_h, lab.label_seq], [path.join(runDir, 'label.bin'), 200, 30, 3]);
+    assert.strictEqual(fs.readFileSync(path.join(runDir, 'label.bin')).length, 6000);
+    assert.strictEqual(LA('B', 3, appDir).label, undefined);                                         // drawn for another road's name
+    fs.unlinkSync(path.join(appDir, 'label.bin'));
+    fs.writeFileSync(path.join(tmp, 'secret'), Buffer.alloc(6000, 7));
+    fs.symlinkSync(path.join(tmp, 'secret'), path.join(appDir, 'label.bin'));
+    assert.strictEqual(LA('A', 4, appDir).label, undefined);                                         // a link the app put there: not followed
+    fs.unlinkSync(path.join(appDir, 'label.bin'));
+    fs.writeFileSync(path.join(appDir, 'label.bin'), Buffer.alloc(100));
+    assert.strictEqual(LA('A', 5, appDir).label, undefined);                                         // not the size it says
+    // the control file: the newer of the one in RAM and the one in the data folder (an app older than 0.7.0)
+    const root = path.join(tmp, 'oap'); fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+    const app = { id: 'xinhan_cam', root };
+    const now = Date.now(), put = (f, at, view) => fs.writeFileSync(f, JSON.stringify({ at: new Date(at).toISOString(), view, config: {} }));
+    H.appRunDir(app, now);
+    assert.ok(fs.statSync(path.join(runDir, 'app')).isDirectory() && (fs.statSync(path.join(runDir, 'app')).mode & 0o777) === 0o700, 'the app\'s folder in RAM is made, 0700');
+    put(path.join(root, 'data', 'control.json'), now - 100, 'left');
+    assert.deepStrictEqual([H.wanted(app, now).view, H.wanted(app, now).dir], ['left', path.join(root, 'data')]);
+    put(path.join(runDir, 'app', 'control.json'), now - 50, 'right');
+    assert.deepStrictEqual([H.wanted(app, now).view, H.wanted(app, now).dir], ['right', path.join(runDir, 'app')]);
+    put(path.join(root, 'data', 'control.json'), now - 10, 'all');                                    // the data folder's newer: it counts
+    assert.strictEqual(H.wanted(app, now).view, 'all');
     assert.strictEqual(N.eventManeuver({ viewContent: [] }).kind, null);
     assert.deepStrictEqual(N.eventManeuver({ out: { viewContent: [{ eventsInView: [{ intersection: ev({ direction: 'SLIGHT_LEFT' }).value }] }] } }).angle, -30);
     const placeholder = { maneuver: { type: 'placeholderElement', value: {} } };

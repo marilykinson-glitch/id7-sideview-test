@@ -3,7 +3,8 @@
  * xinhan-cam.js - the root helper of the Camera xi nhan app (apps/xinhan_cam): keeps the decoder
  * (mgu-sidecam, beside this file) running and passes on what the app wants.
  *
- *   the app   -> <its folder>/data/control.json   { at, seq, view, config, ar }
+ *   the app   -> /run/xinhan-cam/app/control.json  { at, seq, view, config, ar, aux }  (RAM: a folder this makes and
+ *                gives the app; an app older than 0.7.0 writes <its folder>/data/control.json, read too: the newer counts)
  *   nav.js (a child, only while the app wants the navigation's turns: ar.nav) -> the next turn, which goes
  *                                                  to the decoder as {"op":"ar",...} with the app's calibration,
  *                                                  counted nearer by the car's speed between two messages
@@ -27,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.6.1';
+const VERSION = '0.7.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -83,18 +84,45 @@ function findApp(now) {
  * What the app wants now: { view, config, why }. view is 'none' unless the control file is fresh (its
  * own "at" within staleMs of now, by this clock: both run on the head unit) and names a view.
  */
+/** The app's folder in RAM (its control file and the road's name): made for the app's user, checked every 10 s. */
+const APP_RUN = () => path.join(CFG.run, 'app');
+let appRunFor = null, appRunAt = 0;
+function appRunDir(app, now) {
+    if (!app) return;
+    let st;
+    try { st = fs.statSync(path.join(app.root, 'data')); } catch (e) { return; }
+    const key = st.uid + ':' + st.gid;
+    if (key === appRunFor && now - appRunAt < 10000) return;
+    appRunAt = now;
+    try {
+        try { fs.mkdirSync(APP_RUN(), 0o700); } catch (e) { if (e.code !== 'EEXIST') throw e; }
+        if (!fs.lstatSync(APP_RUN()).isDirectory()) { fs.unlinkSync(APP_RUN()); fs.mkdirSync(APP_RUN(), 0o700); }
+        fs.chownSync(APP_RUN(), st.uid, st.gid);
+        fs.chmodSync(APP_RUN(), 0o700);
+        if (key !== appRunFor) log('the app\'s folder in RAM: ' + APP_RUN() + ' (' + key + ')');
+        appRunFor = key;
+    } catch (e) { if (key !== appRunFor) { appRunFor = key; log('the app\'s folder in RAM: ' + e.message); } }
+}
+
+/** The app's control file and its folder: the newer of the one in RAM and the one in its data folder. */
+function controlOf(app) {
+    const a = readJson(path.join(APP_RUN(), 'control.json')), b = readJson(path.join(app.root, 'data', 'control.json'));
+    const at = (c) => (c && typeof c === 'object' ? Date.parse(c.at) || 0 : -1);
+    return a && at(a) >= at(b) ? { c: a, dir: APP_RUN() } : { c: b, dir: path.join(app.root, 'data') };
+}
+
 function wanted(app, now) {
     if (!app) return { view: 'none', config: null, why: 'the app is not installed' };
-    const c = readJson(path.join(app.root, 'data', 'control.json'));
+    const got = controlOf(app), c = got.c;
     if (!c || typeof c !== 'object') return { view: 'none', config: null, why: 'the app has not started yet' };
     const config = c.config && typeof c.config === 'object' ? c.config : null;
     const ar = c.ar && typeof c.ar === 'object' ? c.ar : null;
     const aux = c.aux && typeof c.aux === 'object' ? c.aux : null;
     const view = VIEWS.indexOf(c.view) >= 0 ? c.view : 'none';
-    if (view === 'none') return { view, config, ar, aux, why: '' };
+    if (view === 'none') return { view, config, ar, aux, dir: got.dir, why: '' };
     const age = now - Date.parse(c.at);
-    if (!(age >= -staleSlack() && age <= CFG.staleMs)) return { view: 'none', config, ar, aux, why: 'the app stopped confirming the view' };
-    return { view, config, ar, aux, why: '' };
+    if (!(age >= -staleSlack() && age <= CFG.staleMs)) return { view: 'none', config, ar, aux, dir: got.dir, why: 'the app stopped confirming the view' };
+    return { view, config, ar, aux, dir: got.dir, why: '' };
 }
 // the head unit sets its clock a while after it starts: a control file "from the future" by less than
 // this is still the app's (the jump is seen by both at once; the next write is in step again)
@@ -121,6 +149,24 @@ function auxLine(aux) {
     if (typeof aux.crop === 'string' && /^[0-9,]{7,24}$/.test(aux.crop)) out.crop = aux.crop;
     ['w', 'h', 'x', 'y', 'fps', 'rot', 'flip', 'sar', 'round'].forEach((k) => { if (Number.isFinite(aux[k])) out[k] = Math.round(aux[k]); });
     return JSON.stringify(out);
+}
+
+let labelSeq = null;
+function copyLabel(from, bytes, seq) {
+    if (seq === labelSeq) return true;
+    let fd = -1;
+    try {
+        fd = fs.openSync(from, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+        const st = fs.fstatSync(fd);
+        if (!st.isFile() || st.size !== bytes) return false;
+        const buf = Buffer.alloc(bytes);
+        if (fs.readSync(fd, buf, 0, bytes, 0) !== bytes) return false;
+        const to = path.join(CFG.run, 'label.bin');
+        fs.writeFileSync(to + '.tmp', buf);
+        fs.renameSync(to + '.tmp', to);
+        labelSeq = seq;
+        return true;
+    } catch (e) { return false; } finally { if (fd >= 0) try { fs.closeSync(fd); } catch (e) { /* closed */ } }
 }
 
 /**
@@ -165,10 +211,12 @@ function arLine(ar, nav, now, dataDir) {
         m = Math.max(0, m - ar.speed / 3.6 * dt / 1000);
     }
     out.meters = m < 0 ? -1 : Math.round(m);
-    // the road's name, as a picture the app drew into its data folder (label.bin: w x h bytes)
+    // the road's name, as a picture the app drew beside its control file (label.bin: w x h bytes), copied to
+    // this helper's own folder first (a plain file of that size only: never a link the app put there)
     const l = ar.label;
-    if (dataDir && l && typeof l === 'object' && Number.isFinite(l.w) && Number.isFinite(l.h) && Number.isFinite(l.seq) && l.street === nav.street) {
-        out.label = path.join(dataDir, 'label.bin');
+    if (dataDir && l && typeof l === 'object' && Number.isFinite(l.w) && Number.isFinite(l.h) && Number.isFinite(l.seq) && l.street === nav.street &&
+        l.w >= 8 && l.w <= 1920 && l.h >= 8 && l.h <= 96 && copyLabel(path.join(dataDir, 'label.bin'), Math.round(l.w) * Math.round(l.h), l.seq)) {
+        out.label = path.join(CFG.run, 'label.bin');
         out.label_w = Math.round(l.w);
         out.label_h = Math.round(l.h);
         out.label_seq = Math.round(l.seq);
@@ -192,7 +240,7 @@ function run() {
     let navChild = null, navOut = '', navDue = 0, sentAr = null, sentArAt = 0, sentAux = null, sentAuxAt = 0;
     const nav = { wanted: false, state: 'not started', ifaces: [], proxies: [], note: '', last: null, raw: '', at: 0 };
     const navLog = (m) => {
-        const f = CFG.log.replace(/[^/]*$/, 'nav.log');
+        const f = path.join(CFG.run, 'nav.log');      // RAM: written every second or so while a route runs
         try { if (fs.statSync(f).size > LOG_MAX) fs.renameSync(f, f + '.1'); } catch (e) { /* no file yet */ }
         try { fs.appendFileSync(f, new Date().toISOString() + ' ' + m + '\n'); } catch (e) { /* no folder (tests) */ }
     };
@@ -324,6 +372,7 @@ function run() {
     function tick() {
         const now = Date.now();
         const app = findApp(now);
+        appRunDir(app, now);
         const w = wanted(app, now);
         if ((app ? app.id : null) !== lastApp) { lastApp = app ? app.id : null; log(app ? 'app ' + app.id + ' at ' + app.root : 'the app is not installed'); }
         if (w.why !== lastWhy) { lastWhy = w.why; if (w.why) log('no view: ' + w.why); }
@@ -331,7 +380,7 @@ function run() {
             const cl = configLine(w.config);
             if (cl && cl !== sentConfig && send(cl)) sentConfig = cl;
             // what is drawn on the front camera: when it changes, at most 5 times a second
-            const al = arLine(w.view === 'front' ? w.ar : null, nav.last, now, app ? path.join(app.root, 'data') : null);
+            const al = arLine(w.view === 'front' ? w.ar : null, nav.last, now, w.dir || null);
             if (al !== sentAr && now - sentArAt >= 200 && send(al)) { sentAr = al; sentArAt = now; }
             // the second view: with the front camera only; when it changes, and once a second while on
             const xl = auxLine(w.view === 'front' ? w.aux : null);
@@ -378,4 +427,4 @@ if (require.main === module) {
     else { process.stderr.write('usage: node xinhan-cam.js run|status\n'); process.exit(2); }
 }
 
-module.exports = { VERSION, CFG, findApp, wanted, configLine, arLine, auxLine, run, _reset: () => { appCache = null; appScanAt = 0; } };
+module.exports = { VERSION, CFG, findApp, wanted, configLine, arLine, auxLine, appRunDir, run, _reset: () => { appCache = null; appScanAt = 0; appRunFor = null; labelSeq = null; } };

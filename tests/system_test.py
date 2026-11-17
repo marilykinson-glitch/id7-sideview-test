@@ -171,9 +171,14 @@ class Rig:
         except OSError:
             return False
 
+    def ctl_dir(self):
+        """Where the app's control file is: the folder in RAM the helper made for it, else its data folder."""
+        run = os.path.join(self.dir, 'run', 'app')
+        return run if os.path.exists(os.path.join(run, 'control.json')) else self.data
+
     def control(self):
         try:
-            return json.load(open(os.path.join(self.data, 'control.json')))
+            return json.load(open(os.path.join(self.ctl_dir(), 'control.json')))
         except (OSError, ValueError):
             return {}
 
@@ -226,9 +231,10 @@ def t_drive():
         check(r.control().get('view') == 'none' and not r.cr.visible(), 'nothing shown without a signal')
         c = r.control().get('config') or {}
         check(c.get('left') == '0,500,500,500' and c.get('w') == 512 and c.get('x') == 288, 'the config reached the control file (512x384 at 288, the lower quarters)')
-        mtime = os.path.getmtime(os.path.join(r.data, 'control.json'))
+        mtime = os.path.getmtime(os.path.join(r.ctl_dir(), 'control.json'))
         time.sleep(1.2)
-        check(os.path.getmtime(os.path.join(r.data, 'control.json')) == mtime, 'the control file is not rewritten while nothing changes (no flash wear)')
+        check(os.path.getmtime(os.path.join(r.ctl_dir(), 'control.json')) == mtime, 'the control file is not rewritten while nothing changes')
+        check(r.ctl_dir() == os.path.join(r.dir, 'run', 'app') and not os.path.exists(os.path.join(r.data, 'control.json')), 'it is in the RAM folder the helper made, not in the data folder (flash)')
 
         t0 = time.time()
         r.cmd(light=[0, LEFT_ON])
@@ -387,9 +393,9 @@ def t_drive():
         r.nav(active=True, kind='turn', angle=90, meters=180, exit=0, provider='ANDROID_AUTO', state='INACTIVE')
         check(r.wait(lambda: r.shows(RED) and (r.control().get('ar') or {}).get('mode') == 'route' and r.helper_said('ar: route'), 5), '180 m before the turn: the front camera with the route on it')
         r.nav(active=True, kind='turn', angle=90, meters=170, exit=0, provider='ANDROID_AUTO', state='INACTIVE', street='Tân Phú / Đ. Số 23')
-        check(r.wait(lambda: ((r.control().get('ar') or {}).get('label') or {}).get('street') == 'Tân Phú / Đ. Số 23' and os.path.getsize(os.path.join(r.data, 'label.bin')) == r.control()['ar']['label']['w'] * r.control()['ar']['label']['h'], 4),
+        check(r.wait(lambda: ((r.control().get('ar') or {}).get('label') or {}).get('street') == 'Tân Phú / Đ. Số 23' and os.path.getsize(os.path.join(r.ctl_dir(), 'label.bin')) == r.control()['ar']['label']['w'] * r.control()['ar']['label']['h'], 4),
               'the road\'s name is drawn into label.bin for the decoder: %s' % (r.control().get('ar') or {}).get('label'))
-        lab = open(os.path.join(r.data, 'label.bin'), 'rb').read()
+        lab = open(os.path.join(r.ctl_dir(), 'label.bin'), 'rb').read()
         check(max(lab) > 200 and sum(1 for b in lab if b > 128) > 150, 'with letters in it')
         r.cmd(speed=int(36 / 0.015625))
         check(r.wait(lambda: r.control()['ar'].get('speed') in (35, 40), 2), 'the car\'s speed goes along, for counting the turn nearer: %s' % r.control()['ar'].get('speed'))

@@ -7,6 +7,7 @@
 const fs = require('fs');
 const DIR = process.env.XINHAN_LOG_DIR || '/var/opt/xinhan-cam';
 const STATUS = process.env.XINHAN_STATUS || '/run/xinhan-cam/status.json';
+const RUN = process.env.XINHAN_RUN_DIR || '/run/xinhan-cam';    // nav.log is here from helper 0.7.0 (RAM), before in DIR
 const PIECE = 700;
 let n = 0;
 const out = (tag, text) => {
@@ -25,7 +26,7 @@ try {
 } catch (e) { out('status', 'khong doc duoc ' + STATUS + ': ' + e.message); }
 
 // nav.log (and the one before it): the catalogue and proxy lines once each, every different value, newest last
-const nav = (lines(DIR + '/nav.log.1') || []).concat(lines(DIR + '/nav.log') || []);
+const nav = (lines(DIR + '/nav.log.1') || []).concat(lines(DIR + '/nav.log') || [], lines(RUN + '/nav.log.1') || [], lines(RUN + '/nav.log') || []);
 if (!nav.length) out('nav', 'chua co nav.log: bat muc "Mui ten dan duong" trong app, chay dan duong roi cai lai cong cu nay');
 const seen = new Set(), keep = [];
 nav.forEach((l) => {
