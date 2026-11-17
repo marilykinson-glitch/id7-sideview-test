@@ -1,0 +1,30 @@
+{
+  "id": "xinhan-cam-log",
+  "kind": "tool",
+  "version": "0.1.0",
+  "title": "Nhật ký Camera xi nhan",
+  "description": "In nhật ký dẫn đường của Camera xi nhan vào log của MGU Store để xem bằng điện thoại (Store → Settings → Phone access → quét QR → Logs: updater). Chỉ đọc. Cài là in một lần; muốn in lại thì gỡ rồi cài lại. Xong thì gỡ.",
+  "license": "MIT",
+  "mguHmi": [
+    "ID7"
+  ],
+  "optional": true,
+  "uninstallable": true,
+  "requires": {
+    "mgu-deploy": "0.6.1"
+  },
+  "files": [
+    {
+      "path": "print-log.sh",
+      "mode": "0644"
+    },
+    {
+      "path": "print-log.js",
+      "mode": "0644"
+    }
+  ],
+  "restart": [],
+  "postInstall": [
+    "print-log.sh"
+  ]
+}

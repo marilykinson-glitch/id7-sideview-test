@@ -11,7 +11,7 @@
         "ID7"
       ],
       "requires": {
-        "xinhan-cam": "0.5.2",
+        "xinhan-cam": "0.5.3",
         "idrive7-renderd": "2.1.7",
         "mgu-inputgate": "1.0.0"
       },
@@ -44,6 +44,14 @@
       "id": "xinhan-cam",
       "path": "tools/xinhan-cam",
       "title": "Trợ thủ Camera xi nhan",
+      "mguHmi": [
+        "ID7"
+      ]
+    },
+    {
+      "id": "xinhan-cam-log",
+      "path": "tools/xinhan-cam-log",
+      "title": "Nhật ký Camera xi nhan",
       "mguHmi": [
         "ID7"
       ]

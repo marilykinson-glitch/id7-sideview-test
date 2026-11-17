@@ -27,7 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.5.2';
+const VERSION = '0.5.3';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -179,7 +179,10 @@ function run() {
     function navLine(line, now) {
         let j;
         try { j = JSON.parse(line); } catch (e) { return; }
-        navLog(line.length > 6000 ? line.slice(0, 6000) + '…' : line);
+        // a value asked again every few seconds is logged only when it differs from the last one of its name
+        const same = j.ev === 'value' && navLine.last && navLine.last[j.name] === j.value;
+        if (j.ev === 'value') { navLine.last = navLine.last || {}; navLine.last[j.name] = j.value; }
+        if (!same) navLog(line.length > 6000 ? line.slice(0, 6000) + '…' : line);
         if (j.ev === 'catalog') { nav.ifaces = (j.ifaces || []).map((i) => i.name); nav.state = nav.ifaces.length ? 'found' : 'no interface'; }
         else if (j.ev === 'proxy') { nav.proxies.push((j.ok ? 'ok ' : 'failed ') + String(j.iface).split('.').pop() + '@' + j.inst + (j.ok ? '' : ': ' + j.note)); if (j.ok) nav.state = 'reading'; }
         else if (j.ev === 'value') { if (/dart|maneuver/i.test(j.name)) nav.raw = String(j.value).slice(0, 400); }
