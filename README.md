@@ -1,4 +1,4 @@
-# Camera xi nhan 0.6.1 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.6.2 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 

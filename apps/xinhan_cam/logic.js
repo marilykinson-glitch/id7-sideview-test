@@ -438,7 +438,11 @@ function plan(i) {
         return none('Hộp camera chưa ở chế độ 4 camera (' + cam.text + ')', want);
     }
     if (dual) return { view: 'front', why: '', want, ar: dualAr ? 'route' : 'off', aux: side };
-    return { view: side, why: '', want };
+    // why the front camera does not stay beside this mirror camera (for the page)
+    const dualWhy = i.test || !i.side || i.dual === undefined ? '' : i.dual !== 'nav' && i.dual !== 'always' ? 'đang chọn "Chỉ cam gương"'
+        : i.auxRefused ? 'bộ vẽ từ chối hình thứ hai, thử lại sau 15 giây'
+            : !dualAr && i.dual === 'nav' ? 'không có mũi tên dẫn đường lúc này' : !dualAr ? 'camera trước không đang hiện' : '';
+    return dualWhy ? { view: side, why: '', want, dualWhy } : { view: side, why: '', want };
 }
 
 module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES, frontCrop, auxConfig, arWanted, arConfig, calib, CALIB, AR_NEAR_M };

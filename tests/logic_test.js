@@ -299,6 +299,7 @@ t('plan: with a signal on the front camera stays and the mirror camera gets its 
     const nav = { active: true, kind: 'turn', angle: -90, meters: 80 };
     assert.deepStrictEqual(P({ dual: 'nav', nav }), { view: 'front', why: '', want: 7, ar: 'route', aux: 'left' });
     assert.strictEqual(P({ dual: 'mirror', nav }).view, 'left');
+    assert.ok(/Chỉ cam gương/.test(P({ dual: 'mirror', nav }).dualWhy) && /từ chối/.test(P({ dual: 'nav', nav, auxRefused: true }).dualWhy) && /không có mũi tên/.test(P({ dual: 'nav' }).dualWhy));
     assert.strictEqual(P({ nav }).view, 'left');                                              // no setting: as before
     assert.strictEqual(P({ dual: 'nav' }).view, 'left');                                      // no route: the mirror camera alone
     assert.strictEqual(P({ dual: 'nav', nav, auxRefused: true }).view, 'left');               // the second layer was refused

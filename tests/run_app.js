@@ -96,7 +96,7 @@ const fakeUI = Object.assign({}, realUI, {
     draw(cv, G, t, v, a) {
         acts = a || {};
         out({ ui: ['ROW_STATE', 'Trạng thái: ' + v.title + (v.subtitle ? ' - ' + v.subtitle : '')] });
-        (v.rows || []).forEach((r, i) => out({ ui: [['ROW_SIGNAL', 'ROW_CAMERA', 'ROW_VIDEO', 'ROW_CLUSTER'][i], r.label + ': ' + r.text] }));
+        (v.rows || []).forEach((r, i) => out({ ui: [['ROW_SIGNAL', 'ROW_CAMERA', 'ROW_VIDEO', 'ROW_CLUSTER', 'ROW_DUAL'][i], r.label + ': ' + r.text] }));
         out({ model: { page: v.page, edit: v.edit, shown: v.shown, discs: v.discs, frontRect: v.frontRect || null, round: v.round, note: v.note || '' } });
         return cv;
     },

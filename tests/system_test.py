@@ -398,6 +398,7 @@ def t_drive():
             v = r.visible()
             return len(v) == 2 and near(v.get('panel960', (0, 0, 0)), RED, 45) and near(v.get('panel320', (0, 0, 0)), YELLOW, 60)
         check(r.wait(both, 5), 'right signal with the route on: the front camera and the right mirror camera together, both on the whole-cluster target (one shared video): %s' % r.visible())
+        check(r.wait(lambda: 'đang hiện cả hai' in r.rows.get('ROW_DUAL', ''), 3), 'the page says both show: ' + r.rows.get('ROW_DUAL', ''))
         check((r.control().get('aux') or {}).get('x') == 1380 and r.control().get('view') == 'front' and r.native().get('aux_shown') == 1, 'the second view sits where the mirror camera does alone')
         r.cmd(light=[0, OFF])
         check(r.wait(lambda: list(r.visible().keys()) == ['map960'] and r.native().get('aux') == 'none', 6), 'signal off: the mirror camera goes, the route stays')
@@ -407,6 +408,7 @@ def t_drive():
         r.wait(lambda: r.native().get('aux_state') == 'refused', 6)
         r.cr.refuse_vw = 0
         check(r.wait(lambda: list(r.visible().keys()) == ['panel320'] and near(r.visible()['panel320'], BLUE, 60) and r.control().get('view') == 'left', 8), 'the renderer refuses the second layer: the left mirror camera alone')
+        check(r.wait(lambda: 'too many video buffers' in r.rows.get('ROW_DUAL', ''), 3), 'the page says why: ' + r.rows.get('ROW_DUAL', ''))
         r.cmd(light=[0, OFF])
         check(r.wait(lambda: list(r.visible().keys()) == ['map960'], 6), 'signal off: the route again')
         time.sleep(15.5)                                    # the refusal is remembered for 15 s

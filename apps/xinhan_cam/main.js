@@ -149,7 +149,7 @@ mgu.run({
         let page = 0, edit = 'left', calCam = 'left';
         let lastControl = '', lastWriteAt = 0, seq = 0;
         let lastPlan = { view: 'none', why: 'Đang khởi động', want: null }, lastSide = null;
-        let camTickAt = 0, lastWant, lastBusy, auxRefusedAt = -1e9;
+        let camTickAt = 0, lastWant, lastBusy, auxRefusedAt = -1e9, auxReason = '';
         const writeControl = (view, config, ar, aux, now) => {
             const body = JSON.stringify({ view, config, ar, aux });
             const active = view !== 'none';
@@ -178,7 +178,7 @@ mgu.run({
             const s = cfg();
             const st = readStatus(now);
             const n = st && st.native;
-            if (n && n.aux_state === 'refused' && now - auxRefusedAt >= 15000) { auxRefusedAt = now; log.warn('second view refused (' + (n.aux_reason || '') + '): the mirror camera alone'); }
+            if (n && n.aux_state === 'refused' && now - auxRefusedAt >= 15000) { auxRefusedAt = now; auxReason = String(n.aux_reason || '').slice(0, 80); log.warn('second view refused (' + (n.aux_reason || '') + '): the mirror camera alone'); }
             const p = L.plan({
                 enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test, front: s.front,
                 arMode: s.ar, nav: navNow(st),
@@ -257,6 +257,17 @@ mgu.run({
                     text: !n ? 'chờ trợ thủ' : n.cr !== 'connected' ? 'chưa nối được cluster-render' : n.layer === 'refused' ? 'từ chối lớp video: ' + n.layer_reason
                         : 'sẵn sàng · ' + n.target + ' ' + n.layer_w + 'x' + n.layer_h },
             ];
+            // the two cameras together: what holds it up, or that it shows
+            const older = (a, b) => { const x = String(a || '0').split('.').map(Number), y = b.split('.').map(Number); for (let k = 0; k < 3; k++) { if ((x[k] || 0) !== y[k]) return (x[k] || 0) < y[k]; } return false; };
+            if (s.blinkFront !== 'mirror') {
+                const oldHelper = st && older(st.version, '0.6.0');
+                v.rows.push({ label: 'Hai camera',
+                    kind: oldHelper || (n && n.aux_state === 'refused') || now - auxRefusedAt < 15000 ? 'warn' : lastPlan.aux && n && n.aux_shown ? 'go' : 'dim',
+                    text: oldHelper ? 'trợ thủ còn bản ' + st.version + ': khởi động lại màn hình để lên bản mới'
+                        : lastPlan.aux ? (n && n.aux_shown ? 'đang hiện cả hai' : 'đang bật camera gương (' + ((n && n.aux_state) || '?') + ((n && n.aux_reason) ? ': ' + n.aux_reason : '') + ')')
+                            : now - auxRefusedAt < 15000 ? 'bộ vẽ từ chối hình thứ hai (' + auxReason + ')'
+                                : lastPlan.dualWhy ? 'không giữ cam trước: ' + lastPlan.dualWhy : 'sẵn sàng (khi xi nhan lúc có mũi tên)' });
+            }
             v.version = 'Bản ' + ctx.spec.version + (st && st.version ? ' · trợ thủ ' + st.version : '');
             if (page === 1 || page === 2) {
                 v.note = showing ? 'Đang hiện trên đồng hồ' : lastPlan.why || '';
