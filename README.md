@@ -1,10 +1,19 @@
-# Camera xi nhan 0.5.4 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.6.0 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 
 Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. Hình lấy từ chính luồng 4 camera mà Drive Recorder Next đang dùng, nên hai app chạy song song được.
 
 > **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
+
+## Mới trong 0.6.0
+
+- **Camera trước ở lại khi bật xi nhan.** Mục *Khi xi nhan*:
+  - *Giữ cam trước khi có mũi tên* (mặc định): đang có mũi tên dẫn đường mà bật xi nhan thì camera trước vẫn ở giữa, camera gương hiện thêm trong vòng đồng hồ bên đó. Không dẫn đường thì như cũ.
+  - *Luôn giữ cam trước*: cả khi camera trước đang hiện vì mục *Camera trước*.
+  - *Chỉ cam gương*: như các bản trước, camera gương thay chỗ camera trước.
+- **Nhường nhau.** Đồng hồ và HUD cùng lúc chỉ chứa được 2 hình video. Nếu bộ vẽ từ chối hình thứ hai (ví dụ đang có bản đồ điện thoại trên HUD), app tự chuyển về chỉ camera gương trong 15 giây rồi mới thử lại: camera gương luôn được ưu tiên hơn camera trước.
+- Chưa thử trên xe: hai hình cùng lúc có làm giật không.
 
 ## Mới trong 0.5.4
 
@@ -91,6 +100,7 @@ Nếu hình bị nghiêng, ngược hay bị bóp hẹp: chỉnh *Xoay cam*, *L�
 | Bật theo xi nhan | Bật | Tắt thì chỉ còn nút thử |
 | Camera trước | Tắt | Dưới 30 km/h, Dưới 60 km/h, Luôn hiện. Hiện ở vùng bản đồ giữa đồng hồ khi không xi nhan |
 | Mũi tên dẫn đường | Khi sắp rẽ | Suốt đường, Tắt. Xem tab Dẫn đường |
+| Khi xi nhan | Giữ cam trước khi có mũi tên | Luôn giữ cam trước, Chỉ cam gương |
 | Thẻ rẽ | Hiện | Thẻ mũi tên + khoảng cách ở góc hình camera trước |
 | Cỡ cam trước | Vừa (512x384) | Nhỏ 384x288, Lớn 640x480 |
 | Hướng nhìn | Chếch về sau | Ngang (như bản 0.3), Chếch về trước |

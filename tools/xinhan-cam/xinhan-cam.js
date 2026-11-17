@@ -27,7 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.5.4';
+const VERSION = '0.6.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -89,11 +89,12 @@ function wanted(app, now) {
     if (!c || typeof c !== 'object') return { view: 'none', config: null, why: 'the app has not started yet' };
     const config = c.config && typeof c.config === 'object' ? c.config : null;
     const ar = c.ar && typeof c.ar === 'object' ? c.ar : null;
+    const aux = c.aux && typeof c.aux === 'object' ? c.aux : null;
     const view = VIEWS.indexOf(c.view) >= 0 ? c.view : 'none';
-    if (view === 'none') return { view, config, ar, why: '' };
+    if (view === 'none') return { view, config, ar, aux, why: '' };
     const age = now - Date.parse(c.at);
-    if (!(age >= -staleSlack() && age <= CFG.staleMs)) return { view: 'none', config, ar, why: 'the app stopped confirming the view' };
-    return { view, config, ar, why: '' };
+    if (!(age >= -staleSlack() && age <= CFG.staleMs)) return { view: 'none', config, ar, aux, why: 'the app stopped confirming the view' };
+    return { view, config, ar, aux, why: '' };
 }
 // the head unit sets its clock a while after it starts: a control file "from the future" by less than
 // this is still the app's (the jump is seen by both at once; the next write is in step again)
@@ -108,6 +109,17 @@ function configLine(config) {
         'left_flip', 'right_flip', 'all_flip', 'left_sar', 'right_sar', 'all_sar', 'pair', 'pair_swap', 'left_round', 'right_round', 'front_rot', 'front_flip', 'front_sar', 'front_round'];
     str.forEach((k) => { if (typeof config[k] === 'string' && /^[a-z0-9_,]{1,40}$/i.test(config[k])) out[k] = config[k]; });
     num.forEach((k) => { if (Number.isFinite(config[k])) out[k] = Math.round(config[k]); });
+    return JSON.stringify(out);
+}
+
+/** The decoder's "aux" line: the second view (a mirror camera on its own layer beside the front camera), or none. */
+function auxLine(aux) {
+    const out = { op: 'aux', side: 'none' };
+    if (!aux || (aux.side !== 'left' && aux.side !== 'right')) return JSON.stringify(out);
+    out.side = aux.side;
+    if (typeof aux.target === 'string' && /^[a-z]{1,12}$/.test(aux.target)) out.target = aux.target;
+    if (typeof aux.crop === 'string' && /^[0-9,]{7,24}$/.test(aux.crop)) out.crop = aux.crop;
+    ['w', 'h', 'x', 'y', 'fps', 'rot', 'flip', 'sar', 'round'].forEach((k) => { if (Number.isFinite(aux[k])) out[k] = Math.round(aux[k]); });
     return JSON.stringify(out);
 }
 
@@ -169,7 +181,7 @@ function run() {
     let pictures = null, picturesAt = 0, fps = 0;
     let lastWhy = null, lastApp;
     // the navigation reader (nav.js): started when the app first wants it, again 30 s after it ends
-    let navChild = null, navOut = '', navDue = 0, sentAr = null, sentArAt = 0;
+    let navChild = null, navOut = '', navDue = 0, sentAr = null, sentArAt = 0, sentAux = null, sentAuxAt = 0;
     const nav = { wanted: false, state: 'not started', ifaces: [], proxies: [], note: '', last: null, raw: '', at: 0 };
     const navLog = (m) => {
         const f = CFG.log.replace(/[^/]*$/, 'nav.log');
@@ -250,7 +262,7 @@ function run() {
             return;
         }
         startedAt = Date.now();
-        sentConfig = null; sentView = null; sentAr = null; native = null; pictures = null; fps = 0;
+        sentConfig = null; sentView = null; sentAr = null; sentAux = null; native = null; pictures = null; fps = 0;
         // can it start here at all? (--version only loads it: a library or symbol the head unit lacks shows
         // up now, with the loader's own words, which the app's page then shows)
         if (!/\.js$/.test(CFG.bin)) {
@@ -313,6 +325,11 @@ function run() {
             // what is drawn on the front camera: when it changes, at most 5 times a second
             const al = arLine(w.view === 'front' ? w.ar : null, nav.last, now);
             if (al !== sentAr && now - sentArAt >= 200 && send(al)) { sentAr = al; sentArAt = now; }
+            // the second view: with the front camera only; when it changes, and once a second while on
+            const xl = auxLine(w.view === 'front' ? w.aux : null);
+            if (xl !== sentAux || (w.view === 'front' && w.aux && now - sentAuxAt >= 1000)) {
+                if (send(xl)) { sentAux = xl; sentAuxAt = now; }
+            }
             // the view: when it changes, and once a second while one is on (the decoder drops a view
             // nobody confirms for 3 s)
             if (w.view !== sentView || (w.view !== 'none' && now - sentViewAt >= 1000)) {
@@ -353,4 +370,4 @@ if (require.main === module) {
     else { process.stderr.write('usage: node xinhan-cam.js run|status\n'); process.exit(2); }
 }
 
-module.exports = { VERSION, CFG, findApp, wanted, configLine, arLine, run, _reset: () => { appCache = null; appScanAt = 0; } };
+module.exports = { VERSION, CFG, findApp, wanted, configLine, arLine, auxLine, run, _reset: () => { appCache = null; appScanAt = 0; } };

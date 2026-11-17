@@ -349,6 +349,17 @@ const calib = (s, k) => {
  * navigation's next turn, which the helper has itself) | 'demo' (a made-up turn coming nearer).
  * speed (km/h or null): between two distances from the navigation the helper counts the turn nearer by it.
  */
+/**
+ * The helper's second view: the mirror camera of `side` on a layer of its own, where and as viewConfig
+ * puts it when it shows alone. null: none.
+ */
+function auxConfig(s, targets, side) {
+    if (side !== 'left' && side !== 'right') return null;
+    const c = viewConfig(s, targets, side, side);
+    return { side, target: c.target, w: c.w, h: c.h, x: c.x, y: c.y, fps: Math.min(c.fps, 10), crop: c[side], rot: c[side + '_rot'],
+        flip: c[side + '_flip'], sar: c[side + '_sar'], round: c[side + '_round'] };
+}
+
 function arConfig(s, mode, speed) {
     return {
         mode: ['marks', 'route', 'demo'].indexOf(mode) >= 0 ? mode : 'off',
@@ -376,6 +387,13 @@ function plan(i) {
     const arOn = !i.test && !side && i.enabled && arWanted(i);
     const frontTest = i.test === 'front' || i.test === 'calfront' || i.test === 'ardemo';
     const frontOn = frontTest || arOn || (!i.test && !side && i.enabled && frontWanted(i));
+    // "dual": with a turn signal on, the front camera stays in the middle and the mirror camera gets a layer of
+    // its own inside its dial - while the route is drawn ('nav'), or whenever the front camera would show
+    // ('always'). Not while the renderer refused that second layer (the display holds two videos): then the
+    // mirror camera alone, as without it.
+    const dualAr = !!i.side && !i.test && i.enabled && !single && arWanted(i);
+    const dual = !i.auxRefused && !i.test && !!i.side && !single && i.enabled &&
+        ((i.dual === 'nav' && dualAr) || (i.dual === 'always' && (dualAr || frontWanted(i))));
     const ar = i.test === 'calfront' ? 'marks' : i.test === 'ardemo' ? 'demo' : arOn ? 'route' : 'off';
     if (!side && i.test !== 'all' && !frontOn) return none(i.frontWhy || 'Chờ xi nhan', want);
     if (!i.test && i.maxSpeed && i.speed !== null && i.speed !== undefined && i.speed > i.maxSpeed) {
@@ -407,7 +425,8 @@ function plan(i) {
         if (cam.kind === 'unknown') return none('Hình camera không phải dạng ghép 4 camera', want);
         return none('Hộp camera chưa ở chế độ 4 camera (' + cam.text + ')', want);
     }
+    if (dual) return { view: 'front', why: '', want, ar: dualAr ? 'route' : 'off', aux: side };
     return { view: side, why: '', want };
 }
 
-module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES, frontCrop, arWanted, arConfig, calib, CALIB, AR_NEAR_M };
+module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES, frontCrop, auxConfig, arWanted, arConfig, calib, CALIB, AR_NEAR_M };

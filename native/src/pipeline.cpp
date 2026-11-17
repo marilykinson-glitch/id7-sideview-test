@@ -103,6 +103,26 @@ void Pipeline::set_view(View v)
     have_ready_ = false;
 }
 
+uint32_t Pipeline::set_aux(const Aux &a)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    aux_ = a;
+    aux_have_ = false;
+    aux_fresh_ = true;
+    return ++aux_gen_;
+}
+
+bool Pipeline::take_aux(std::vector<uint8_t> *atlas, AtlasMeta *meta)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!aux_have_)
+        return false;
+    atlas->swap(aux_ready_);
+    *meta = aux_meta_;
+    aux_have_ = false;
+    return true;
+}
+
 void Pipeline::set_overlay(const Overlay &o)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -233,6 +253,42 @@ void Pipeline::on_picture(const DecodedFrame &f)
         src.y_stride = w;
         src.c_stride = w / 2;
         src.h = h * 2;
+    }
+    /* the second view, at its own pace */
+    {
+        Aux aux;
+        uint32_t agen;
+        bool afresh;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            aux = aux_;
+            agen = aux_gen_;
+            afresh = aux_fresh_;
+        }
+        const int64_t ap = aux.fps ? 1000 / (int64_t)aux.fps : 0;
+        if (aux.on) {
+            if (afresh || !ap || now - aux_due_ms_ > 4 * ap)
+                aux_due_ms_ = now;
+            if (now + ap / 8 >= aux_due_ms_) {
+                aux_due_ms_ += ap;
+                if (aux_resampler_.matches(src.w, src.h, aux.vs, aux.w, aux.h) || aux_resampler_.build(src.w, src.h, aux.vs, aux.w, aux.h)) {
+                    aux_work_.resize(atlas_bytes(aux.w, aux.h));
+                    aux_resampler_.run(src, aux_work_.data());
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (agen == aux_gen_) {
+                        aux_ready_.swap(aux_work_);
+                        aux_meta_.view = kNone;
+                        aux_meta_.id = next_id_++;
+                        aux_meta_.w = aux.w;
+                        aux_meta_.h = aux.h;
+                        aux_meta_.gen = agen;
+                        aux_meta_.ms = now;
+                        aux_have_ = true;
+                        aux_fresh_ = false;
+                    }
+                }
+            }
+        }
     }
     /* At most fps views a second, evenly: each view is due one period after
      * the last was due (not after it was made), so 12 a second out of a

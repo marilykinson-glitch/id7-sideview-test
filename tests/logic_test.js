@@ -293,6 +293,29 @@ t('plan: the navigation\'s next turn brings the front camera up (ar), a signal c
     assert.strictEqual(P({ test: 'calfront' }).ar, 'marks');
     assert.strictEqual(P({ test: 'ardemo', enabled: false }).ar, 'demo');
 });
+t('plan: with a signal on the front camera stays and the mirror camera gets its own layer (dual)', () => {
+    const cam = { known: true, kind: 'all4', text: 'x' }, helper = { ok: true, pictureAge: 50, pictureW: 1280, pictureH: 480, pair: 'sei@19' };
+    const P = (o) => L.plan(Object.assign({ enabled: true, mode: 'mosaic', source: 'auto', side: 'left', test: null, speed: 40, maxSpeed: 0, cam, helper, front: 'off', arMode: 'near' }, o));
+    const nav = { active: true, kind: 'turn', angle: -90, meters: 80 };
+    assert.deepStrictEqual(P({ dual: 'nav', nav }), { view: 'front', why: '', want: 7, ar: 'route', aux: 'left' });
+    assert.strictEqual(P({ dual: 'mirror', nav }).view, 'left');
+    assert.strictEqual(P({ nav }).view, 'left');                                              // no setting: as before
+    assert.strictEqual(P({ dual: 'nav' }).view, 'left');                                      // no route: the mirror camera alone
+    assert.strictEqual(P({ dual: 'nav', nav, auxRefused: true }).view, 'left');               // the second layer was refused
+    assert.strictEqual(P({ dual: 'nav', front: 'always' }).view, 'left');
+    assert.deepStrictEqual([P({ dual: 'always', front: 'always' }).view, P({ dual: 'always', front: 'always' }).ar, P({ dual: 'always', front: 'always' }).aux], ['front', 'off', 'left']);
+    assert.strictEqual(P({ dual: 'always', front: 'slow30', speed: 40 }).view, 'left');       // the front camera would not show: nor now
+    assert.strictEqual(P({ dual: 'nav', nav, test: 'left' }).view, 'left');                   // a test shows its camera alone
+    assert.strictEqual(P({ dual: 'nav', nav, mode: 'single', cam: { known: true, kind: 'left', text: 'x' } }).view, 'left');
+    assert.strictEqual(P({ dual: 'nav', nav, maxSpeed: 30 }).view, 'none');                   // the speed limit holds as before
+    const T = L.parseTargets('map:1088x480,panel:1920x720');
+    assert.deepStrictEqual(L.auxConfig({}, T, 'right'), { side: 'right', target: 'panel', w: 320, h: 320, x: 1380, y: 240, fps: 10, crop: '625,500,375,500', rot: 0, flip: 0, sar: 100, round: 1 });
+    assert.strictEqual(L.auxConfig({}, T, null), null);
+    const H = require(path.join(__dirname, '..', 'tools', 'xinhan-cam', 'xinhan-cam.js'));
+    assert.strictEqual(H.auxLine(null), '{"op":"aux","side":"none"}');
+    assert.deepStrictEqual(JSON.parse(H.auxLine(Object.assign(L.auxConfig({}, T, 'left'), { target: 'x y', evil: 1 }))),
+        { op: 'aux', side: 'left', crop: '0,500,375,500', w: 320, h: 320, x: 220, y: 240, fps: 10, rot: 0, flip: 0, sar: 100, round: 1 });
+});
 t('helper: the navigation\'s values, however the unit shapes them; the decoder\'s ar line', () => {
     const N = require(path.join(__dirname, '..', 'tools', 'xinhan-cam', 'nav.js'));
     const H = require(path.join(__dirname, '..', 'tools', 'xinhan-cam', 'xinhan-cam.js'));

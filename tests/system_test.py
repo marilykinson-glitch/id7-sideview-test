@@ -147,6 +147,18 @@ class Rig:
         a, l = self.shown()
         return a is not None and near(colour(a, l['vw'], l['vh']), want, tol)
 
+    def visible(self):
+        """{ target: colour of its newest frame } of the visible layers that have a whole frame."""
+        out = {}
+        with self.cr.lock:
+            for ref, l in self.cr.layers.items():
+                if not l.get('visible', 1) or ref not in self.cr.frames:
+                    continue
+                a = self.cr.frames[ref][0]
+                if len(a) == l['vw'] * l['vh'] * 3 // 2:
+                    out[l.get('target')] = colour(a, l['vw'], l['vh'])
+        return out
+
     def nav(self, **kw):
         """What the (fake) navigation reader reports from now on."""
         with open(os.path.join(self.dir, 'nav.json.tmp'), 'w') as f:
@@ -374,10 +386,28 @@ def t_drive():
         r.nav(active=True, kind='turn', angle=90, meters=180, exit=0, provider='ANDROID_AUTO', state='INACTIVE')
         check(r.wait(lambda: r.shows(RED) and (r.control().get('ar') or {}).get('mode') == 'route' and r.helper_said('ar: route'), 5), '180 m before the turn: the front camera with the route on it')
         check(r.control()['ar'].get('speed') == 35 or r.control()['ar'].get('speed') == 40, 'the car\'s speed goes along, for counting the turn nearer: %s' % r.control()['ar'].get('speed'))
+        r.cmd(set=['blinkFront', 'mirror'])
         r.cmd(light=[0, LEFT_ON])
-        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'panel' and r.shows(BLUE, 60), 4), 'left signal: the left mirror camera takes over')
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'panel' and r.shows(BLUE, 60), 4), '"mirror camera only", left signal: the left mirror camera takes over')
         r.cmd(light=[0, OFF])
         check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'map' and r.shows(RED), 6), 'signal off: the route again')
+        # both at once (the default): the front camera stays in the middle, the mirror camera in its dial
+        r.cmd(set=['blinkFront', 'nav'])
+        r.cmd(light=[0, RIGHT_ON])
+        def both():
+            v = r.visible()
+            return len(v) == 2 and near(v.get('map', (0, 0, 0)), RED, 45) and near(v.get('panel', (0, 0, 0)), YELLOW, 60)
+        check(r.wait(both, 5), 'right signal with the route on: the front camera (map area) and the right mirror camera (its dial) together: %s' % r.visible())
+        check((r.control().get('aux') or {}).get('x') == 1380 and r.control().get('view') == 'front' and r.native().get('aux_shown') == 1, 'the second view sits where the mirror camera does alone')
+        r.cmd(light=[0, OFF])
+        check(r.wait(lambda: list(r.visible().keys()) == ['map'] and r.native().get('aux') == 'none', 6), 'signal off: the mirror camera goes, the route stays')
+        # the display has no room for a second video: the mirror camera alone, as without the setting
+        r.cr.refuse_layers = 1
+        r.cmd(light=[0, LEFT_ON])
+        check(r.wait(lambda: list(r.visible().keys()) == ['panel'] and near(r.visible()['panel'], BLUE, 60) and r.control().get('view') == 'left', 8), 'the renderer refuses the second layer: the left mirror camera alone')
+        r.cmd(light=[0, OFF])
+        check(r.wait(lambda: list(r.visible().keys()) == ['map'], 6), 'signal off: the route again')
+        time.sleep(15.5)                                    # the refusal is remembered for 15 s
         r.nav(active=False, kind=None, angle=0, meters=-1, exit=0, provider='', state='INACTIVE')
         check(r.wait(lambda: not r.cr.visible(), 4), 'the turn is done, no next one: gone')
         r.nav(active=True, kind='roundabout', angle=0, meters=900, exit=2, provider='NONE', state='ACTIVE')

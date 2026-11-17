@@ -65,8 +65,22 @@ struct Config {
     Output out;
 };
 
+/* The second view's layer (Aux): a mirror camera on its own layer while the front camera shows. */
+struct AuxLayer {
+    Aux cfg;
+    std::string side = "none", target = "panel";
+    int x = 0, y = 0;
+    uint32_t layer = 0, gen = 0;
+    bool shown = false;
+    std::string state = "none", reason;
+    int64_t asked_ms = 0, refused_ms = -100000;
+    uint64_t frames = 0;
+    std::vector<uint8_t> atlas;
+};
+
 struct App {
     int ar_mode = 0;
+    AuxLayer aux;
     Config cfg;
     Pipeline pipe;
     cr::Client *cr = nullptr;
@@ -150,6 +164,10 @@ void emit_status(App &a)
     n("layer_x", a.layer_x);
     n("layer_y", a.layer_y);
     str("view", view_name(a.view));
+    str("aux", a.aux.side);
+    str("aux_state", a.aux.state);
+    str("aux_reason", a.aux.reason);
+    n("aux_shown", a.aux.shown ? 1 : 0);
     n("shown", a.shown ? 1 : 0);
     str("why", a.shown ? "" : a.why);
     n("frames_sent", (long long)a.frames_sent);
@@ -334,6 +352,86 @@ void apply_config(App &a, const cr::Json &j)
              c.persist ? ", layer kept" : ", layer made for each view");
 }
 
+void drop_aux(App &a, const char *why)
+{
+    if (a.aux.layer && a.cr)
+        a.cr->drop(a.aux.layer);
+    if (a.aux.shown)
+        log_info("second view (%s) off: %s", a.aux.side.c_str(), why);
+    a.aux.layer = 0;
+    a.aux.shown = false;
+    if (a.aux.state != "refused")
+        a.aux.state = "none";
+    a.dirty = true;
+}
+
+/* {"op":"aux","side":"left"|"right"|"none","target":"panel","w":320,"h":320,"x":220,"y":240,"fps":10,
+ *  "crop":"0,500,375,500","rot":0,"flip":0,"sar":100,"round":1}: the second view, sent again at least every
+ * 3 s while wanted. */
+void apply_aux(App &a, const cr::Json &j)
+{
+    AuxLayer &x = a.aux;
+    const std::string side = j.count("side") ? j.at("side") : "none";
+    const int64_t now = cld::now_ms();
+    if (side != "left" && side != "right") {
+        if (x.cfg.on) {
+            x.cfg.on = false;
+            x.gen = a.pipe.set_aux(x.cfg);
+            drop_aux(a, "not asked for");
+            x.side = "none";
+            x.state = "none";
+            x.reason.clear();
+        }
+        return;
+    }
+    Aux c = x.cfg;
+    c.on = true;
+    int w = (int)to_long(j, "w", c.w) & ~3, h = (int)to_long(j, "h", c.h) & ~1;
+    if (w >= 64 && w <= 1920 && h >= 64 && h <= 720) {
+        c.w = w;
+        c.h = h;
+    }
+    const long fps = to_long(j, "fps", c.fps);
+    if (fps >= 1 && fps <= 30)
+        c.fps = (unsigned)fps;
+    auto it = j.find("crop");
+    if (it != j.end())
+        parse_crop(it->second, &c.vs);
+    const long rot = to_long(j, "rot", c.vs.rot);
+    if (rot == 0 || rot == 90 || rot == 180 || rot == 270)
+        c.vs.rot = (int)rot;
+    c.vs.flip = to_long(j, "flip", c.vs.flip) != 0;
+    c.vs.round = to_long(j, "round", c.vs.round) != 0;
+    const long sar = to_long(j, "sar", c.vs.sar);
+    if (sar >= 25 && sar <= 400)
+        c.vs.sar = (int)sar;
+    std::string target = x.target;
+    it = j.find("target");
+    if (it != j.end() && !it->second.empty())
+        target = it->second;
+    const int nx = (int)to_long(j, "x", x.x) & ~1, ny = (int)to_long(j, "y", x.y) & ~1;
+    const bool layer_changed = target != x.target || nx != x.x || ny != x.y || c.w != x.cfg.w || c.h != x.cfg.h || c.fps != x.cfg.fps;
+    const bool changed = layer_changed || side != x.side || !x.cfg.on || !(c.vs == x.cfg.vs);
+    x.asked_ms = now;
+    if (!changed)
+        return;
+    if (layer_changed || !x.cfg.on)
+        drop_aux(a, "its setting changed");
+    if (side != x.side || !x.cfg.on) {
+        x.state = "none";
+        x.reason.clear();
+        x.refused_ms = -100000;
+        log_info("second view: %s, %dx%d at %d,%d on %s", side.c_str(), c.w, c.h, nx, ny, target.c_str());
+    }
+    x.cfg = c;
+    x.side = side;
+    x.target = target;
+    x.x = nx;
+    x.y = ny;
+    x.gen = a.pipe.set_aux(c);
+    a.dirty = true;
+}
+
 void on_line(App &a, const std::string &line)
 {
     cr::Json j;
@@ -355,6 +453,8 @@ void on_line(App &a, const std::string &line)
         }
     } else if (op == "config") {
         apply_config(a, j);
+    } else if (op == "aux") {
+        apply_aux(a, j);
     } else if (op == "ar") {
         /* what is drawn on the front camera (overlay.h); whole numbers: cm, tenths of a degree */
         Overlay o;
@@ -478,6 +578,14 @@ int main(int argc, char **argv)
         /* the client makes the layer again by itself; a layer never made is made in the loop */
     };
     client.on_layer = [&a](uint32_t ref, const std::string &state, const std::string &reason) {
+        if (ref && ref == a.aux.layer) {
+            if (state != a.aux.state)
+                log_info("second view's layer: %s%s%s", state.c_str(), reason.empty() ? "" : ": ", reason.c_str());
+            a.aux.state = state;
+            a.aux.reason = reason;
+            a.dirty = true;
+            return;
+        }
         if (ref != a.layer)
             return;
         if (state != a.layer_state || reason != a.layer_reason)
@@ -498,6 +606,18 @@ int main(int argc, char **argv)
     client.on_error = [&a](const std::string &op, uint32_t ref, const std::string &reason) {
         log_warn("cluster renderer refused %s (ref %u): %s", op.c_str(), ref, reason.c_str());
         a.cr_error = op + ": " + reason;
+        if (ref && ref == a.aux.layer && (op == "layer" || op == "set")) {
+            /* the second view is refused (too many videos on the display): the first stays as it is, the
+             * app is told and shows the mirror camera alone instead */
+            a.aux.refused_ms = cld::now_ms();
+            a.cr->drop(ref);
+            a.aux.layer = 0;
+            a.aux.shown = false;
+            a.aux.state = "refused";
+            a.aux.reason = reason;
+            a.dirty = true;
+            return;
+        }
         if (ref && ref == a.layer && (op == "layer" || op == "set")) {
             /* not made, or not shown: asked again with a view, kRefusedMs later at the earliest */
             a.refused_ms = cld::now_ms();
@@ -632,6 +752,55 @@ int main(int argc, char **argv)
             }
         }
 
+        /* the second view: only with the first one on and shown, while it is asked for */
+        if (a.aux.cfg.on && (a.view == kNone || now - a.aux.asked_ms > kHeartbeatMs)) {
+            a.aux.cfg.on = false;
+            a.aux.gen = a.pipe.set_aux(a.aux.cfg);
+            drop_aux(a, a.view == kNone ? "the first view went" : "the app stopped asking");
+            a.aux.side = "none";
+            a.aux.state = "none";
+        }
+        {
+            AtlasMeta meta;
+            while (a.pipe.take_aux(&a.aux.atlas, &meta)) {
+                AuxLayer &x = a.aux;
+                if (!x.cfg.on || meta.gen != x.gen || meta.w != x.cfg.w || meta.h != x.cfg.h || !a.shown || !client.connected() ||
+                    now - x.refused_ms < kRefusedMs)
+                    continue;
+                if (!x.layer) {
+                    cr::LayerOptions lo;
+                    lo.target = x.target;
+                    lo.klass = "overlay";
+                    lo.z = 910;                 /* above the first view's layer, which may be exclusive */
+                    lo.x = x.x;
+                    lo.y = x.y;
+                    lo.w = (unsigned)x.cfg.w;
+                    lo.h = (unsigned)x.cfg.h;
+                    lo.visible = true;
+                    lo.exclusive = false;
+                    lo.contend = true;
+                    cr::VideoOptions vo;
+                    vo.w = (unsigned)x.cfg.w;
+                    vo.h = (unsigned)x.cfg.h;
+                    vo.fps = x.cfg.fps ? x.cfg.fps : 10;
+                    vo.stall_ms = 2000;
+                    x.layer = a.cr->video(lo, vo);
+                    x.state = "made";
+                    log_info("second view's layer %u on %s: %dx%d at %d,%d", x.layer, x.target.c_str(), x.cfg.w, x.cfg.h, x.x, x.y);
+                    if (!x.layer)
+                        continue;
+                }
+                if (client.frame(x.layer, &x.atlas, meta.id)) {
+                    x.frames++;
+                    if (!x.shown) {
+                        x.shown = true;
+                        a.dirty = true;
+                        log_info("second view (%s) shown", x.side.c_str());
+                    }
+                }
+            }
+        }
+
         if (a.dirty || now - status_ms >= kStatusMs) {
             status_ms = now;
             emit_status(a);
@@ -641,6 +810,8 @@ int main(int argc, char **argv)
     g_quit = 1;
     if (a.layer)
         client.drop(a.layer);
+    if (a.aux.layer)
+        client.drop(a.aux.layer);
     client.poll(cld::now_ms());
     a.pipe.stop();
     if (feeder.joinable())

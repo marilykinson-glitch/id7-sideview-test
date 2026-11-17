@@ -149,16 +149,16 @@ mgu.run({
         let page = 0, edit = 'left', calCam = 'left';
         let lastControl = '', lastWriteAt = 0, seq = 0;
         let lastPlan = { view: 'none', why: 'Đang khởi động', want: null }, lastSide = null;
-        let camTickAt = 0, lastWant, lastBusy;
-        const writeControl = (view, config, ar, now) => {
-            const body = JSON.stringify({ view, config, ar });
+        let camTickAt = 0, lastWant, lastBusy, auxRefusedAt = -1e9;
+        const writeControl = (view, config, ar, aux, now) => {
+            const body = JSON.stringify({ view, config, ar, aux });
             const active = view !== 'none';
             if (body === lastControl && !(active && now - lastWriteAt >= HEARTBEAT_MS)) return;
             if (body !== lastControl) seq++;
             lastControl = body;
             lastWriteAt = now;
             try {
-                fs.writeFileSync(controlFile + '.tmp', JSON.stringify({ at: new Date(now).toISOString(), seq, view, config, ar }));
+                fs.writeFileSync(controlFile + '.tmp', JSON.stringify({ at: new Date(now).toISOString(), seq, view, config, ar, aux }));
                 fs.renameSync(controlFile + '.tmp', controlFile);
             } catch (e) { log.warn('control file: ' + errText(e)); }
         };
@@ -178,9 +178,12 @@ mgu.run({
             const s = cfg();
             const st = readStatus(now);
             const n = st && st.native;
+            if (n && n.aux_state === 'refused' && now - auxRefusedAt >= 15000) { auxRefusedAt = now; log.warn('second view refused (' + (n.aux_reason || '') + '): the mirror camera alone'); }
             const p = L.plan({
                 enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test, front: s.front,
                 arMode: s.ar, nav: navNow(st),
+                // the second layer was refused a moment ago: the mirror camera alone for a while
+                dual: s.blinkFront, auxRefused: now - auxRefusedAt < 15000,
                 speed: speed !== null && now - speedAt < 3000 ? speed : null, maxSpeed: Number(s.maxSpeed) || 0,
                 cam: cam.info().cam,
                 helper: { ok: !!n, pictureAge: n ? n.picture_age_ms : null, pictureW: n ? n.picture_w : 0, pictureH: n ? n.picture_h : 0, pair: n ? n.pair : null },
@@ -193,7 +196,7 @@ mgu.run({
             // drawn; nav: whether the helper should read the navigation at all
             const kmh = p.ar === 'route' && speed !== null && now - speedAt < 3000 ? Math.round(speed / 5) * 5 : -1;
             const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
-            writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view), ar, now);
+            writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view), ar, p.aux ? L.auxConfig(s, targets, p.aux) : null, now);
             // the camera unit: at once when what is wanted changes or a side comes on, twice a second
             // while a view is wanted or the unit is not in its mode yet, else every 2 s
             const busy = !!(side || test) || p.view === 'front' || cam.info().phase !== 'on';
@@ -230,6 +233,7 @@ mgu.run({
             }
             const showing = lastPlan.view !== 'none' && n && n.shown;
             v.shown = showing ? lastPlan.view : null;
+            v.shownAux = showing && lastPlan.aux && n.aux_shown ? lastPlan.aux : null;
             if (lastPlan.view !== 'none') {
                 if (showing && n.layer === 'shown') { v.title = 'Đang hiện ' + VIEW[lastPlan.view].toLowerCase(); v.titleKind = 'go'; }
                 else if (showing) { v.title = VIEW[lastPlan.view]; v.titleKind = 'warn'; v.subtitle = 'Đang gửi hình, đồng hồ chưa hiện (' + n.layer + (n.layer_reason ? ': ' + n.layer_reason : '') + ')'; }

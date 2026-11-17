@@ -46,6 +46,15 @@ struct Output {
     bool pair = false, pair_swap = false;
 };
 
+/* A second view made from the same pictures, for a layer of its own: a mirror camera inside its dial
+ * while the main view (the front camera) stays in the middle. Only while the main view is on. */
+struct Aux {
+    bool on = false;
+    int w = 320, h = 320;
+    unsigned fps = 10;
+    ViewSpec vs;
+};
+
 struct Stats {
     uint64_t packets = 0, bytes = 0;       /* received */
     uint64_t lost = 0;                     /* RTP packets missing */
@@ -98,6 +107,9 @@ public:
     void set_overlay(const Overlay &o);
 
     bool take(std::vector<uint8_t> *atlas, AtlasMeta *meta);
+    /* The second view (Aux); returns its generation. take_aux: its newest atlas not yet taken (meta.view is kNone). */
+    uint32_t set_aux(const Aux &a);
+    bool take_aux(std::vector<uint8_t> *atlas, AtlasMeta *meta);
     Stats stats();
 
 private:
@@ -120,6 +132,12 @@ private:
     uint32_t gen_ = 1;
     View view_ = kNone;
     Overlay overlay_;
+    Aux aux_;
+    uint32_t aux_gen_ = 1;
+    bool aux_fresh_ = false;
+    std::vector<uint8_t> aux_ready_;
+    AtlasMeta aux_meta_;
+    bool aux_have_ = false;
     bool fresh_view_ = false;      /* the view or output changed: the next picture gets an atlas at once */
     std::vector<uint8_t> ready_;
     AtlasMeta ready_meta_;
@@ -135,6 +153,9 @@ private:
     int64_t pair_ms_[2] = {0, 0};
     std::vector<uint8_t> work_;
     int64_t next_due_ms_ = 0;      /* when the next view is due (pacing) */
+    Resampler aux_resampler_;
+    std::vector<uint8_t> aux_work_;
+    int64_t aux_due_ms_ = 0;
     uint64_t next_id_ = 1;
 };
 

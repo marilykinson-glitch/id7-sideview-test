@@ -67,7 +67,7 @@ function cluster(cv, G, t, p, v, editing) {
     ['left', 'right'].forEach((side) => {
         const d = v.discs && v.discs[side];
         if (!d) return;
-        const on = v.shown === side, ed = editing === side;
+        const on = v.shown === side || v.shownAux === side, ed = editing === side;
         const c = on ? go : ed ? acc : G.withAlpha('#ffffff', 0.4);
         const cx = X(d.x + d.w / 2), cy = Y(d.y + d.h / 2), rw = d.w * k / 2, rh = d.h * k / 2;
         if (v.round) {
