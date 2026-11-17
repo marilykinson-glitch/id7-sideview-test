@@ -9,6 +9,11 @@
  * interface is looked for by name, described by the unit's own generator (oapgen-gen.js) and asked through
  * the unit's own binding (/usr/lib/someip.node), read only. No setter and no method is called.
  *
+ * A phone's guidance (CarPlay, Android Auto) leaves that field on a placeholder and the state inactive: its
+ * turns are in a second interface, ...GuidanceEventList, which has no field to watch. It is asked once a
+ * second with its query method (queryContent: "the next four manoeuvres ahead of the car", which changes
+ * nothing: no view of the HMI's is touched), and the first way-ahead event of the reply is the turn.
+ *
  * Run as a child of xinhan-cam.js (a crash of the native binding then never takes the camera down):
  *   node nav.js read      prints one JSON line per event:
  *     {"ev":"catalog","ifaces":[{name,fields,broadcasts,methods}]}      what the catalogue has
@@ -26,7 +31,7 @@ const cp = require('child_process');
 
 const CATALOG = process.env.XINHAN_CATALOG || '/etc/oap/someip/someip-interfaces.json';
 const SOMEIP = process.env.XINHAN_SOMEIP || '/usr/lib/someip.node';
-const GEN = path.join(__dirname, 'oapgen-gen.js');
+const GEN = process.env.XINHAN_GEN || path.join(__dirname, 'oapgen-gen.js');
 
 /* ---------------- the catalogue ---------------- */
 
@@ -120,7 +125,7 @@ function findBody(v, depth, tag) {
  * kind null: not a way-ahead manoeuvre (nothing, a placeholder, a speed camera, ...). angle: degrees, negative
  * left; meters: to it, or -1.
  */
-function maneuver(dart, tables) {
+function maneuver(dart, tables, textOnly) {
     const t = tables || {};
     const hit = findBody(dart, 0, null);
     if (!hit) return { kind: null, angle: 0, meters: -1, exit: 0 };
@@ -144,20 +149,59 @@ function maneuver(dart, tables) {
     let meters = -1;
     const fd = b.formattedDistance;
     if (fd && typeof fd === 'object') {
-        if (typeof fd.rawDistance === 'number' && fd.rawDistance >= 0 && fd.rawDistance < 1e7) meters = fd.rawDistance;
+        // a phone's rawDistance is not the distance (textOnly): its text and unit are
+        if (!textOnly && typeof fd.rawDistance === 'number' && fd.rawDistance >= 0 && fd.rawDistance < 1e7) meters = fd.rawDistance;
         else {
             const n = parseFloat(String(fd.distance || '').replace(',', '.'));
             const u = enumName(fd.unit, t.unit);
             if (Number.isFinite(n) && u && TO_M[u]) meters = n * TO_M[u];
         }
     }
-    if (meters < 0 && typeof b.rawDistance === 'number' && b.rawDistance >= 0) meters = b.rawDistance;
+    if (meters < 0 && !textOnly && typeof b.rawDistance === 'number' && b.rawDistance >= 0) meters = b.rawDistance;
     return { kind, angle, meters: meters < 0 ? -1 : Math.round(meters), exit };
+}
+
+/** The events of a queryContent reply, wherever the binding puts them: the first array named eventsInView. */
+function eventsOf(reply, depth) {
+    if (!reply || typeof reply !== 'object' || (depth || 0) > 5) return [];
+    if (Array.isArray(reply.eventsInView)) return reply.eventsInView;
+    const keys = Object.keys(reply);
+    for (let i = 0; i < keys.length; i++) {
+        const v = reply[keys[i]];
+        if (v && typeof v === 'object') { const e = eventsOf(v, (depth || 0) + 1); if (e.length) return e; }
+    }
+    return [];
+}
+/** The phone's next turn from a queryContent reply: the first way-ahead event that has a distance; kind null: none. */
+function eventManeuver(reply, tables) {
+    const list = eventsOf(reply, 0);
+    for (let i = 0; i < list.length; i++) {
+        const m = maneuver({ maneuver: list[i] }, tables, true);
+        if (m.kind && m.meters >= 0) return m;
+    }
+    return { kind: null, angle: 0, meters: -1, exit: 0 };
+}
+
+/**
+ * The request of queryContent: the next manoeuvres ahead of the car's position. shape: how this binding
+ * writes a union ('keyed': { member: value }, 'typed': { type, value }); numeric: enums as numbers.
+ */
+function queryRequest(shape, numeric) {
+    const E = numeric ? { CCP: 0, INCLUDE_ACTIVE_MANEUVERS: 1, INCLUDE_DESTINATIONS: 2, INCLUDE_TUNNELS: 7, INCLUDE_ALONG_MAIN_ROAD: 18 } : null;
+    const e = (n) => (E ? E[n] : n);
+    const anchor = shape === 'typed' ? { type: 'standardReferencePoint', value: e('CCP') } : { standardReferencePoint: e('CCP') };
+    return { viewConfigs: [{
+        viewport: { startPoint: { anchorPoint: anchor, offsets: [] }, maxElementCount: 4, endPoints: [],
+            includedTypes: ['INCLUDE_ACTIVE_MANEUVERS', 'INCLUDE_DESTINATIONS', 'INCLUDE_TUNNELS', 'INCLUDE_ALONG_MAIN_ROAD'].map(e) },
+        options: [], minimumUpdateIntervalMs: 0, segmentItemRasterLength: 0,
+    }] };
 }
 
 /** The guidance's whole state from the last values of its fields: { active, kind, angle, meters, exit, provider, state }. */
 function navOf(values, tables) {
-    const m = maneuver(values.dart, tables);
+    let m = maneuver(values.dart, tables);
+    // nothing from the car's own guidance: the phone's, from the event list
+    if (!m.kind && values.events) m = eventManeuver(values.events, tables);
     const state = enumName(values.state && typeof values.state === 'object' && values.state.state !== undefined ? values.state.state : values.state, null);
     const provider = enumName(values.provider, null);
     const off = state && /INACTIVE|NOT_ACTIVE|OFF|STOPPED|NONE/.test(state);
@@ -172,11 +216,13 @@ const cut = (s, n) => { s = String(s); return s.length > n ? s.slice(0, n) + 'â€
 const say = (o) => { try { process.stdout.write(JSON.stringify(o) + '\n'); } catch (e) { /* the parent went */ } };
 const within = (p, ms, what) => Promise.race([p, new Promise((r, j) => setTimeout(() => j(new Error(what + ': no answer in ' + ms + ' ms')), ms))]);
 
-function describe(iface, attributes, tmp, n) {
+function describe(iface, attributes, tmp, n, methods) {
     const dir = path.join(tmp, String(n));
     fs.mkdirSync(dir);
     const proxies = {};
-    proxies[iface] = { instances: '*', attributes };
+    proxies[iface] = { instances: '*' };
+    if (attributes) proxies[iface].attributes = attributes;
+    if (methods) proxies[iface].methods = methods;
     fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ proxies, services: {} }));
     cp.execFileSync(process.execPath, [GEN, CATALOG, path.join(dir, 'manifest.json'), '0', path.join(dir, 'out')], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 });
     return JSON.parse(fs.readFileSync(path.join(dir, 'out', iface.replace(/\./g, '_') + '.json'), 'utf8'));
@@ -204,6 +250,53 @@ async function read() {
     for (const iface of ifaces) {
         const pick = pickFields(iface);
         const names = Object.keys(pick);
+        // the event list: no field, a query method
+        const qm = /EventList/i.test(iface.name) ? (iface.methods || []).filter((x) => /^queryContent$/i.test(x))[0] || (iface.methods || []).filter((x) => /query/i.test(x))[0] : null;
+        if (qm) {
+            let cfg;
+            try { cfg = describe(iface.name, null, tmp, n++, [qm]); } catch (e) {
+                say({ ev: 'proxy', iface: iface.name, inst: '', ok: false, note: 'description: ' + cut(String(e.stderr || '') + e.message, 300) });
+                continue;
+            }
+            say({ ev: 'note', text: 'event list ' + qm + ': ' + cut(JSON.stringify((cfg.methods || {})[qm] || Object.keys(cfg)), 600) });
+            for (const inst of Object.keys(cfg.instances || { 1: 1 })) {
+                let p;
+                try {
+                    p = await within(someip.buildProxy(cfg, String(inst)).then((px) => px.init().then(() => px)), 6000, 'proxy');
+                } catch (e) { say({ ev: 'proxy', iface: iface.name, inst, ok: false, note: cut(e && e.message || e, 200) }); continue; }
+                up++;
+                say({ ev: 'proxy', iface: iface.name, inst, ok: true, note: 'method ' + qm });
+                // the request's shape is tried out: as the unit's own values came in (a union keyed or typed), then the others
+                const tries = [['keyed', false], ['typed', false], ['keyed', true], ['typed', true]];
+                let good = -1, at = 0, busy = false, fails = 0, lastErr = '', lastReply = '';
+                setInterval(() => {
+                    if (busy) return;
+                    // the car's own guidance is on: its field has the turn
+                    if (maneuver(values.dart, tables).kind) return;
+                    const d = values.dart && values.dart.maneuver;
+                    const first = d && typeof d === 'object' && typeof d.type === 'string' ? 1 : 0;
+                    const k = good >= 0 ? good : (at + first) % tries.length;
+                    busy = true;
+                    let done;
+                    try { done = Promise.resolve(p.callMethod(qm, queryRequest(tries[k][0], tries[k][1]), 3000)); } catch (e) { done = Promise.reject(e); }
+                    within(done, 4000, qm).then((r) => {
+                        busy = false;
+                        if (good < 0) { good = k; say({ ev: 'note', text: 'event list: request shape ' + tries[k].join(' ') + ' answered' }); }
+                        values.events = r;
+                        const s = cut(JSON.stringify(r), 3000);
+                        if (s !== lastReply) { lastReply = s; say({ ev: 'value', iface: iface.name, name: qm, value: s }); }
+                        changed();
+                    }, (e) => {
+                        busy = false;
+                        const msg = cut(e && e.message || e, 200);
+                        if (good < 0) at++;
+                        else if (++fails > 20) { good = -1; fails = 0; }
+                        if (msg !== lastErr) { lastErr = msg; say({ ev: 'note', text: 'event list ' + tries[k].join(' ') + ': ' + msg }); }
+                    });
+                }, 1000);
+            }
+            continue;
+        }
         if (!pick.dart) continue;
         const attributes = {};
         names.forEach((k) => { attributes[pick[k]] = 'rs'; });
@@ -243,4 +336,4 @@ if (require.main === module && process.argv[2] === 'read') {
     read().catch((e) => { say({ ev: 'note', text: 'error: ' + cut(e && e.stack || e, 300) }); process.exit(1); });
 }
 
-module.exports = { findInterfaces, pickFields, enumTables, maneuver, navOf };
+module.exports = { findInterfaces, pickFields, enumTables, maneuver, navOf, eventManeuver, queryRequest };

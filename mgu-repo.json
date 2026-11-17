@@ -11,7 +11,7 @@
         "ID7"
       ],
       "requires": {
-        "xinhan-cam": "0.5.3",
+        "xinhan-cam": "0.5.4",
         "idrive7-renderd": "2.1.7",
         "mgu-inputgate": "1.0.0"
       },

@@ -292,8 +292,6 @@ void draw_band(const Surface &s0, const Road &r, const Overlay &o, int64_t t_ms)
     x0 = std::max(s0.w * 0.03, std::min(s0.w * 0.97 - len, x0));
     y0 = std::max(s0.h * 0.12, std::min(s0.h * 0.8 - bh, y0));
     const Color black = rgb(10, 10, 10), white = rgb(255, 255, 255);
-    const int edge = std::max(1, (int)(bh * 0.06));
-    rect(s0, (int)x0 - edge, (int)y0 - edge, (int)len + 2 * edge, (int)bh + 2 * edge, white, 200);
     rect(s0, (int)x0, (int)y0, (int)len, (int)bh, black, 256);
     Surface s = s0;
     s.clip0 = (int)x0;

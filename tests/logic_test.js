@@ -317,6 +317,20 @@ t('helper: the navigation\'s values, however the unit shapes them; the decoder\'
     assert.deepStrictEqual(N.findInterfaces(db).map((i) => i.name), ['de.bmw.x.navigation.Guidance']);
     assert.deepStrictEqual(N.pickFields(N.findInterfaces(db)[0]), { dart: 'conclusiveDart', state: 'guidanceState', provider: 'guidingProvider' });
     assert.deepStrictEqual([N.enumTables(db).direction[7], N.enumTables(db).unit[1]], ['RIGHT', 'KM']);
+    // a phone's turns: the event list's reply; the text is the distance, never rawDistance
+    const ev = (o) => ({ type: 'intersection', value: Object.assign({ uid: 0, guidingStep: 'X', formattedDistance: { distance: '250', unit: 'METER', rawDistance: 1 } }, o) });
+    const reply = { GuidanceEventListError: 'NO_ERROR', viewContent: [{ configSequenceId: 0, eventsInView: [{ type: 'speedCamera', value: { formattedDistance: { distance: '90', unit: 'METER' }, guidingStep: 'X' } },
+        ev({ direction: 'RIGHT' }), ev({ direction: 'LEFT', formattedDistance: { distance: '', unit: 'NONE', rawDistance: 1 } })] }] };
+    assert.deepStrictEqual(N.eventManeuver(reply), { kind: 'turn', angle: 90, meters: 250, exit: 0 });
+    assert.strictEqual(N.eventManeuver({ viewContent: [] }).kind, null);
+    assert.deepStrictEqual(N.eventManeuver({ out: { viewContent: [{ eventsInView: [{ intersection: ev({ direction: 'SLIGHT_LEFT' }).value }] }] } }).angle, -30);
+    const placeholder = { maneuver: { type: 'placeholderElement', value: {} } };
+    const phone = N.navOf({ dart: placeholder, state: 'INACTIVE', provider: 'ANDROID_AUTO', events: reply });
+    assert.deepStrictEqual([phone.active, phone.kind, phone.angle, phone.meters, phone.provider], [true, 'turn', 90, 250, 'ANDROID_AUTO']);
+    assert.strictEqual(N.navOf({ dart, state: 'ACTIVE', events: reply }).meters, 118);       // the car's own guidance comes first
+    assert.deepStrictEqual(N.queryRequest('keyed', false).viewConfigs[0].viewport.startPoint.anchorPoint, { standardReferencePoint: 'CCP' });
+    assert.deepStrictEqual(N.queryRequest('typed', true).viewConfigs[0].viewport.startPoint.anchorPoint, { type: 'standardReferencePoint', value: 0 });
+    assert.deepStrictEqual(N.queryRequest('keyed', true).viewConfigs[0].viewport.includedTypes, [1, 2, 7, 18]);
     // the ar line: off without a route; counted nearer by the speed; the demo; the marks
     const J = (ar, nav, now) => JSON.parse(H.arLine(ar, nav, now));
     assert.strictEqual(J(null, null, 0).mode, 'off');
