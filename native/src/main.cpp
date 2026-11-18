@@ -151,6 +151,8 @@ void emit_status(App &a)
     n("picture_age_ms", s.picture_ms < 0 ? -1 : now - s.picture_ms);
     n("decode_us", s.decode_us);
     n("view_us", s.view_us);
+    n("aux_us", s.aux_us);
+    n("aux_frames", (long long)a.aux.frames);
     str("sei", s.sei);
     str("sei_prev", s.sei_prev);
     str("pair", s.pair);

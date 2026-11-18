@@ -18,8 +18,9 @@ const theme = themes.theme(themes.ids ? (Array.isArray(themes.ids) ? themes.ids[
 const discs = (s) => { const d = {}; ['left', 'right'].forEach((side) => { const c = L.viewConfig(s, T, side); d[side] = { x: c.x, y: c.y, w: c.w, h: c.h }; }); return d; };
 const rows = (sig) => [
     { label: 'Xi nhan', text: sig, kind: 'go' }, { label: 'Hộp camera', text: 'DR_ACTIVE/MODE_MOSAIK/7 · đúng chế độ', kind: 'go' },
-    { label: 'Luồng hình', text: '1280x480 · 30 hình/giây · ghép 2 khung (sei@19)', kind: 'go' }, { label: 'Đồng hồ', text: 'sẵn sàng · panel 320x320', kind: 'go' }];
-const base = { page: 0, edit: 'left', enabled: true, round: true, gauge: true, sizeLabel: 'Vừa khít (320)', front: 'tắt', discs: discs({}), version: 'Bản 0.4.0 · trợ thủ 0.4.0' };
+    { label: 'Luồng hình', text: '1280x480 · 30 hình/giây · ghép 2 khung (sei@19)', kind: 'go' }, { label: 'Đồng hồ', text: 'sẵn sàng · panel 320x320', kind: 'go' },
+    { label: 'Hai camera', text: 'đang hiện cả hai', kind: 'go' }, { label: 'Hiệu năng', text: 'giải mã 9,8 · vẽ 6,1+2,4 ms · 10+10 hình/s · rớt 0 gói/s · CPU 71°C', kind: 'dim' }];
+const base = { page: 0, edit: 'left', enabled: true, round: true, gauge: true, sizeLabel: 'Vừa khít (320)', front: 'tắt', discs: discs({}), version: 'Bản 0.7.1 · trợ thủ 0.7.1' };
 const f = L.frontConfig({}, T);
 const states = {
     '1-cho': Object.assign({}, base, { title: 'Chờ xi nhan', titleKind: 'dim', subtitle: 'Bật xi nhan để xem camera gương bên đó trên đồng hồ', rows: rows('Tắt'), shown: null }),

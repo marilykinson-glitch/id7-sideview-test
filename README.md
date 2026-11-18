@@ -1,10 +1,18 @@
-# Camera xi nhan 0.7.0 (BMW iDrive 7 / MGU)
+# Camera xi nhan 0.7.1 (BMW iDrive 7 / MGU)
 
 Bật xi nhan bên nào, đồng hồ (instrument cluster) hiện camera gương bên đó, kiểu Hyundai/Kia. Tắt xi nhan thì hình giữ thêm 2 giây rồi tự ẩn. Bật đèn khẩn cấp (hazard) thì không hiện.
 
 Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. Hình lấy từ chính luồng 4 camera mà Drive Recorder Next đang dùng, nên hai app chạy song song được.
 
 > **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
+
+## Mới trong 0.7.1
+
+- **Camera trước nét lại.** Mức mới *Rộng nét (640)* (mặc định): lấy đúng 640x288 điểm ảnh của camera, không phóng to. *Rộng kiểu BMW (960)* vẫn còn nhưng là phóng 1,5 lần nên mờ hơn.
+- **Camera trước mặc định Tắt** (đổi một lần khi cập nhật). Mũi tên dẫn đường vẫn tự bật camera trước khi gần chỗ rẽ.
+- **Mũi tên dẫn đường chỉ bật khi có rẽ thật** (rẽ, chếch, quay đầu, vòng xuyến, sắp tới nơi), không bật cho "đi thẳng".
+- **Bật khoảng 12 giây trước chỗ rẽ** tính theo tốc độ xe (từ 80 m đến 400 m; chưa biết tốc độ thì 250 m), giữ tới khi qua chỗ rẽ thêm 3 giây, không chớp tắt khi khoảng cách nhảy.
+- **Dòng *Hiệu năng*** ở tab Camera: thời gian giải mã, thời gian vẽ từng hình, số hình gửi mỗi giây, gói hình bị rớt, nhiệt độ CPU (nếu đọc được).
 
 ## Mới trong 0.7.0
 
@@ -127,10 +135,10 @@ Nếu hình bị nghiêng, ngược hay bị bóp hẹp: chỉnh *Xoay cam*, *L�
 |---|---|---|
 | Bật theo xi nhan | Bật | Tắt thì chỉ còn nút thử |
 | Camera trước | Tắt | Dưới 30 km/h, Dưới 60 km/h, Luôn hiện. Hiện ở vùng bản đồ giữa đồng hồ khi không xi nhan |
-| Mũi tên dẫn đường | Khi sắp rẽ | Suốt đường, Tắt. Xem tab Dẫn đường |
+| Mũi tên dẫn đường | Khi sắp rẽ | Khoảng 12 giây trước chỗ rẽ thật. Suốt đường, Tắt. Xem tab Dẫn đường |
 | Khi xi nhan | Giữ cam trước khi có mũi tên | Luôn giữ cam trước, Chỉ cam gương |
 | Thẻ rẽ | Hiện | Thẻ mũi tên + khoảng cách ở góc hình camera trước |
-| Cỡ cam trước | Vừa (512x384) | Nhỏ 384x288, Lớn 640x480 |
+| Cỡ cam trước | Rộng nét (640x288) | Rộng kiểu BMW 960x432 (phóng to, mờ hơn), Nhỏ 384x288, Vừa 512x384, Lớn 640x480 |
 | Hướng nhìn | Chếch về sau | Ngang (như bản 0.3), Chếch về trước |
 | Phóng to | Không | 1,25 / 1,5 / 2 lần |
 | Giữ hình thêm | 2 giây | Sau khi tắt xi nhan: 1, 2, 3, 5 giây |

@@ -69,6 +69,7 @@ struct Stats {
     bool full_range = false;
     int64_t picture_ms = -1;               /* when the last picture was decoded (cld::now_ms), -1: none */
     int decode_us = 0, view_us = 0;        /* the last picture's decode, the last view's making */
+    int aux_us = 0;                        /* the last second view's making */
     std::string sei;                       /* the last picture's user-data SEI, hex */
     std::string avb;                       /* the bus receiver: "", "ok" or why not */
     std::string pair;                      /* "off", or how the alternating pictures are told apart (PairTagger::mode) */

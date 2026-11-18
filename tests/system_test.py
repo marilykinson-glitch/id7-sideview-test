@@ -8,6 +8,7 @@ four-camera stream through a fake AVB bridge and a fake cluster renderer.
 """
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -348,8 +349,8 @@ def t_drive():
         # the front camera in the middle of the cluster (the "front" setting), and a turn signal over it
         r.cmd(speed=int(20 / 0.015625))
         r.cmd(set=['front', 'slow30'])
-        ok = r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'map' and r.shown()[1].get('vw') == 960 and r.shows(RED), 4)
-        check(ok, 'front camera below 30 km/h, at 20: the front camera (red) 960x432 on the map area')
+        ok = r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('target') == 'map' and r.shown()[1].get('vw') == 640 and r.shows(RED), 4)
+        check(ok, 'front camera below 30 km/h, at 20: the front camera (red) 640x288 ("sharp", the default) on the map area')
         check(r.wait(lambda: r.model.get('shown') == 'front' and r.model.get('frontRect') is not None, 2), 'the page shows it')
         r.cmd(set=['blinkFront', 'mirror'])
         r.cmd(light=[0, RIGHT_ON])
@@ -390,9 +391,9 @@ def t_drive():
         check(r.wait(lambda: ((r.status().get('nav') or {}).get('last') or {}).get('meters') == 600, 4), 'the helper reads the navigation (the app asks it to): a turn 600 m ahead')
         time.sleep(0.5)
         check(not r.cr.visible(), 'too far yet: nothing shown')
-        r.nav(active=True, kind='turn', angle=90, meters=180, exit=0, provider='ANDROID_AUTO', state='INACTIVE')
-        check(r.wait(lambda: r.shows(RED) and (r.control().get('ar') or {}).get('mode') == 'route' and r.helper_said('ar: route'), 5), '180 m before the turn: the front camera with the route on it')
-        r.nav(active=True, kind='turn', angle=90, meters=170, exit=0, provider='ANDROID_AUTO', state='INACTIVE', street='Tân Phú / Đ. Số 23')
+        r.nav(active=True, kind='turn', angle=90, meters=110, exit=0, provider='ANDROID_AUTO', state='INACTIVE')
+        check(r.wait(lambda: r.shows(RED) and (r.control().get('ar') or {}).get('mode') == 'route' and r.helper_said('ar: route'), 5), '110 m before the turn at 36 km/h (12 s ahead is 120 m): the front camera with the route on it')
+        r.nav(active=True, kind='turn', angle=90, meters=100, exit=0, provider='ANDROID_AUTO', state='INACTIVE', street='Tân Phú / Đ. Số 23')
         check(r.wait(lambda: ((r.control().get('ar') or {}).get('label') or {}).get('street') == 'Tân Phú / Đ. Số 23' and os.path.getsize(os.path.join(r.ctl_dir(), 'label.bin')) == r.control()['ar']['label']['w'] * r.control()['ar']['label']['h'], 4),
               'the road\'s name is drawn into label.bin for the decoder: %s' % (r.control().get('ar') or {}).get('label'))
         lab = open(os.path.join(r.ctl_dir(), 'label.bin'), 'rb').read()
@@ -407,19 +408,20 @@ def t_drive():
         # both at once (the default): the front camera stays in the middle, the mirror camera in its dial
         r.cmd(set=['blinkFront', 'nav'])
         r.cmd(light=[0, RIGHT_ON])
-        check(r.wait(lambda: sorted(r.visible().keys()) == ['map960', 'panel320'] and near(r.visible()['map960'], RED, 45) and near(r.visible()['panel320'], YELLOW, 60), 5), 'right signal with the route on: the front camera stays in the map area, the right mirror camera in its dial: %s' % r.visible())
+        check(r.wait(lambda: sorted(r.visible().keys()) == ['map640', 'panel320'] and near(r.visible()['map640'], RED, 45) and near(r.visible()['panel320'], YELLOW, 60), 5), 'right signal with the route on: the front camera stays in the map area, the right mirror camera in its dial: %s' % r.visible())
         r.cmd(light=[0, OFF])
-        r.wait(lambda: list(r.visible().keys()) == ['map960'], 6)
+        r.wait(lambda: list(r.visible().keys()) == ['map640'], 6)
         r.cmd(set=['dualTarget', 'panel'])
         r.cmd(light=[0, RIGHT_ON])
         def both():
             v = r.visible()
-            return len(v) == 2 and near(v.get('panel960', (0, 0, 0)), RED, 45) and near(v.get('panel320', (0, 0, 0)), YELLOW, 60)
+            return len(v) == 2 and near(v.get('panel640', (0, 0, 0)), RED, 45) and near(v.get('panel320', (0, 0, 0)), YELLOW, 60)
         check(r.wait(both, 5), '"same target as the mirror camera": both on the whole-cluster target (one shared video): %s' % r.visible())
         check(r.wait(lambda: 'đang hiện cả hai' in r.rows.get('ROW_DUAL', ''), 3), 'the page says both show: ' + r.rows.get('ROW_DUAL', ''))
+        check(r.wait(lambda: re.search(r'\d+\+\d+ hình/s', r.rows.get('ROW_PERF', '')) is not None, 5), 'the page counts the pictures sent of both views: ' + r.rows.get('ROW_PERF', ''))
         check((r.control().get('aux') or {}).get('x') == 1380 and r.control().get('view') == 'front' and r.native().get('aux_shown') == 1, 'the second view sits where the mirror camera does alone')
         r.cmd(light=[0, OFF])
-        check(r.wait(lambda: list(r.visible().keys()) == ['map960'] and r.native().get('aux') == 'none', 6), 'signal off: the mirror camera goes, the route stays')
+        check(r.wait(lambda: list(r.visible().keys()) == ['map640'] and r.native().get('aux') == 'none', 6), 'signal off: the mirror camera goes, the route stays')
         # the display has no room for a second video: the mirror camera alone, as without the setting
         r.cr.refuse_vw = 320
         r.cmd(light=[0, LEFT_ON])
@@ -428,7 +430,7 @@ def t_drive():
         check(r.wait(lambda: list(r.visible().keys()) == ['panel320'] and near(r.visible()['panel320'], BLUE, 60) and r.control().get('view') == 'left', 8), 'the renderer refuses the second layer: the left mirror camera alone')
         check(r.wait(lambda: 'too many video buffers' in r.rows.get('ROW_DUAL', ''), 3), 'the page says why: ' + r.rows.get('ROW_DUAL', ''))
         r.cmd(light=[0, OFF])
-        check(r.wait(lambda: list(r.visible().keys()) == ['map960'], 6), 'signal off: the route again')
+        check(r.wait(lambda: list(r.visible().keys()) == ['map640'], 6), 'signal off: the route again')
         time.sleep(15.5)                                    # the refusal is remembered for 15 s
         r.nav(active=False, kind=None, angle=0, meters=-1, exit=0, provider='', state='INACTIVE')
         check(r.wait(lambda: not r.cr.visible(), 4), 'the turn is done, no next one: gone')

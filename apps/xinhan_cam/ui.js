@@ -192,11 +192,11 @@ function draw(cv, G, t, v, act) {
     const rx = 880;
     cv.text(String(v.title || '').toUpperCase(), rx, G.TOP + 82, 40, v.titleKind === 'go' ? (t.go || '#2fd27a') : v.titleKind === 'warn' ? (t.warn || '#ffb020') : t.text, { literal: true, font: 'bold', spacing: 1.5 });
     if (v.subtitle) cv.text(v.subtitle, rx, G.TOP + 116, 18, t.dim, { literal: true, font: 'label' });
-    (v.rows || []).slice(0, 5).forEach((r, i) => {
-        const y = G.TOP + 162 + i * 42;
+    (v.rows || []).slice(0, 6).forEach((r, i) => {
+        const y = G.TOP + 150 + i * 38;
         cv.circle(rx + 8, y - 7, 7, kindColor(t, r.kind));
         cv.text(r.label, rx + 30, y, 18, t.text, { literal: true, font: 'bold' });
-        cv.text(r.text, rx + 170, y, 18, r.kind === 'warn' || r.kind === 'crit' ? kindColor(t, r.kind) : t.dim, { literal: true, font: 'label' });
+        cv.text(r.text, rx + 170, y, r.text.length > 46 ? 15 : 18, r.kind === 'warn' || r.kind === 'crit' ? kindColor(t, r.kind) : t.dim, { literal: true, font: 'label' });
     });
     if (v.version) cv.text(v.version, W - 56, G.TOP + 34, 14, G.withAlpha('#ffffff', 0.35), { literal: true, align: 'right', font: 'label' });
 

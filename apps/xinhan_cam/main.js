@@ -176,7 +176,7 @@ mgu.run({
         let page = 0, edit = 'left', calCam = 'left';
         let lastControl = '', lastWriteAt = 0, seq = 0;
         let lastPlan = { view: 'none', why: 'Đang khởi động', want: null }, lastSide = null;
-        let camTickAt = 0, lastWant, lastBusy, auxRefusedAt = -1e9, auxReason = '';
+        let camTickAt = 0, lastWant, lastBusy, auxRefusedAt = -1e9, auxReason = '', arHoldUntil = 0;
         const writeControl = (view, config, ar, aux, now) => {
             const body = JSON.stringify({ view, config, ar, aux });
             const active = view !== 'none';
@@ -232,13 +232,15 @@ mgu.run({
             if (n && n.aux_state === 'refused' && now - auxRefusedAt >= 15000) { auxRefusedAt = now; auxReason = String(n.aux_reason || '').slice(0, 80); log.warn('second view refused (' + (n.aux_reason || '') + '): the mirror camera alone'); }
             const p = L.plan({
                 enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test, front: s.front,
-                arMode: s.ar, nav: navNow(st),
+                arMode: s.ar, nav: navNow(st), arLatched: lastPlan.ar === 'route', arHold: now < arHoldUntil,
                 // the second layer was refused a moment ago: the mirror camera alone for a while
                 dual: s.blinkFront, auxRefused: now - auxRefusedAt < 15000,
                 speed: speed !== null && now - speedAt < 3000 ? speed : null, maxSpeed: Number(s.maxSpeed) || 0,
                 cam: cam.info().cam,
                 helper: { ok: !!n, pictureAge: n ? n.picture_age_ms : null, pictureW: n ? n.picture_w : 0, pictureH: n ? n.picture_h : 0, pair: n ? n.pair : null },
             });
+            // the route shown: kept 3 s after the turn is no longer near (passed, or the route moved on)
+            if (p.ar === 'route') arHoldUntil = now + 3000;
             if (p.view !== lastPlan.view || p.why !== lastPlan.why) log.info('view ' + p.view + (p.why ? ' (' + p.why + ')' : ''));
             lastPlan = p;
             const targets = L.parseTargets(n && n.targets);
@@ -266,6 +268,37 @@ mgu.run({
         const VIEW = { left: 'Camera trái', right: 'Camera phải', all: 'Cả 4 camera', front: 'Camera trước' };
         const PHASE = { on: 'đúng chế độ', idle: 'không yêu cầu', asked: 'đã yêu cầu', waiting: 'xe chưa cho, chờ thử lại', starting: 'đang khởi động', 'parking view': 'đang hiện camera đỗ xe', 'asked (state unreadable)': 'đã yêu cầu (không đọc được trạng thái)' };
         const label = (key) => settings.display(key);
+        // per-second figures from the helper's running counts, over the last 2 s or more
+        let perfPrev = null, perfOut = { text: 'đang đo', warn: false }, heat = null, heatAt = 0;
+        function cpuHeat(now) {
+            if (now - heatAt < 5000) return heat;
+            heatAt = now;
+            heat = null;
+            try {
+                fs.readdirSync('/sys/class/thermal').filter((d) => /^thermal_zone\d+$/.test(d)).forEach((d) => {
+                    const t = Number(fs.readFileSync('/sys/class/thermal/' + d + '/temp', 'utf8')) / 1000;
+                    if (t > 0 && t < 150 && (heat === null || t > heat)) heat = t;
+                });
+            } catch (e) { /* not readable here */ }
+            return heat;
+        }
+        function perf(now, n) {
+            const cur = { t: now, sent: n.frames_sent || 0, aux: n.aux_frames || 0, dropped: n.dropped || 0, lost: n.lost || 0, pics: n.pictures || 0 };
+            if (!perfPrev || cur.sent < perfPrev.sent || cur.pics < perfPrev.pics) { perfPrev = cur; return perfOut; }
+            const dt = (now - perfPrev.t) / 1000;
+            if (dt < 2) return perfOut;
+            const r = (k) => Math.round((cur[k] - perfPrev[k]) / dt * 10) / 10;
+            const sent = r('sent'), aux = r('aux'), drop = r('dropped'), lost = r('lost');
+            const h = cpuHeat(now);
+            const ms = (us) => (us / 1000).toFixed(1).replace('.', ',');
+            perfOut = {
+                warn: drop > 0 || lost > 2 || (h !== null && h >= 90),
+                text: 'giải mã ' + ms(n.decode_us || 0) + ' · vẽ ' + ms(n.view_us || 0) + (n.aux_us ? '+' + ms(n.aux_us) : '') + ' ms · ' + Math.round(sent) + (aux ? '+' + Math.round(aux) : '') +
+                    ' hình/s · rớt ' + drop + (lost ? ' · mất ' + lost : '') + ' gói/s' + (h !== null ? ' · CPU ' + Math.round(h) + '°C' : ''),
+            };
+            perfPrev = cur;
+            return perfOut;
+        }
         function model() {
             const now = Date.now();
             const s = cfg(), st = readStatus(now), n = st && st.native, info = cam.info();
@@ -319,6 +352,11 @@ mgu.run({
                         : lastPlan.aux ? (n && n.aux_shown && n.shown && n.layer === 'shown' ? 'đang hiện cả hai' : 'cam trước ' + (n && n.shown ? 'đã gửi hình' : 'chưa hiện') + ' (' + ((n && n.target) || '?') + ', ' + ((n && n.layer) || '?') + ((n && n.layer_reason) ? ': ' + n.layer_reason : '') + ') · cam gương ' + (n && n.aux_shown ? 'đang hiện' : ((n && n.aux_state) || '?') + ((n && n.aux_reason) ? ': ' + n.aux_reason : '')))
                             : now - auxRefusedAt < 15000 ? 'bộ vẽ từ chối hình thứ hai (' + auxReason + ')'
                                 : lastPlan.dualWhy ? 'không giữ cam trước: ' + lastPlan.dualWhy : 'sẵn sàng' });
+            }
+            // how hard the helper works: decode and drawing times, what it dropped, pictures sent, the CPU's heat
+            if (n) {
+                const pf = perf(now, n);
+                v.rows.push({ label: 'Hiệu năng', kind: pf.warn ? 'warn' : 'dim', text: pf.text });
             }
             v.version = 'Bản ' + ctx.spec.version + (st && st.version ? ' · trợ thủ ' + st.version : '');
             if (page === 1 || page === 2) {

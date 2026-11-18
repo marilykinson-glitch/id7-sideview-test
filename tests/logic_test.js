@@ -282,7 +282,7 @@ t('plan: the navigation\'s next turn brings the front camera up (ar), a signal c
     const P = (o) => L.plan(Object.assign({ enabled: true, mode: 'mosaic', source: 'auto', side: null, test: null, speed: 40, maxSpeed: 0, cam, helper, front: 'off' }, o));
     const nav = (m) => ({ active: true, kind: 'turn', angle: 90, meters: m });
     assert.strictEqual(P({ arMode: 'near', nav: nav(600) }).view, 'none');
-    assert.deepStrictEqual([P({ arMode: 'near', nav: nav(200) }).view, P({ arMode: 'near', nav: nav(200) }).ar], ['front', 'route']);
+    assert.deepStrictEqual([P({ arMode: 'near', nav: nav(120) }).view, P({ arMode: 'near', nav: nav(120) }).ar], ['front', 'route']);
     assert.strictEqual(P({ arMode: 'near', nav: { active: true, kind: 'turn', meters: -1 } }).view, 'none');
     assert.strictEqual(P({ arMode: 'always', nav: nav(5000) }).ar, 'route');
     assert.strictEqual(P({ arMode: 'off', nav: nav(100) }).view, 'none');
@@ -292,6 +292,27 @@ t('plan: the navigation\'s next turn brings the front camera up (ar), a signal c
     assert.deepStrictEqual([P({ front: 'always' }).view, P({ front: 'always' }).ar], ['front', 'off']);       // the plain front camera
     assert.strictEqual(P({ test: 'calfront' }).ar, 'marks');
     assert.strictEqual(P({ test: 'ardemo', enabled: false }).ar, 'demo');
+});
+t('navigation: the front camera for real turns only, from about 12 s ahead, kept up against a jumping distance', () => {
+    const N = (o) => Object.assign({ active: true, kind: 'turn', angle: 90, meters: 150 }, o);
+    const W = (o) => L.arWanted(Object.assign({ arMode: 'near', speed: 30, nav: N() }, o));
+    assert.deepStrictEqual([L.arNearM(30), L.arNearM(80), L.arNearM(10), L.arNearM(200), L.arNearM(null)], [100, 267, 80, 400, 250]);
+    assert.strictEqual(W({}), false);                                                     // 150 m at 30 km/h: 18 s away
+    assert.strictEqual(W({ nav: N({ meters: 90 }) }), true);
+    assert.strictEqual(W({ speed: 80, nav: N({ meters: 250 }) }), true);                    // 80 km/h: 267 m
+    assert.strictEqual(W({ nav: N({ kind: 'straight', angle: 0, meters: 50 }) }), false);   // "straight on" is no turn
+    assert.strictEqual(W({ nav: N({ kind: 'turn', angle: 0, meters: 50 }) }), false);
+    assert.strictEqual(W({ nav: N({ kind: 'roundabout', angle: 0, meters: 50 }) }), true);
+    assert.strictEqual(W({ nav: N({ kind: 'destination', angle: 0, meters: 50 }) }), true);
+    assert.strictEqual(W({ nav: N({ meters: 140 }), arLatched: true }), true);              // up already: kept to 160 m
+    assert.strictEqual(W({ nav: N({ meters: 170 }), arLatched: true }), false);
+    assert.strictEqual(W({ nav: N({ kind: 'straight', angle: 0, meters: 900 }), arHold: true }), true);   // the 3 s after
+    assert.strictEqual(W({ nav: N({ active: false }), arHold: true }), false);              // the route ended: at once
+    assert.strictEqual(W({ arMode: 'always', nav: N({ kind: 'straight', angle: 0, meters: 900 }) }), true);
+    const T = L.parseTargets('map:1088x480,panel:1920x720');
+    const f = L.frontConfig({ frontSize: 'sharp' }, T);
+    assert.deepStrictEqual([f.w, f.h, f.x, f.y, f.front], [640, 288, 224, 96, '0,100,500,300']);   // 640x288 of the camera, not enlarged
+    assert.strictEqual(L.arConfig({ frontSize: 'sharp' }, 'route').fade, 1);
 });
 t('plan: with a signal on the front camera stays and the mirror camera gets its own layer (dual)', () => {
     const cam = { known: true, kind: 'all4', text: 'x' }, helper = { ok: true, pictureAge: 50, pictureW: 1280, pictureH: 480, pair: 'sei@19' };

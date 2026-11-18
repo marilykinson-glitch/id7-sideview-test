@@ -261,7 +261,7 @@ const FRONT_CROP = '0,0,500,500';      // the front camera: the upper left quart
 /** The front camera's part shown: the middle of its quarter, by the Calibrate page's "frontZoom" (percent). */
 function frontCrop(s) {
     const z = Math.max(100, Math.min(300, Number(s && s.frontZoom) || 100));
-    if (s && s.frontSize === 'wide') {
+    if (s && (s.frontSize === 'wide' || s.frontSize === 'sharp')) {
         // a strip as wide as the camera's picture and 0.6 of that high (20:9 on the cluster), moved up or
         // down by "frontPanY" so the horizon can be put where BMW's own view has it
         const w = 500 * 100 / z, h = w * 0.6;
@@ -271,7 +271,8 @@ function frontCrop(s) {
     return z === 100 ? FRONT_CROP : zoomCrop(0, 0, 500, 500, z);
 }
 // wide: BMW's Augmented View fills the cluster's middle from dial to dial, its edges fading out
-const FRONT_SIZES = { small: [384, 288], medium: [512, 384], large: [640, 480], wide: [960, 432] };
+// sharp: the same strip as wide at its own size (640x288 of the camera's 640x480): never enlarged, so as sharp as the camera
+const FRONT_SIZES = { small: [384, 288], medium: [512, 384], large: [640, 480], sharp: [640, 288], wide: [960, 432] };
 
 /**
  * The config while the front camera shows (the "front" setting): a 4:3 rectangle in the middle of the
@@ -333,12 +334,27 @@ function frontWanted(i) {
 
 /** How near the next turn has to be for "ar: near" to bring the front camera up, in metres. */
 const AR_NEAR_M = 250;
-/** Whether the "ar" setting wants the front camera with the route on it now. i.nav: the helper's (navState()). */
+/** How far ahead of a turn "near" brings the front camera up: about AR_SECONDS at the car's speed, AR_MIN_M..AR_MAX_M. */
+const AR_SECONDS = 12, AR_MIN_M = 80, AR_MAX_M = 400;
+function arNearM(speed) {
+    if (typeof speed !== 'number' || !(speed >= 0)) return AR_NEAR_M;
+    return Math.round(Math.max(AR_MIN_M, Math.min(AR_MAX_M, speed / 3.6 * AR_SECONDS)));
+}
+/** A manoeuvre worth the front camera: a real turn (not "straight on"), a roundabout, the destination. */
+const isTurn = (n) => !!n && (n.kind === 'roundabout' || n.kind === 'destination' || (n.kind === 'turn' && !!n.angle));
+/**
+ * Whether the "ar" setting wants the front camera with the route on it now. i.nav: the helper's (navState()).
+ * i.arLatched: it is up already - it stays until the turn is 1.6 times the distance away (a recalculated route
+ * that jumps around the threshold does not switch it on and off). The app adds a hold of a few seconds after.
+ */
 function arWanted(i) {
+    if (i.arHold && i.nav && i.nav.active) return true;
     const n = i.nav;
     if (!n || !n.active || (i.arMode !== 'near' && i.arMode !== 'always')) return false;
     if (i.arMode === 'always') return true;
-    return typeof n.meters === 'number' && n.meters >= 0 && n.meters <= AR_NEAR_M;
+    if (!isTurn(n)) return false;
+    const limit = arNearM(i.speed) * (i.arLatched ? 1.6 : 1);
+    return typeof n.meters === 'number' && n.meters >= 0 && n.meters <= limit;
 }
 
 /** The numbers of the Calibrate page for the front camera, with their limits, steps and defaults. */
@@ -380,7 +396,7 @@ function arConfig(s, mode, speed) {
         yaw_x10: Math.round(calib(s, 'calYaw') * 10), shift_cm: calib(s, 'calShift'), curve: calib(s, 'calCurve'),
         card: s && s.arCard === 'off' ? 0 : 1,
         white: s && s.arColor === 'blue' ? 0 : 1,
-        style: s && s.arStyle === 'road' ? 1 : 0, fade: s && s.frontSize === 'wide' ? 1 : 0,
+        style: s && s.arStyle === 'road' ? 1 : 0, fade: s && (s.frontSize === 'wide' || s.frontSize === 'sharp') ? 1 : 0,
         speed: typeof speed === 'number' && speed >= 0 ? Math.round(speed) : -1,
     };
 }
@@ -451,4 +467,4 @@ function plan(i) {
     return dualWhy ? { view: side, why: '', want, dualWhy } : { view: side, why: '', want };
 }
 
-module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES, frontCrop, auxConfig, arWanted, arConfig, calib, CALIB, AR_NEAR_M };
+module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES, frontCrop, auxConfig, arWanted, arConfig, calib, CALIB, AR_NEAR_M, arNearM };

@@ -272,9 +272,11 @@ void Pipeline::on_picture(const DecodedFrame &f)
             if (now + ap / 8 >= aux_due_ms_) {
                 aux_due_ms_ += ap;
                 if (aux_resampler_.matches(src.w, src.h, aux.vs, aux.w, aux.h) || aux_resampler_.build(src.w, src.h, aux.vs, aux.w, aux.h)) {
+                    const int64_t a0 = now_us();
                     aux_work_.resize(atlas_bytes(aux.w, aux.h));
                     aux_resampler_.run(src, aux_work_.data());
                     std::lock_guard<std::mutex> lock(mutex_);
+                    stats_.aux_us = (int)(now_us() - a0);
                     if (agen == aux_gen_) {
                         aux_ready_.swap(aux_work_);
                         aux_meta_.view = kNone;
