@@ -223,8 +223,8 @@ void draw_route(const Surface &s, const Road &r, const Overlay &o, int64_t t_ms)
     path.straight = std::max(0.0, to_turn - path.radius);
     const double arc = path.radius * rad(fabs(path.angle));
     const double end = turn && to_turn < far ? path.straight + arc + 9 : std::min(far, to_turn);
-    /* chevrons every 3 m, moving ahead at 6 m/s */
-    const double gap = 3.0, phase = fmod((double)(t_ms % 100000) / 1000.0 * 6.0, gap);
+    /* chevrons every 3 m, moving ahead at 3 m/s (one a second: faster looked hurried on the car) */
+    const double gap = 3.0, phase = fmod((double)(t_ms % 100000) / 1000.0 * 3.0, gap);
     for (double d = 2.0 + phase; d < end; d += gap) {
         double x, z, hx, hz;
         path.at(d, &x, &z, &hx, &hz);
