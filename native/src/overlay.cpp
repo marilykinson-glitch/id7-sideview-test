@@ -290,7 +290,11 @@ void draw_band(const Surface &s0, const Road &r, const Overlay &o, int64_t t_ms)
     /* the band starts a little before the turn's place and runs into the turn; kept inside the picture */
     double x0 = p.x - len / 2 - dir * len * 0.15, y0 = p.y - bh / 2;
     x0 = std::max(s0.w * 0.03, std::min(s0.w * 0.97 - len, x0));
-    y0 = std::max(s0.h * 0.12, std::min(s0.h * 0.8 - bh, y0));
+    /* never over the card (and the road's name under it) at the top: below them, and inside the picture */
+    const int kk = s0.w >= 480 ? 3 : 2;
+    const double top = o.card ? 25 * kk + (o.label && o.label_h > 0 ? o.label_h + kk : 0) + 3 * kk : s0.h * 0.12;
+    y0 = std::max(top, std::min(s0.h * 0.8 - bh, y0));
+    y0 = std::min(y0, s0.h - bh - 2);
     const Color black = rgb(10, 10, 10), white = rgb(255, 255, 255);
     rect(s0, (int)x0, (int)y0, (int)len, (int)bh, black, 256);
     Surface s = s0;
@@ -334,8 +338,8 @@ void draw_card(const Surface &s, const Overlay &o)
     }
     const int icon = 14 * k, pad = 4 * k;
     const int cw = pad + icon + (dist[0] ? pad + text_width(dist, k) : 0) + pad, ch = icon + 2 * pad;
-    /* at the top: in the middle (BMW's style), else in the left corner */
-    const int x0 = o.style == 0 ? (s.w - cw) / 2 : 3 * k, y0 = 3 * k;
+    /* at the top, in the middle: the cluster's window has its corners cut off */
+    const int x0 = (s.w - cw) / 2, y0 = 3 * k;
     rect(s, x0, y0, cw, ch, rgb(8, 12, 20), 190);
     if (o.style != 0)
         rect(s, x0, y0 + ch - k, cw, k, o.white ? rgb(255, 255, 255) : rgb(40, 150, 255), 256);

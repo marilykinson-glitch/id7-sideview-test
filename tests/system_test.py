@@ -432,6 +432,13 @@ def t_drive():
         r.cmd(light=[0, OFF])
         check(r.wait(lambda: list(r.visible().keys()) == ['map640'], 6), 'signal off: the route again')
         time.sleep(15.5)                                    # the refusal is remembered for 15 s
+        # the turn passed, the route goes on: the next turn is far, so the front camera goes about 3 s later
+        r.nav(active=True, kind='straight', angle=0, meters=900, exit=0, provider='ANDROID_AUTO', state='INACTIVE')
+        time.sleep(1.5)
+        check(r.cr.visible(), 'the turn passed: kept for 3 s')
+        check(r.wait(lambda: not r.cr.visible(), 4), 'then gone while the route runs on (Google Maps again)')
+        r.nav(active=True, kind='turn', angle=-90, meters=100, exit=0, provider='ANDROID_AUTO', state='INACTIVE')
+        check(r.wait(lambda: r.shows(RED), 5), 'the next turn near: back')
         r.nav(active=False, kind=None, angle=0, meters=-1, exit=0, provider='', state='INACTIVE')
         check(r.wait(lambda: not r.cr.visible(), 4), 'the turn is done, no next one: gone')
         r.nav(active=True, kind='roundabout', angle=0, meters=900, exit=2, provider='NONE', state='ACTIVE')

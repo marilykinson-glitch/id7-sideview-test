@@ -229,6 +229,10 @@ mgu.run({
             const s = cfg();
             const st = readStatus(now);
             const n = st && st.native;
+            // the route's 3 s hold after the turn: from whether the turn itself is near (never from the hold itself,
+            // which kept the front camera up for as long as a route ran)
+            const kmhNow = speed !== null && now - speedAt < 3000 ? speed : null;
+            if (L.arWanted({ arMode: s.ar, nav: navNow(st), speed: kmhNow, arLatched: lastPlan.ar === 'route' })) arHoldUntil = now + 3000;
             if (n && n.aux_state === 'refused' && now - auxRefusedAt >= 15000) { auxRefusedAt = now; auxReason = String(n.aux_reason || '').slice(0, 80); log.warn('second view refused (' + (n.aux_reason || '') + '): the mirror camera alone'); }
             const p = L.plan({
                 enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test, front: s.front,
@@ -239,8 +243,6 @@ mgu.run({
                 cam: cam.info().cam,
                 helper: { ok: !!n, pictureAge: n ? n.picture_age_ms : null, pictureW: n ? n.picture_w : 0, pictureH: n ? n.picture_h : 0, pair: n ? n.pair : null },
             });
-            // the route shown: kept 3 s after the turn is no longer near (passed, or the route moved on)
-            if (p.ar === 'route') arHoldUntil = now + 3000;
             if (p.view !== lastPlan.view || p.why !== lastPlan.why) log.info('view ' + p.view + (p.why ? ' (' + p.why + ')' : ''));
             lastPlan = p;
             const targets = L.parseTargets(n && n.targets);
