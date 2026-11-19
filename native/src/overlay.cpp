@@ -243,7 +243,9 @@ void draw_route(const Surface &s, const Road &r, const Overlay &o, int64_t t_ms)
         }
     }
     /* at the turn: a row of large arrows standing over the road, pointing into the new road, lit one after
-     * another. Far away they would be a few pixels high, so they are made larger until they take up about a
+     * another. A slight turn (under 60 degrees: "bear right") is not a turn: its arrows stand across the
+     * road and point ahead and to the side, up at 45 degrees, as the sign for it does - seen from behind,
+     * arrows along a road that only bears away would look just like a turn's. Far away they would be a few pixels high, so they are made larger until they take up about a
      * fifth of the picture's height (at most five times their real size). */
     if (turn && to_turn < far) {
         double x, z, hx, hz;
@@ -262,6 +264,28 @@ void draw_route(const Surface &s, const Road &r, const Overlay &o, int64_t t_ms)
             const double ax = x + hx * i * step, az = z + hz * i * step;
             const double lo = 0.7, mid = 0.7 + 1.2 * grow, hi = 0.7 + 2.4 * grow, shaft = 0.45 * grow;
             Pt back_lo, back_hi, neck_lo, neck_hi, tip, fin_lo, fin_hi;
+            if (fabs(path.angle) < 60) {
+                /* u along the arrow (to the side and up), v across it; in the plane across the road */
+                /* three of them side by side at the turn's place (not one behind the other), never over
+                 * the card and the road's name */
+                if (i >= 3)
+                    continue;
+                const double side = path.angle < 0 ? -1 : 1, q = 0.7071, fin = 1.2 * grow;
+                const double bx = x + side * (i - 0.5) * 3.2 * grow, bz = z;
+                const int kk = s.w >= 480 ? 3 : 2;
+                Surface sc = s;
+                sc.row0 = o.card ? 25 * kk + (o.label && o.label_h > 0 ? o.label_h + kk : 0) + 2 * kk : 0;
+                const auto at = [&](double u, double v, Pt *p) {
+                    return r.at(bx + side * (u * q - v * q), 0.2 - 0.6 * grow + u * q + v * q, bz, p);
+                };
+                if (!at(0, -shaft, &back_lo) || !at(0, shaft, &back_hi) || !at(neck, -shaft, &neck_lo) || !at(neck, shaft, &neck_hi) ||
+                    !at(len, 0, &tip) || !at(neck, -fin, &fin_lo) || !at(neck, fin, &fin_hi))
+                    continue;
+                const bool lit_now = i == beat || i + 1 == beat;
+                quad(sc, back_lo, back_hi, neck_hi, neck_lo, lit_now ? lit : dim, lit_now ? 250 : 170);
+                tri(sc, fin_lo, fin_hi, tip, lit_now ? lit : dim, lit_now ? 250 : 170);
+                continue;
+            }
             if (!r.at(ax, mid - shaft, az, &back_lo) || !r.at(ax, mid + shaft, az, &back_hi) ||
                 !r.at(ax + hx * neck, mid - shaft, az + hz * neck, &neck_lo) || !r.at(ax + hx * neck, mid + shaft, az + hz * neck, &neck_hi) ||
                 !r.at(ax + hx * len, mid, az + hz * len, &tip) || !r.at(ax + hx * neck, lo, az + hz * neck, &fin_lo) ||

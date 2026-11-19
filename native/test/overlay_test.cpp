@@ -96,6 +96,20 @@ int main()
         check(d > 1500, "a slight right: its own chevrons (slanted ahead), far from a right turn's");
         check(dl > 800, "slight left and slight right differ");
         check(g90 != g30, "slight right is not drawn as right");
+        /* the road style: a slight turn's standing arrows point up and to the side, a turn's to the side */
+        Overlay rd = t;
+        rd.style = 1;
+        rd.meters = 20;
+        std::vector<uint8_t> r90, r30, rl30;
+        rd.angle = 90;
+        changed(rd, 0, &r90);
+        rd.angle = 30;
+        changed(rd, 0, &r30);
+        rd.angle = -30;
+        changed(rd, 0, &rl30);
+        size_t dr = 0, dlr = 0;
+        for (size_t i = 0; i < r90.size(); i++) { dr += r90[i] != r30[i]; dlr += r30[i] != rl30[i]; }
+        check(dr > 1500 && dlr > 800, "on the road too: slight right, right and slight left are three pictures");
     }
     o.meters = -1;
     o.kind = kRoundabout;
