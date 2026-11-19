@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.7.8';
+const VERSION = '0.7.9';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -227,7 +227,7 @@ function arLine(ar, nav, now, dataDir) {
         const T = 13000, k = Math.floor(now / T) % 3, t = (now % T) / 1000;
         out.mode = 'route';
         out.kind = k === 2 ? 'roundabout' : 'turn';
-        out.angle = k === 0 ? 90 : k === 1 ? -90 : 0;
+        out.angle = k === 0 ? 90 : k === 1 ? -90 : 45;
         out.exit = k === 2 ? 2 : 0;
         out.meters = Math.max(0, Math.round(90 - t * 8.3));
         return JSON.stringify(out);

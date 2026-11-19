@@ -368,7 +368,7 @@ t('helper: the navigation\'s values, however the unit shapes them; the decoder\'
     assert.deepStrictEqual(N.maneuver({ maneuver: { intersection: body({ direction: { value: 7 } }) } }, { direction: { 7: 'RIGHT' } }).angle, 90);
     assert.strictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'STRAIGHT_ON' }) } }).kind, 'straight');
     assert.deepStrictEqual(N.maneuver({ maneuver: { roundabout: { formattedDistance: { distance: '1,2', unit: 1 }, exitNumber: 3, guidingStep: 0 } } }, { unit: { 1: 'KM' } }),
-        { kind: 'roundabout', angle: 0, meters: 1200, exit: 3 });
+        { kind: 'roundabout', angle: 45, meters: 1200, exit: 3 });
     assert.strictEqual(N.maneuver({ maneuver: { destinationManeuver: body({ isCheckeredFlag: true }) } }).kind, 'destination');
     assert.strictEqual(N.maneuver({ maneuver: { speedCamera: body({}) } }).kind, null);     // not the way ahead
     assert.strictEqual(N.maneuver({ maneuver: { placeholderElement: {} } }).kind, null);

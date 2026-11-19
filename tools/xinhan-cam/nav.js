@@ -151,6 +151,9 @@ function maneuver(dart, tables, textOnly) {
         if (!angle) kind = 'straight';
     } else if (kind === 'roundabout') {
         exit = Number(b.exitNumber) || 0;
+        // into it the road bears to the driving side (right-hand traffic: to the right), so the arrows on the
+        // camera have a way to point; drawn as a slight turn, with the ring on the card
+        angle = enumName(b.driveDirection, null) === 'LEFT' ? -45 : 45;
     }
     let meters = -1;
     const fd = b.formattedDistance;
