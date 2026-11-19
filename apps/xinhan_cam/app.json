@@ -2,7 +2,7 @@
   "id": "xinhan_cam",
   "title": "Camera xi nhan",
   "description": "Bật xi nhan bên nào thì đồng hồ hiện camera gương bên đó (kiểu Hyundai/Kia); có thể hiện camera trước ở giữa đồng hồ. Cần xe có camera 360, trợ thủ xinhan-cam (tự cài kèm) và cluster-render.",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "startType": "autostart",
   "vendor": "custom",
   "loggingId": "OAXN",

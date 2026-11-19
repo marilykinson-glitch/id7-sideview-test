@@ -1,7 +1,7 @@
 {
   "id": "xinhan-cam",
   "kind": "tool",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "title": "Trợ thủ Camera xi nhan",
   "description": "Nhận luồng camera của xe (4 camera 360), giải mã và vẽ camera gương, camera trước lên đồng hồ qua cluster-render khi app Camera xi nhan yêu cầu; đọc lệnh rẽ kế tiếp của dẫn đường để vẽ mũi tên lên camera trước. Chỉ đọc, không ghi gì vào xe. Sau khi cài hoặc cập nhật cần khởi động lại màn hình.",
   "license": "GPL-3.0-or-later",

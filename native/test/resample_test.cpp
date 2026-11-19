@@ -232,17 +232,35 @@ int main()
             if (i >= 7) right += c == (i & 1);
         }
         CHECK(right == 33);
-        /* a picture lost: in step again as soon as the window alternates again, never the wrong way round for long */
-        PairTagger v;
-        int wrong = 0;
-        for (int i = 0; i < 60; i++) {
-            if (i == 21) continue;
-            char sei[16];
-            std::snprintf(sei, sizeof sei, "aa%02x%s55", i, tag[i & 1]);
-            const int c = v.classify(sei);
-            if (i >= 30) wrong += c != (i & 1);
+        /* a picture lost, of either kind, once or twice in a row: not one picture wrong after it
+         * (0.7.5 and before: the next 5 were told by counting, the wrong way round) */
+        for (int lost = 20; lost <= 21; lost++) {
+            for (int run = 1; run <= 2; run++) {
+                PairTagger v;
+                int wrong = 0;
+                for (int i = 0; i < 60; i++) {
+                    if (i >= lost && i < lost + run) continue;
+                    char sei[16];
+                    std::snprintf(sei, sizeof sei, "aa%02x%s55", i, tag[i & 1]);
+                    const int c = v.classify(sei);
+                    if (i >= 6) wrong += c != (i & 1);
+                }
+                CHECK(wrong == 0);
+                CHECK(v.mode() == "sei@2");
+            }
         }
-        CHECK(wrong == 0);
+        /* an SEI missing for a picture once learnt: counted on from the last one, then the byte again */
+        {
+            PairTagger y;
+            int wrong = 0;
+            for (int i = 0; i < 30; i++) {
+                char sei[16];
+                std::snprintf(sei, sizeof sei, "aa%02x%s55", i, tag[i & 1]);
+                const int c = y.classify(i == 15 ? "" : sei);
+                if (i >= 6) wrong += c != (i & 1);
+            }
+            CHECK(wrong == 0);
+        }
         /* no SEI, or none that alternates: by counting, the first picture 0 */
         PairTagger w;
         CHECK(w.classify("") == 0 && w.classify("") == 1 && w.classify("") == 0);

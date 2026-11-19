@@ -5,8 +5,11 @@
  * two pictures by turns, each holding two cameras side by side, instead of one picture with all four.
  * Each picture carries a user-data SEI; a byte of it that takes exactly two values, by turns, names the
  * kind of picture. PairTagger finds such a byte from the last pictures' SEIs and answers 0 for the
- * lower value and 1 for the higher, the same after every start. Without one (no SEI, or none that
- * alternates) it answers by counting: 0, 1, 0, 1 ..., which is right only until a picture is lost. */
+ * lower value and 1 for the higher, the same after every start. Once found, the byte and its two values
+ * are kept: each picture is then told by its own value, so a lost picture (two of a kind in a row, which
+ * the window search cannot accept for a while) changes nothing. Without one (no SEI, or none that
+ * alternates) it answers by counting on from the last answer: 0, 1, 0, 1 ..., which is right only until
+ * a picture is lost. */
 #ifndef SIDECAM_PAIR_TAG_H
 #define SIDECAM_PAIR_TAG_H
 
@@ -26,14 +29,25 @@ public:
             hist_.pop_front();
         int pos = find();
         if (pos >= 0) {
-            pos_ = pos;
+            /* learnt (again): the byte and its two values */
             const std::string &a = hist_[hist_.size() - 1], &b = hist_[hist_.size() - 2];
-            last_ = a.compare((size_t)pos * 2, 2, b, (size_t)pos * 2, 2) > 0 ? 1 : 0;
-            by_sei_ = true;
-            return last_;
+            const std::string va = a.substr((size_t)pos * 2, 2), vb = b.substr((size_t)pos * 2, 2);
+            pos_ = pos;
+            lo_ = va < vb ? va : vb;
+            hi_ = va < vb ? vb : va;
+            known_ = true;
+        }
+        /* the byte known: this picture's own value says which it is */
+        if (known_ && sei.size() >= (size_t)pos_ * 2 + 2) {
+            const std::string v = sei.substr((size_t)pos_ * 2, 2);
+            if (v == lo_ || v == hi_) {
+                by_sei_ = true;
+                last_ = v == hi_ ? 1 : 0;
+                return last_;
+            }
         }
         by_sei_ = false;
-        last_ = (int)(count_ & 1) ^ 1;   /* the first picture is 0 */
+        last_ = count_ == 1 ? 0 : last_ ^ 1;   /* the first picture is 0, then by turns */
         return last_;
     }
     void reset()
@@ -41,6 +55,8 @@ public:
         hist_.clear();
         count_ = 0;
         by_sei_ = false;
+        known_ = false;
+        last_ = 0;
     }
     /* "sei@N" (the byte it goes by) or "count". */
     std::string mode() const { return by_sei_ ? "sei@" + std::to_string(pos_) : "count"; }
@@ -75,7 +91,8 @@ private:
     std::deque<std::string> hist_;
     unsigned long long count_ = 0;
     int pos_ = 0, last_ = 0;
-    bool by_sei_ = false;
+    bool by_sei_ = false, known_ = false;
+    std::string lo_, hi_;
 };
 
 }  // namespace sidecam
