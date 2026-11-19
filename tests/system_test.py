@@ -82,7 +82,7 @@ class Rig:
         self.app_env = dict(os.environ, XINHAN_STATUS=self.status_file)
         self.app_env.update(app_env or {})
         self.helper = self.app = None
-        self.rows, self.logs, self.ecu, self.model = {}, [], [], {}
+        self.rows, self.logs, self.ecu, self.model, self.dragged, self.saves = {}, [], [], {}, None, []
         self.start_helper()
         self.start_app()
 
@@ -107,6 +107,10 @@ class Rig:
                 self.rows[j['ui'][0]] = j['ui'][1]
             elif 'model' in j:
                 self.model = j['model']
+            elif 'dragTaken' in j:
+                self.dragged = j['dragTaken']
+            elif 'saved' in j:
+                self.saves.append(tuple(j['saved']))
             elif 'log' in j:
                 self.logs.append(tuple(j['log']))
             elif 'ecu' in j:
@@ -339,6 +343,19 @@ def t_drive():
         # a tap at the picture's (1500,300) cluster point: PICS[1] is at 56,92 scaled 0.5
         r.cmd(tap=[56 + 1500 * 0.5, 92 + 300 * 0.5])
         check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 1340 and r.shown()[1].get('y') == 140, 4), 'a tap on the picture: the view\'s middle goes there (1500,300)')
+        # a drag: the right view (now at 1500,300 on the cluster) taken by a finger on it and moved 100 px left and
+        # 40 down on the cluster (PICS[1] is half size): live on the cluster, saved once when the finger comes up
+        P = lambda cx, cy: [56 + cx * 0.5, 92 + cy * 0.5]
+        n_saves = len(r.saves)
+        r.cmd(drag=[P(1500, 300), P(1480, 305), P(1460, 315), P(1450, 320), P(1420, 330), P(1400, 340)])
+        check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 1240 and r.shown()[1].get('y') == 180, 4), 'a drag on the view: it follows the finger to (1400,340)')
+        time.sleep(0.3)
+        dx = [s for s in r.saves[n_saves:] if s[0] == 'gaugeDx']
+        check(dx == [('gaugeDx', 140)], 'saved once, when the finger comes up (not at each move): %s' % dx)
+        r.cmd(drag=[P(900, 500), P(950, 520)])
+        check(r.wait(lambda: r.dragged is False, 2) and r.shown()[1].get('x') == 1240, 'a drag that does not start on a view does nothing (a tap there still places it)')
+        r.cmd(tap=P(1500, 300))
+        r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('x') == 1340, 4)
         r.cmd(act='larger')
         check(r.wait(lambda: r.shown()[1] is not None and r.shown()[1].get('vw') == 384, 4), 'button "larger": 384')
         r.cmd(act='reset')

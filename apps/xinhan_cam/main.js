@@ -76,10 +76,13 @@ mgu.run({
         function dropOld() { ['control.json', 'label.bin'].forEach((f) => { try { fs.unlinkSync(path.join(ctx.dataDir, f)); } catch (e) { /* none */ } }); }
         // the settings the page's Position tab keeps besides the listed ones: where in the dial the view sits
         const EXTRA = ['gaugeDx', 'gaugeDy', 'panLx', 'panLy', 'panRx', 'panRy', 'zoomL', 'zoomR'].concat(Object.keys(L.CALIB));
+        // a drag on the Position page in progress: where the view is now (saved when the finger comes up)
+        let dragPos = null;
         const cfg = () => {
             const o = {};
             settings.schema.forEach((s) => { o[s.key] = settings.get(s.key); });
             EXTRA.forEach((k) => { o[k] = settings.get(k); });
+            if (dragPos) { o.gaugeDx = dragPos.dx; o.gaugeDy = dragPos.dy; o.place = 'gauge'; }
             return o;
         };
 
@@ -463,6 +466,49 @@ mgu.run({
             settings.set('gaugeDy', Math.round(Math.max(-200, Math.min(200, h.y - L.GAUGE.cy))));
             tick();
             repaint();
+        });
+
+        // a finger on a view's place in the Position page's picture drags it there, live on the cluster
+        if (ctx.onDrag) ctx.onDrag((phase, x, y) => {
+            if (page !== 1) return false;
+            const h = UI.hit(x, y);
+            if (phase === 'start') {
+                if (!h) return false;
+                const st0 = readStatus(Date.now()), s = cfg(), targets = L.parseTargets(st0 && st0.native && st0.native.targets);
+                // the view under the finger (or near it), of either side
+                const side = ['left', 'right'].find((sd) => {
+                    const v = L.viewConfig(s, targets, sd);
+                    if (v.target !== 'panel') return false;
+                    const cx = v.x + v.w / 2, cy = v.y + v.h / 2, r = Math.max(v.w, v.h) / 2 + 60;
+                    return Math.abs(h.x - cx) <= r && Math.abs(h.y - cy) <= r;
+                });
+                if (!side) return false;
+                const v = L.viewConfig(s, targets, side);
+                edit = side;
+                dragPos = { side, dx: Number(s.gaugeDx) || 0, dy: Number(s.gaugeDy) || 0, offX: v.x + v.w / 2 - h.x, offY: v.y + v.h / 2 - h.y };
+                return true;
+            }
+            if (!dragPos) return false;
+            if ((phase === 'move' || phase === 'end') && h) {
+                const cx = h.x + dragPos.offX, cy = h.y + dragPos.offY;
+                const dx = dragPos.side === 'left' ? cx - L.GAUGE.cx : UI.PANEL.w - L.GAUGE.cx - cx;
+                dragPos.dx = Math.round(Math.max(-400, Math.min(400, dx)));
+                dragPos.dy = Math.round(Math.max(-200, Math.min(200, cy - L.GAUGE.cy)));
+            }
+            if (phase === 'end' || phase === 'cancel') {
+                const d = dragPos;
+                dragPos = null;
+                if (phase === 'end') {
+                    // saved once, when the finger comes up (not at every move: the settings file is on flash)
+                    if (settings.get('place') !== 'gauge') settings.set('place', 'gauge');
+                    settings.set('gaugeDx', d.dx);
+                    settings.set('gaugeDy', d.dy);
+                    log.info('view dragged to ' + d.dx + ', ' + d.dy + ' from the dial\'s middle');
+                }
+            }
+            tick();
+            repaint();
+            return true;
         });
 
         const render = async () => {

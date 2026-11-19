@@ -91,7 +91,7 @@ function cluster(cv, G, t, p, v, editing) {
 function drawPosition(cv, G, t, v, act) {
     const acc = t.accent2 || '#81c4ff';
     const p = PICS[1];
-    cv.text('Chạm vào hình đồng hồ để đặt camera ' + (v.edit === 'left' ? 'TRÁI' : 'PHẢI') + ' vào đó. Hình đang hiện trực tiếp trên đồng hồ xe.',
+    cv.text('Kéo vòng camera tới chỗ muốn đặt, hoặc chạm vào hình để đặt camera ' + (v.edit === 'left' ? 'TRÁI' : 'PHẢI') + ' vào đó. Đồng hồ xe hiện trực tiếp.',
         p.x, G.TOP + 30, 18, t.dim, { literal: true, font: 'label' });
     cluster(cv, G, t, p, v, v.edit);
     const d = v.discs && v.discs[v.edit];

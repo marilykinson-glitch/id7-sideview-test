@@ -75,11 +75,11 @@ spec.settings.forEach((s) => { values[s.key] = s.default; });
 const settings = {
     schema: spec.settings,
     get: (k) => values[k],
-    set(k, v) { values[k] = v; listeners.forEach((fn) => fn(k, v)); },
+    set(k, v) { values[k] = v; out({ saved: [k, v] }); listeners.forEach((fn) => fn(k, v)); },   // (the kit writes settings.json at each)
     onChange(fn) { listeners.push(fn); },
 };
 const clicks = {}, vis = [];
-let visible = false, drawFn = null, tabFn = null, tapFn = null, acts = {};
+let visible = false, drawFn = null, tabFn = null, tapFn = null, dragFn = null, acts = {};
 const ui = {
     text(name, text) { out({ ui: [name, text] }); return Promise.resolve(); },
     image() { return Promise.resolve(); },
@@ -107,7 +107,7 @@ const app = new EventEmitter();
 const ctx = {
     ui, settings, log, signals, dataDir, app, spec,
     canvas: () => ({}), theme: () => ({}), hideButton() {},
-    onTab(fn) { tabFn = fn; }, onTap(fn) { tapFn = fn; },
+    onTab(fn) { tabFn = fn; }, onTap(fn) { tapFn = fn; }, onDrag(fn) { dragFn = fn; },
     loop(name, fps, fn) { drawFn = fn; setInterval(() => { if (visible) fn(); }, 250); return { kick() { if (visible) fn(); }, stop() {} }; },
 };
 const mgu = { run(impl) { return Promise.resolve().then(() => impl.start(ctx)).catch((e) => { out({ log: ['error', 'start: ' + (e && e.stack || e)] }); process.exit(1); }); } };
@@ -136,6 +136,12 @@ process.stdin.on('data', (d) => {
         if (c.act) Promise.resolve().then(() => acts[c.act]());            // a button drawn on the page
         if (c.tab !== undefined && tabFn) tabFn(c.tab);
         if (c.tap && tapFn) tapFn(c.tap[0], c.tap[1]);
+        if (c.drag && dragFn) {                                                    // [[x0,y0],[x1,y1],...]: down, moves, up
+            const pts = c.drag;
+            const took = dragFn('start', pts[0][0], pts[0][1]);
+            out({ dragTaken: !!took });
+            if (took) { pts.slice(1).forEach((p) => dragFn('move', p[0], p[1])); const e = pts[pts.length - 1]; dragFn('end', e[0], e[1]); }
+        }
         if (c.set) settings.set(c.set[0], c.set[1]);
         if (c.ecu) ecu = c.ecu;
         if (c.visible !== undefined) { visible = !!c.visible; vis.forEach((fn) => fn('MAIN', visible)); }
