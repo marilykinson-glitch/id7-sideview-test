@@ -408,7 +408,16 @@ t('helper: the navigation\'s values, however the unit shapes them; the decoder\'
     const app = { id: 'xinhan_cam', root };
     const now = Date.now(), put = (f, at, view) => fs.writeFileSync(f, JSON.stringify({ at: new Date(at).toISOString(), view, config: {} }));
     H.appRunDir(app, now);
-    assert.ok(fs.statSync(path.join(runDir, 'app')).isDirectory() && (fs.statSync(path.join(runDir, 'app')).mode & 0o777) === 0o700, 'the app\'s folder in RAM is made, 0700');
+    assert.ok(fs.statSync(path.join(runDir, 'app')).isDirectory() && (fs.statSync(path.join(runDir, 'app')).mode & 0o777) === 0o770, 'the app\'s folder in RAM is made, 0770');
+    // given to the user and group the app's program runs as (a process in its folder), not its data folder's owner
+    const proc = path.join(tmp, 'proc'); fs.mkdirSync(path.join(proc, '777'), { recursive: true });
+    fs.writeFileSync(path.join(proc, '777', 'cmdline'), '/usr/bin/node\0' + path.join(root, 'source', 'javascript', 'app.js') + '\0');
+    fs.writeFileSync(path.join(proc, '777', 'status'), 'Uid:\t2345\t2345\t2345\t2345\nGid:\t6789\t6789\t6789\t6789\n');
+    H.CFG.proc = proc; H._reset();
+    H.appRunDir(app, now);
+    const ost = fs.statSync(path.join(runDir, 'app'));
+    if (process.getuid && process.getuid() === 0) assert.deepStrictEqual([ost.uid, ost.gid], [2345, 6789], 'the app\'s program\'s user');
+    H.CFG.proc = path.join(tmp, 'noproc'); H._reset();
     put(path.join(root, 'data', 'control.json'), now - 100, 'left');
     assert.deepStrictEqual([H.wanted(app, now).view, H.wanted(app, now).dir], ['left', path.join(root, 'data')]);
     put(path.join(runDir, 'app', 'control.json'), now - 50, 'right');

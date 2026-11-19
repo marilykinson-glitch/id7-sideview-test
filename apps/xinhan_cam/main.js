@@ -93,6 +93,8 @@ mgu.run({
             const o = {};
             settings.schema.forEach((s) => { o[s.key] = settings.get(s.key); });
             EXTRA.forEach((k) => { o[k] = settings.get(k); });
+            // (a drag whose finger's lift never came: forgotten after 10 s still)
+            if (dragPos && Date.now() - dragPos.at > 10000) dragPos = null;
             if (dragPos) { o.gaugeDx = dragPos.dx; o.gaugeDy = dragPos.dy; o.place = 'gauge'; }
             return o;
         };
@@ -481,10 +483,10 @@ mgu.run({
 
         // a finger on a view's place in the Position page's picture drags it there, live on the cluster
         if (ctx.onDrag) ctx.onDrag((phase, x, y) => {
-            if (page !== 1) return false;
             const h = UI.hit(x, y);
             if (phase === 'start') {
-                if (!h) return false;
+                // only on the Position page (a move, an end or a cancel ends what was begun there, wherever)
+                if (page !== 1 || !h) return false;
                 const st0 = readStatus(Date.now()), s = cfg(), targets = L.parseTargets(st0 && st0.native && st0.native.targets);
                 // the view under the finger (or near it), of either side
                 const side = ['left', 'right'].find((sd) => {
@@ -496,7 +498,7 @@ mgu.run({
                 if (!side) return false;
                 const v = L.viewConfig(s, targets, side);
                 edit = side;
-                dragPos = { side, dx: Number(s.gaugeDx) || 0, dy: Number(s.gaugeDy) || 0, offX: v.x + v.w / 2 - h.x, offY: v.y + v.h / 2 - h.y };
+                dragPos = { side, dx: Number(s.gaugeDx) || 0, dy: Number(s.gaugeDy) || 0, offX: v.x + v.w / 2 - h.x, offY: v.y + v.h / 2 - h.y, at: Date.now() };
                 return true;
             }
             if (!dragPos) return false;
@@ -505,6 +507,7 @@ mgu.run({
                 const dx = dragPos.side === 'left' ? cx - L.GAUGE.cx : UI.PANEL.w - L.GAUGE.cx - cx;
                 dragPos.dx = Math.round(Math.max(-400, Math.min(400, dx)));
                 dragPos.dy = Math.round(Math.max(-200, Math.min(200, cy - L.GAUGE.cy)));
+                dragPos.at = Date.now();
             }
             if (phase === 'end' || phase === 'cancel') {
                 const d = dragPos;

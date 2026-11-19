@@ -28,10 +28,11 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.7.5';
+const VERSION = '0.7.6';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
+    proc: env('XINHAN_PROC', '/proc'),
     run: env('XINHAN_RUN', '/run/xinhan-cam'),
     bin: env('XINHAN_BIN', path.join(__dirname, 'mgu-sidecam')),
     args: env('XINHAN_ARGS', '').split(' ').filter(Boolean),
@@ -87,19 +88,50 @@ function findApp(now) {
 /** The app's folder in RAM (its control file and the road's name): made for the app's user, checked every 10 s. */
 const APP_RUN = () => path.join(CFG.run, 'app');
 let appRunFor = null, appRunAt = 0;
+let procOf = null, procAt = 0;
+/**
+ * The user and group the app's program runs as: a process whose command line or working folder is in
+ * the app's folder (/proc). Its data folder's owner need not be that user (on the car the VietMap app
+ * could not read a folder given to its data folder's owner). null when not found.
+ */
+function appProcess(app, now) {
+    if (procOf && procOf.root === app.root && now - procAt < 30000 && now >= procAt) return procOf.who;
+    procAt = now;
+    let who = null, pids = [];
+    try { pids = fs.readdirSync(CFG.proc).filter((d) => /^\d+$/.test(d) && Number(d) !== process.pid); } catch (e) { pids = []; }
+    const inApp = (s) => !!s && (s === app.root || s.indexOf(app.root + '/') >= 0 || s.indexOf(app.root + '\0') >= 0);
+    for (const pid of pids) {
+        const base = path.join(CFG.proc, pid);
+        let cmd = null, cwd = null;
+        try { cmd = fs.readFileSync(path.join(base, 'cmdline'), 'latin1'); } catch (e) { continue; }
+        try { cwd = fs.readlinkSync(path.join(base, 'cwd')); } catch (e) { /* not ours to see */ }
+        if (!inApp(cmd) && !inApp(cwd)) continue;
+        let st = '';
+        try { st = fs.readFileSync(path.join(base, 'status'), 'utf8'); } catch (e) { continue; }
+        const u = /^Uid:\s+(\d+)/m.exec(st), g = /^Gid:\s+(\d+)/m.exec(st);
+        if (!u || !g || Number(u[1]) === 0) continue;
+        who = { uid: Number(u[1]), gid: Number(g[1]), pid: Number(pid) };
+        break;
+    }
+    procOf = { root: app.root, who };
+    return who;
+}
+
 function appRunDir(app, now) {
     if (!app) return;
     let st;
     try { st = fs.statSync(path.join(app.root, 'data')); } catch (e) { return; }
+    const who = appProcess(app, now);
+    if (who) st = { uid: who.uid, gid: who.gid };
     const key = st.uid + ':' + st.gid;
     if (key === appRunFor && now - appRunAt < 10000) return;
     appRunAt = now;
     try {
-        try { fs.mkdirSync(APP_RUN(), 0o700); } catch (e) { if (e.code !== 'EEXIST') throw e; }
-        if (!fs.lstatSync(APP_RUN()).isDirectory()) { fs.unlinkSync(APP_RUN()); fs.mkdirSync(APP_RUN(), 0o700); }
+        try { fs.mkdirSync(APP_RUN(), 0o770); } catch (e) { if (e.code !== 'EEXIST') throw e; }
+        if (!fs.lstatSync(APP_RUN()).isDirectory()) { fs.unlinkSync(APP_RUN()); fs.mkdirSync(APP_RUN(), 0o770); }
         fs.chownSync(APP_RUN(), st.uid, st.gid);
-        fs.chmodSync(APP_RUN(), 0o700);
-        if (key !== appRunFor) log('the app\'s folder in RAM: ' + APP_RUN() + ' (' + key + ')');
+        fs.chmodSync(APP_RUN(), 0o770);
+        if (key !== appRunFor) log('the app\'s folder in RAM: ' + APP_RUN() + ' (' + key + (who ? ', the app\'s program' : ', its data folder') + ')');
         appRunFor = key;
     } catch (e) { if (key !== appRunFor) { appRunFor = key; log('the app\'s folder in RAM: ' + e.message); } }
 }
@@ -427,4 +459,4 @@ if (require.main === module) {
     else { process.stderr.write('usage: node xinhan-cam.js run|status\n'); process.exit(2); }
 }
 
-module.exports = { VERSION, CFG, findApp, wanted, configLine, arLine, auxLine, appRunDir, run, _reset: () => { appCache = null; appScanAt = 0; appRunFor = null; labelSeq = null; } };
+module.exports = { VERSION, CFG, findApp, wanted, configLine, arLine, auxLine, appRunDir, run, _reset: () => { appCache = null; appScanAt = 0; appRunFor = null; labelSeq = null; procOf = null; procAt = 0; } };
