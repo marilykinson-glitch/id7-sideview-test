@@ -43,6 +43,17 @@ const IF = {
 const WIRE = { CLIENT_INDIRECT: 1, DR_ACTIVE: 51, MODE_MOSAIK: 50 };
 const errText = (e) => String(e && e.message || e).slice(0, 120);
 
+// the decoder's reasons for not showing a view, as the screen says them
+const WHY_VI = {
+    'no camera picture yet': 'chưa có hình từ hộp camera',
+    'the camera pictures stopped': 'hình camera đã ngừng (đã ẩn, không để hình đứng)',
+    'one of the two camera pictures stopped': 'một trong hai nhóm hình camera ngừng đến (đã ẩn, không để hình đứng)',
+    'the cluster renderer is not connected': 'chưa nối được bộ vẽ đồng hồ',
+    'the app stopped asking': 'app ngừng yêu cầu',
+    'no view asked for': 'chưa yêu cầu camera nào',
+    'the setting changed': 'đang đổi cài đặt',
+};
+
 mgu.run({
     async start(ctx) {
         const { ui, settings, log, signals } = ctx;
@@ -327,7 +338,7 @@ mgu.run({
             if (lastPlan.view !== 'none') {
                 if (showing && n.layer === 'shown') { v.title = 'Đang hiện ' + VIEW[lastPlan.view].toLowerCase(); v.titleKind = 'go'; }
                 else if (showing) { v.title = VIEW[lastPlan.view]; v.titleKind = 'warn'; v.subtitle = 'Đang gửi hình, đồng hồ chưa hiện (' + n.layer + (n.layer_reason ? ': ' + n.layer_reason : '') + ')'; }
-                else { v.title = VIEW[lastPlan.view]; v.titleKind = 'warn'; v.subtitle = 'Đang bật' + (n && n.why ? ': ' + n.why : ''); }
+                else { v.title = VIEW[lastPlan.view]; v.titleKind = 'warn'; v.subtitle = 'Đang bật' + (n && n.why ? ': ' + (WHY_VI[n.why] || n.why) : ''); }
             } else {
                 v.title = lastPlan.why;
                 v.titleKind = lastPlan.why === 'Chờ xi nhan' ? 'dim' : 'warn';

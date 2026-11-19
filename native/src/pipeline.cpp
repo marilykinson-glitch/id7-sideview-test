@@ -221,6 +221,14 @@ void Pipeline::on_picture(const DecodedFrame &f)
         std::lock_guard<std::mutex> lock(mutex_);
         stats_.pair = pairing ? tagger_.mode() : "off";
     }
+    /* the source is whole: a picture, or both kinds by turns, each lately (also with no view on, so a
+     * view that comes on is not taken for a stopped camera before its first picture) */
+    if (pairing)
+        seen_ms_[cls] = now;
+    if (!pairing || (seen_ms_[cls ^ 1] >= 0 && now - seen_ms_[cls ^ 1] <= 500)) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stats_.source_ms = now;
+    }
     if (view == kNone) {
         pair_have_[0] = pair_have_[1] = false;
         return;

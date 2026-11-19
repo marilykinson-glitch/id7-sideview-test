@@ -307,6 +307,39 @@ def t_config():
         c.close()
 
 
+def t_half_stops():
+    print('two pictures by turns, told apart by the SEI tag; then one kind stops, the other comes on')
+    c = Cam('half', os.path.join(DIR, 'pairs_half.rtp'), file_mode=True, loop=False)
+    try:
+        c.send(op='config', pair=1)
+        check(c.wait(lambda s: s.get('pair', '').startswith('sei@') and s.get('cr') == 'connected', 10), 'told apart by the SEI tag: %s' % c.status.get('pair'))
+        check(c.wait(lambda s: s.get('shown') == 1, 3, 'left'), 'left: shown while both kinds come')
+        t_end = time.time() + 12
+        hidden_at, pics_after = None, 0
+        p0 = None
+        while time.time() < t_end:
+            c.send(op='view', side='left')
+            time.sleep(0.05)
+            s = c.status
+            if s.get('source_age_ms', 0) > 300 and p0 is None:
+                p0 = s.get('pictures', 0)          # the second kind has stopped: pictures still come
+            if p0 is not None and s.get('shown') == 0:
+                hidden_at = s.get('source_age_ms')
+                pics_after = s.get('pictures', 0) - p0
+                break
+        check(hidden_at is not None, 'hidden, not frozen, once one kind stopped')
+        if hidden_at is not None:
+            check(hidden_at <= 1600, 'within %s ms of the last whole picture' % hidden_at)
+            p1 = c.status.get('pictures', 0)
+            more = c.wait(lambda s: s.get('pictures', 0) > p1 + 5, 4, 'left')
+            check(more and c.status.get('shown') == 0,
+                  'the other kind still comes (%d more pictures), still hidden' % (c.status.get('pictures', 0) - p1))
+        check('one of the two' in c.status.get('why', ''), 'why: %s' % c.status.get('why'))
+        check(not c.cr.visible(), 'the layer is hidden (no frozen picture on the cluster)')
+    finally:
+        c.close()
+
+
 def t_pairs():
     print('a camera unit that sends two 1280x480 pictures by turns (front|rear, left|right), as a G30 does')
     c = Cam('pairs', os.path.join(DIR, 'pairs.rtp'))
@@ -412,7 +445,7 @@ def t_no_renderer():
         p.wait(timeout=5)
 
 
-for t in (t_views, t_pairs, t_heartbeat, t_stall, t_late_join, t_loss, t_config, t_renderer_restart, t_refused, t_join_retry, t_no_renderer):
+for t in (t_views, t_pairs, t_half_stops, t_heartbeat, t_stall, t_late_join, t_loss, t_config, t_renderer_restart, t_refused, t_join_retry, t_no_renderer):
     t()
 print('e2e: %d FAILED: %s' % (len(fails), '; '.join(fails)) if fails else 'e2e: all ok')
 sys.exit(1 if fails else 0)

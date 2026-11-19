@@ -68,6 +68,9 @@ struct Stats {
     int w = 0, h = 0;                      /* the last picture's size */
     bool full_range = false;
     int64_t picture_ms = -1;               /* when the last picture was decoded (cld::now_ms), -1: none */
+    int64_t source_ms = -1;                /* when the last whole source for the views was there: a picture, or with
+                                            * two pictures by turns both halves new (the views' pictures are only
+                                            * as new as this), -1: none */
     int decode_us = 0, view_us = 0;        /* the last picture's decode, the last view's making */
     int aux_us = 0;                        /* the last second view's making */
     std::string sei;                       /* the last picture's user-data SEI, hex */
@@ -152,6 +155,7 @@ private:
     int pair_w_ = 0, pair_h_ = 0;                     /* one picture's size */
     bool pair_have_[2] = {false, false};
     int64_t pair_ms_[2] = {0, 0};
+    int64_t seen_ms_[2] = {-1, -1};                   /* when each kind was last decoded (view or not) */
     std::vector<uint8_t> work_;
     int64_t next_due_ms_ = 0;      /* when the next view is due (pacing) */
     Resampler aux_resampler_;

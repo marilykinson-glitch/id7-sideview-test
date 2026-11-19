@@ -4,12 +4,15 @@
 each written behind a 2-byte big-endian length, for mgu-sidecam --file and
 the fake AVB bridge.
 
-  rtp_pack.py in.h264 out.rtp [--no-marker] [--skip-pictures N] [--drop-every N]
+  rtp_pack.py in.h264 out.rtp [--no-marker] [--skip-pictures N] [--drop-every N] [--sei-tag] [--stop-odd-after N]
 
 --no-marker: no marker bit on a picture's last packet (the receiver then ends
 a picture at the next one's first packet). --skip-pictures: the stream as a
 receiver that joins late sees it, without its first N pictures (parameter
 sets after that are kept as sent). --drop-every N: every Nth packet lost.
+--sei-tag: a user-data SEI before each picture whose 19th byte (after the 16-byte UUID: aa, a counter, the
+tag, 55) is 09 and 0a by turns, as a G30's camera unit tags its two pictures. --stop-odd-after N: from
+picture N on, the odd pictures (the second kind) are not sent: one kind stops, the other comes on.
 """
 import struct
 import sys
@@ -42,6 +45,8 @@ def main():
     marker = '--no-marker' not in a
     skip = int(a[a.index('--skip-pictures') + 1]) if '--skip-pictures' in a else 0
     drop = int(a[a.index('--drop-every') + 1]) if '--drop-every' in a else 0
+    tag = '--sei-tag' in a
+    stop_odd = int(a[a.index('--stop-odd-after') + 1]) if '--stop-odd-after' in a else -1
     units = nals(open(src, 'rb').read())
     # group into pictures: a new one starts at a slice with first_mb 0; parameter sets and SEI go with the next slice
     pictures, cur, has_slice = [], [], False
@@ -69,6 +74,13 @@ def main():
             f.write(struct.pack('>H', len(pkt)) + pkt)
             sent += 1
         for pi, pic in enumerate(pictures):
+            if tag:
+                uuid = bytes(range(0x11, 0x21))
+                body = uuid + bytes([0xaa, pi % 200 + 1, 0x09 if pi % 2 == 0 else 0x0a, 0x55])
+                pic = [bytes([0x06, 0x05, len(body)]) + body + b'\x80'] + list(pic)
+            if stop_odd >= 0 and pi >= stop_odd and pi % 2 == 1:
+                ts += 6000
+                continue
             if pi >= skip:
                 for ni, u in enumerate(pic):
                     last = ni == len(pic) - 1

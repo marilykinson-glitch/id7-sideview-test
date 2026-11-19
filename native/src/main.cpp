@@ -149,6 +149,7 @@ void emit_status(App &a)
     n("picture_h", s.h);
     n("full_range", s.full_range ? 1 : 0);
     n("picture_age_ms", s.picture_ms < 0 ? -1 : now - s.picture_ms);
+    n("source_age_ms", s.source_ms < 0 ? -1 : now - s.source_ms);
     n("decode_us", s.decode_us);
     n("view_us", s.view_us);
     n("aux_us", s.aux_us);
@@ -746,10 +747,14 @@ int main(int argc, char **argv)
             make_layer(a, false);
 
         const Stats st = a.pipe.stats();
-        const bool fresh = st.picture_ms >= 0 && now - st.picture_ms <= kFreshMs;
+        /* fresh: what the view is made of, not just any picture - with two pictures by turns one kind can stop
+         * while the other comes on; no new view is made then, and the last one must not stay as if live */
+        const bool fresh = st.source_ms >= 0 && now - st.source_ms <= kFreshMs;
         if (a.view != kNone) {
             if (!fresh) {
-                hide(a, st.picture_ms < 0 ? "no camera picture yet" : "the camera pictures stopped");
+                const bool coming = st.picture_ms >= 0 && now - st.picture_ms <= kFreshMs;
+                hide(a, st.picture_ms < 0 ? "no camera picture yet"
+                        : coming ? "one of the two camera pictures stopped" : "the camera pictures stopped");
             } else if (!client.connected()) {
                 hide(a, "the cluster renderer is not connected");
             } else {

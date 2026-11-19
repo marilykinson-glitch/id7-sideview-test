@@ -31,6 +31,12 @@ if [ ! -f $B/pairs.h264 ]; then
         -preset veryfast -bf 0 -g 30 -pix_fmt yuv420p -f h264 $B/pairs.h264
 fi
 python3 test/rtp_pack.py $B/pairs.h264 $B/pairs.rtp
+if [ ! -f $B/pairs_intra.h264 ]; then
+    # the same, every picture on its own (a picture left out breaks nothing else)
+    ffmpeg -loglevel error -y $(ins 30) -filter_complex "$Q,crop=1280:480:0:'mod(n,2)*480'" -t 8 -c:v libx264 -profile:v main \
+        -preset veryfast -bf 0 -g 1 -pix_fmt yuv420p -f h264 $B/pairs_intra.h264
+fi
+python3 test/rtp_pack.py $B/pairs_intra.h264 $B/pairs_half.rtp --sei-tag --stop-odd-after 60
 python3 test/rtp_pack.py $B/mosaic.h264 $B/mosaic.rtp
 python3 test/rtp_pack.py $B/mosaic.h264 $B/mosaic_lossy.rtp --drop-every 40
 python3 test/rtp_pack.py $B/refresh.h264 $B/refresh_late.rtp --no-marker --skip-pictures 17
