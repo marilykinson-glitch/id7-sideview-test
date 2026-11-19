@@ -139,9 +139,15 @@ function maneuver(dart, tables, textOnly) {
     let angle = 0, exit = 0;
     if (kind === 'turn') {
         const d = enumName(b.direction !== undefined ? b.direction : b.branchType, t.direction);
+        // the names a slight turn goes by (not a turn: "bear", "keep", a fork, a ramp, an exit, a merge)
+        const SLIGHT = /SLIGHT|KEEP|BEAR|HALF|EASY|LIGHT|FORK|RAMP|EXIT|MERGE|FORWARD|DIAGONAL|BRANCH/;
         if (d && DIR[d] !== undefined) angle = DIR[d];
-        else if (d && /LEFT/.test(d)) angle = /SLIGHT|KEEP|BEAR/.test(d) ? -30 : -90;
-        else if (d && /RIGHT/.test(d)) angle = /SLIGHT|KEEP|BEAR/.test(d) ? 30 : 90;
+        else if (d && /LEFT/.test(d)) angle = SLIGHT.test(d) ? -30 : /SHARP|HARD/.test(d) ? -135 : -90;
+        else if (d && /RIGHT/.test(d)) angle = SLIGHT.test(d) ? 30 : /SHARP|HARD/.test(d) ? 135 : 90;
+        // a branch (the road forks: "keep left") is never a turn at a right angle, whatever its side is called;
+        // nor is anything the unit names by its branch type alone
+        const fork = hit.tag === 'branch' || (b.direction === undefined && b.branchType !== undefined);
+        if (fork && Math.abs(angle) > 30 && Math.abs(angle) < 180) angle = angle < 0 ? -30 : 30;
         if (!angle) kind = 'straight';
     } else if (kind === 'roundabout') {
         exit = Number(b.exitNumber) || 0;
@@ -159,6 +165,8 @@ function maneuver(dart, tables, textOnly) {
     }
     if (meters < 0 && !textOnly && typeof b.rawDistance === 'number' && b.rawDistance >= 0) meters = b.rawDistance;
     const out = { kind, angle, meters: meters < 0 ? -1 : Math.round(meters), exit };
+    // (as the unit named it, for the log: which member, which direction)
+    if (kind === 'turn') Object.defineProperty(out, 'named', { value: (hit.tag || '?') + ':' + enumName(b.direction !== undefined ? b.direction : b.branchType, t.direction), enumerable: false });
     // the road's name, where the unit gives one: the description's text elements
     const desc = b['description'];
     const els = desc && Array.isArray(desc.elements) ? desc.elements : [];

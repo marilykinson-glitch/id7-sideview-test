@@ -356,6 +356,15 @@ t('helper: the navigation\'s values, however the unit shapes them; the decoder\'
     const body = (o) => Object.assign({ uid: 1, guidingStep: 'X', formattedDistance: { distance: '120', unit: 'METER', rawDistance: 118.4 } }, o);
     assert.deepStrictEqual(N.maneuver({ maneuver: { type: 'intersection', value: body({ direction: 'SLIGHT_LEFT' }) } }), { kind: 'turn', angle: -30, meters: 118, exit: 0 });
     assert.deepStrictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'UTURN_LEFT' }) } }).angle, -180);
+    // a slight turn is not a turn: by its name, or as a fork ("keep right": the union's member branch)
+    assert.strictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'SLIGHT_RIGHT' }) } }).angle, 30);
+    assert.strictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'HALF_RIGHT' }) } }).angle, 30);
+    assert.strictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'KEEP_LEFT' }) } }).angle, -30);
+    assert.strictEqual(N.maneuver({ maneuver: { branch: body({ direction: 'RIGHT' }) } }).angle, 30, 'a fork to the right: slight');
+    assert.strictEqual(N.maneuver({ maneuver: { type: 'branch', value: body({ direction: 'LEFT' }) } }).angle, -30);
+    assert.strictEqual(N.maneuver({ maneuver: { intersection: { branchType: 'RIGHT', formattedDistance: { distance: '80', unit: 'METER' } } } }).angle, 30);
+    assert.strictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'RIGHT' }) } }).angle, 90, 'a turn stays a turn');
+    assert.strictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'SHARP_RIGHT' }) } }).angle, 135);
     assert.deepStrictEqual(N.maneuver({ maneuver: { intersection: body({ direction: { value: 7 } }) } }, { direction: { 7: 'RIGHT' } }).angle, 90);
     assert.strictEqual(N.maneuver({ maneuver: { intersection: body({ direction: 'STRAIGHT_ON' }) } }).kind, 'straight');
     assert.deepStrictEqual(N.maneuver({ maneuver: { roundabout: { formattedDistance: { distance: '1,2', unit: 1 }, exitNumber: 3, guidingStep: 0 } } }, { unit: { 1: 'KM' } }),

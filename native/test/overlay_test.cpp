@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* overlay.cpp: the road's projection and that each mode draws (or leaves the picture alone). */
+#include <cmath>
+#include <algorithm>
 #include <stdio.h>
 #include <string.h>
 
@@ -75,6 +77,25 @@ int main()
         check(changed(o, 1000) == before, "a label wider than the picture is left out");
         o.label.reset();
         o.label_w = o.label_h = 0;
+    }
+    /* BMW's band: a slight turn is drawn slanted (ahead and to the side), not as a turn */
+    {
+        Overlay t = o;
+        t.style = 0;
+        t.card = false;
+        t.meters = 30;
+        std::vector<uint8_t> g90, g30, l30;
+        t.angle = 90;
+        changed(t, 0, &g90);
+        t.angle = 30;
+        changed(t, 0, &g30);
+        t.angle = -30;
+        changed(t, 0, &l30);
+        size_t d = 0, dl = 0;
+        for (size_t i = 0; i < g90.size(); i++) { d += g90[i] != g30[i]; dl += g30[i] != l30[i]; }
+        check(d > 1500, "a slight right: its own chevrons (slanted ahead), far from a right turn's");
+        check(dl > 800, "slight left and slight right differ");
+        check(g90 != g30, "slight right is not drawn as right");
     }
     o.meters = -1;
     o.kind = kRoundabout;

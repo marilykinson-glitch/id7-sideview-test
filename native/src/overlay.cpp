@@ -32,12 +32,13 @@ struct Surface {
     uint8_t *y, *uv;
     int w, h;
     int clip0 = 0, clip1 = 1 << 30;   /* columns drawn into (inclusive) */
+    int row0 = 0, row1 = 1 << 30;     /* rows drawn into (inclusive) */
 };
 
 /* One row of pixels x0..x1 (inclusive) blended with c at alpha a (0..256). */
 void span(const Surface &s, int row, int x0, int x1, const Color &c, int a)
 {
-    if (row < 0 || row >= s.h || a <= 0)
+    if (row < 0 || row >= s.h || a <= 0 || row < s.row0 || row > s.row1)
         return;
     x0 = std::max(x0, std::max(0, s.clip0));
     x1 = std::min(x1, std::min(s.w - 1, s.clip1));
@@ -275,7 +276,9 @@ void draw_route(const Surface &s, const Road &r, const Overlay &o, int64_t t_ms)
 
 /* The turn as BMW's own Augmented View marks it: a band of white chevrons on black, flat on the picture,
  * at the place of the turn and pointing into it; small while the turn is far, larger as it comes near, the
- * chevrons running along the band. */
+ * chevrons running along the band. A turn points sideways; a slight one ("bear right", "keep left": under
+ * 60 degrees) points ahead and to the side, slanted by what is left to a right angle, so the two are told
+ * apart at a glance (a slight right is not a right turn). */
 void draw_band(const Surface &s0, const Road &r, const Overlay &o, int64_t t_ms)
 {
     if (o.kind == kStraight || o.kind == kDestination || fabs(o.angle) < 10 || o.meters < 0 || o.meters > 90)
@@ -302,12 +305,23 @@ void draw_band(const Surface &s0, const Road &r, const Overlay &o, int64_t t_ms)
     s.clip1 = (int)(x0 + len) - 1;
     const double phase = fmod((double)(t_ms % 100000) / 1000.0 * 1.6, 1.0) * cw;   /* 1.6 chevrons a second */
     const double thick = cw * 0.56, ym = y0 + bh / 2, in = bh * 0.1;
-    for (int i = -1; i <= n; i++) {
+    /* a slight turn: the chevrons turned up (ahead) by 90 - angle degrees, at most 60, and a little smaller */
+    const double slant = fabs(o.angle) < 60 ? rad(std::min(45.0, 90.0 - fabs(o.angle))) : 0;
+    const double cs = cos(slant), sn = sin(slant), k = slant > 0 ? 0.6 : 1;   /* (small enough to stay whole in the band) */
+    s.row0 = (int)y0;
+    s.row1 = (int)(y0 + bh) - 1;
+    for (int i = -2; i <= n + 1; i++) {
         /* the chevron's back edge at xb, its point bh/2 further along the way it points */
         const double xb = dir > 0 ? x0 + i * cw + phase : x0 + len - i * cw - phase;
         const double a = xb, b = xb + dir * thick, tip = dir * (bh / 2 - in);
-        quad(s, {a, y0 + in}, {b, y0 + in}, {b + tip, ym}, {a + tip, ym}, white, 256);
-        quad(s, {a, y0 + bh - in}, {b, y0 + bh - in}, {b + tip, ym}, {a + tip, ym}, white, 256);
+        /* turned about its own middle on the band's mid line (up is ahead) */
+        const double cx = (a + b + tip) / 2;
+        const auto at = [&](double x, double y) {
+            const double dx = (x - cx) * k, dy = (y - ym) * k;
+            return dir > 0 ? Pt{cx + dx * cs + dy * sn, ym - dx * sn + dy * cs} : Pt{cx + dx * cs - dy * sn, ym + dx * sn + dy * cs};
+        };
+        quad(s, at(a, y0 + in), at(b, y0 + in), at(b + tip, ym), at(a + tip, ym), white, 256);
+        quad(s, at(a, y0 + bh - in), at(b, y0 + bh - in), at(b + tip, ym), at(a + tip, ym), white, 256);
     }
 }
 
