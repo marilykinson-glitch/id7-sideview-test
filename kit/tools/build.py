@@ -472,6 +472,10 @@ def build(app_id, language='en', preview_only=False, plain_version=False, langua
             'userLoginRequired': False, 'backgroundPriority': 200, 'someipManifest': 'manifest.json',
         },
     }
+    # app.json "startType": "autostart" -> the deploy tool registers the app to start with the head unit (and again
+    # when it stops); without it the app starts only when opened (mgu-store deploy/README.md, mguAppStartType)
+    if spec.get('startType') in ('autostart', 'manually', 'lum'):
+        pkg['mguAppStartType'] = spec['startType']
     json.dump(pkg, open(os.path.join(src, 'package.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
     json.dump(manifest, open(os.path.join(src, 'manifest.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
     shutil.copy(os.path.join(KIT, 'platform', 'permissions.json'), os.path.join(src, 'permissions.json'))
