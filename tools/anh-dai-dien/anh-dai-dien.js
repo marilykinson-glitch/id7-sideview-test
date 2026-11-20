@@ -6,6 +6,8 @@
  *   the fifteen profile pictures   three bundles: 570x570 (the picker), 84x72 and 72x72 icons (lists, the status bar)
  *   the car's picture              the 2D picture of the vehicle on the main menu's tile and in the My Vehicle menu:
  *                                  per model a big and a small bundle, each a picture and a paint mask per trim
+ *   the start-up screen            what animationplayer shows: eva_splash_*.png and the eva_hi_ / eva_bye_ videos
+ *                                  (H.264), every variant and size, as one still picture (see boot.js)
  *   placeholder pictures           one bundle each, 4 sizes x 2 colours: what a media source shows without a cover
  *                                  (Bluetooth, USB, music, radio), the caller without a photo
  *
@@ -34,14 +36,17 @@ const url = require('url');
 const crypto = require('crypto');
 const cp = require('child_process');
 const W = require('./wbm');
+const BOOT = require('./boot');
 
-const VERSION = '0.3.1';
+const VERSION = '0.4.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
 const CFG = {
     root: env('AVATAR_ROOT', '/mnt/dataro/dataro1/hmi/bmw/id7/assetDB'),
     vehicles: env('AVATAR_VEHICLES', '/mnt/dataro/dataro1/hmi/bmw/widgetasset/vehicles'),   // <model>/vehicle2D_big, vehicle2D_small
+    boot: env('AVATAR_BOOT', '/mnt/dataro/dataro1/ent/animationplayer'),   // mgu<gen>/eva_splash_*.png, eva_hi_*.h264, eva_bye_*.h264
+    variant: env('AVATAR_VARIANT', '/run/etc/variant.env'),             // HWGEN=18: which mgu<gen> folder this head unit plays
     dir: env('AVATAR_DIR', ''),                         // the profile pictures' bundle, if not under the root (tests)
     mount: process.env.AVATAR_MOUNT !== undefined ? process.env.AVATAR_MOUNT : '/mnt/dataro',   // '' = nothing to remount (tests)
     state: env('AVATAR_STATE', '/var/opt/anh-dai-dien'),
@@ -53,7 +58,7 @@ const CFG = {
     scanMs: Number(env('AVATAR_SCAN_MS', 5000)),        // how often the app is looked for while it is missing
 };
 const APP = /^anh_dai_dien\d*$/;
-const SLOTS = 15, THUMB = 256, SMALL = 96, MORE0 = 21, CAR = 41, CAR_W = 1344, CAR_H = 672;
+const SLOTS = 15, THUMB = 256, SMALL = 96, MORE0 = 21, CAR = 41, CAR_W = 1344, CAR_H = 672, START = 51, START_W = 1920, START_H = 720;
 const key = (n) => 'S' + (n < 10 ? '0' : '') + n;
 const two = (n) => (n < 10 ? '0' : '') + n;
 const mkdirp = (d) => { if (fs.existsSync(d)) return; mkdirp(path.dirname(d)); try { fs.mkdirSync(d); } catch (e) { if (e.code !== 'EEXIST') throw e; } };
@@ -85,7 +90,7 @@ function log(m) {
 // A slot (one picture the owner sets): { n, label, where, w, h (what the phone sends), alpha (its transparency is kept),
 //   targets: [{ b, key, w, h, box, zero (this picture is emptied: a paint mask) }] }.
 const S = {
-    bundles: {}, slots: {}, compatible: false, error: '', backupNote: '', smallIcons: false,
+    bundles: {}, slots: {}, startChanged: false, compatible: false, error: '', backupNote: '', smallIcons: false,
     thumbs: {}, rev: 0, busy: false, message: '', messageKind: 'dim', needsRestart: false, pin: '', port: 0, startedAt: Date.now(),
 };
 let queue = Promise.resolve();
@@ -267,12 +272,13 @@ function load() {
         thumbFrom(S.slots[n], p);
     });
     try { loadCar(); } catch (e) { log('car pictures: ' + e.message); delete S.slots[CAR]; }
+    try { loadStart(); } catch (e) { log('start-up screen: ' + e.message); delete S.slots[START]; }
     S.compatible = true; S.rev++;
     return true;
 }
 
-const slotChanged = (slot) => slot.targets.some((t) => !!t.b.changed[t.key]);
-const anyChanged = () => Object.keys(S.bundles).some((id) => Object.keys(S.bundles[id].changed).length > 0);
+const slotChanged = (slot) => (slot.files ? S.startChanged : slot.targets.some((t) => !!t.b.changed[t.key]));
+const anyChanged = () => S.startChanged || Object.keys(S.bundles).some((id) => Object.keys(S.bundles[id].changed).length > 0);
 
 /* ---------------- writing the bundles ---------------- */
 function run(cmd, args) {
@@ -287,26 +293,107 @@ async function writable(fn) {
     }
 }
 
-/** Puts `buf` in place of a bundle: checks it first, a new file next to the old one, one rename. Inside writable(). */
-function commit(b, buf) {
-    const parsed = new W.Bundle(buf, b.ids);                        // throws if it is not a bundle of this layout
-    parsed.entries.forEach((e) => parsed.rgba(e.key));              // every picture decodes
-    const st = fs.statSync(RES(b));
-    const tmp = RES(b) + '.new';
+/** Writes a file in place of `dest`: a new file next to it (or a link to `same`, a file with these bytes), one rename. Inside writable(). */
+function putFile(dest, buf, same) {
+    let st = null;
+    try { st = fs.statSync(dest); } catch (e) { st = null; }
+    const tmp = dest + '.new';
     try {
-        const fd = fs.openSync(tmp, 'w', 0o644);
-        try { fs.writeSync(fd, buf, 0, buf.length, 0); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-        try { fs.chownSync(tmp, st.uid, st.gid); } catch (e) { /* not root (tests) */ }
-        fs.chmodSync(tmp, st.mode & 0o7777);
+        try { fs.unlinkSync(tmp); } catch (e) { /* none left over */ }
+        let linked = false;
+        if (same) { try { fs.linkSync(same, tmp); linked = true; } catch (e) { linked = false; } }
+        if (!linked) {
+            const fd = fs.openSync(tmp, 'w', 0o644);
+            try { fs.writeSync(fd, buf, 0, buf.length, 0); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+            if (st) { try { fs.chownSync(tmp, st.uid, st.gid); } catch (e) { /* not root (tests) */ } fs.chmodSync(tmp, st.mode & 0o7777); }
+        }
         if (fs.statSync(tmp).size !== buf.length) throw new Error('the copy has the wrong size');
-        fs.renameSync(tmp, RES(b));
-        try { const d = fs.openSync(b.dir, 'r'); try { fs.fsyncSync(d); } finally { fs.closeSync(d); } } catch (e) { /* a folder cannot be synced everywhere */ }
+        fs.renameSync(tmp, dest);
+        try { const d = fs.openSync(path.dirname(dest), 'r'); try { fs.fsyncSync(d); } finally { fs.closeSync(d); } } catch (e) { /* a folder cannot be synced everywhere */ }
     } catch (e) {
         try { fs.unlinkSync(tmp); } catch (e2) { /* nothing to remove */ }
         throw e;
     }
+}
+
+/** Puts `buf` in place of a bundle: checks it first, a new file next to the old one, one rename. Inside writable(). */
+function commit(b, buf) {
+    const parsed = new W.Bundle(buf, b.ids);                        // throws if it is not a bundle of this layout
+    parsed.entries.forEach((e) => parsed.rgba(e.key));              // every picture decodes
+    putFile(RES(b), buf);
     S.needsRestart = true;
     return parsed;
+}
+
+/* ---------------- the start-up screen ---------------- */
+const startMark = () => path.join(CFG.state, 'start-changed');
+const startBackup = (f) => path.join(CFG.state, 'backup', 'start', f.sub, f.name);
+
+/** The start-up pictures and videos of this head unit's generation (all generations if it cannot be told). */
+function loadStart() {
+    let subs = [];
+    try { subs = fs.readdirSync(CFG.boot).filter((d) => /^mgu\d+$/.test(d)).sort(); } catch (e) { return; }
+    let gen = '';
+    try { const m = /^HWGEN=(\d+)/m.exec(fs.readFileSync(CFG.variant, 'utf8')); gen = m ? 'mgu' + m[1] : ''; } catch (e) { gen = ''; }
+    if (gen && subs.indexOf(gen) >= 0) subs = [gen];
+    const files = [];
+    subs.forEach((sub) => fs.readdirSync(path.join(CFG.boot, sub)).sort().forEach((name) => {
+        const m = /^eva_(splash|hi|bye)_.*\.(png|h264)$/.exec(name);
+        if (!m || (m[1] === 'splash') !== (m[2] === 'png')) return;
+        const file = path.join(CFG.boot, sub, name);
+        try {
+            const head = fs.readFileSync(file);
+            if (m[2] === 'png') { const i = BOOT.pngInfo(head); files.push({ sub, name, file, kind: 'png', w: i.w, h: i.h }); }
+            else { const i = BOOT.h264Info(head); if (i.frames < 1) return; files.push({ sub, name, file, kind: 'h264', w: i.w, h: i.h, level: i.level, frames: i.frames }); }
+        } catch (e) { log('start-up file ' + name + ' left alone: ' + e.message); }
+    }));
+    if (!files.some((f) => f.kind === 'png')) return;
+    S.startChanged = fs.existsSync(startMark());
+    S.slots[START] = { n: START, label: 'Màn hình khởi động', where: 'lúc màn hình khởi động, lúc chào khi lên xe và lúc tạm biệt', w: START_W, h: START_H, files, targets: [] };
+    startThumb();
+}
+function startThumb() {
+    const slot = S.slots[START];
+    const best = slot.files.filter((f) => f.kind === 'png').sort((x, y) => y.w - x.w)[0];
+    try { const p = BOOT.pngDecode(fs.readFileSync(best.file)); thumb(START, p.rgba, p.w, p.h); } catch (e) { thumb(START, Buffer.alloc(64 * 24 * 4, 0), 64, 24); }
+}
+
+async function setStart(slot, rgba) {
+    // the originals first, each copied once
+    slot.files.forEach((f) => {
+        const bk = startBackup(f);
+        if (fs.existsSync(bk) || S.startChanged) return;
+        mkdirp(path.dirname(bk));
+        fs.writeFileSync(bk + '.tmp', fs.readFileSync(f.file)); fs.renameSync(bk + '.tmp', bk);
+    });
+    if (slot.files.some((f) => !fs.existsSync(startBackup(f)))) throw new Error('thiếu bản gốc của màn hình khởi động');
+    const made = {};                                                // files of one kind and size are the same bytes: one file, the others links to it
+    const jobs = slot.files.map((f) => {
+        const id = f.kind + f.w + 'x' + f.h + (f.kind === 'h264' ? '/' + f.level + '/' + f.frames : '');
+        if (!made[id]) {
+            const pic = W.fit(rgba, slot.w, slot.h, f.w, f.h);
+            made[id] = { buf: f.kind === 'png' ? W.png(pic, f.w, f.h) : BOOT.stillVideo(pic, f.w, f.h, { level: f.level, frames: f.frames }), first: '' };
+            if (f.kind === 'h264') { const i = BOOT.h264Info(made[id].buf); if (i.w !== f.w || i.h !== f.h || i.frames !== f.frames) throw new Error('video made wrong'); }
+        }
+        return { f, m: made[id] };
+    });
+    await writable(async () => {
+        fs.writeFileSync(startMark(), String(Date.now()));          // from here on the files are not the originals
+        jobs.forEach((j) => { putFile(j.f.file, j.m.buf, j.m.first); if (!j.m.first) j.m.first = j.f.file; });
+    });
+    S.startChanged = true; S.needsRestart = true;
+    thumb(START, rgba, slot.w, slot.h);
+    return jobs.length;
+}
+
+async function restoreStart() {
+    const slot = S.slots[START];
+    if (!slot || !S.startChanged) return;
+    const jobs = slot.files.map((f) => ({ f, buf: fs.readFileSync(startBackup(f)) }));
+    await writable(async () => jobs.forEach((j) => putFile(j.f.file, j.buf)));
+    try { fs.unlinkSync(startMark()); } catch (e) { /* gone */ }
+    S.startChanged = false; S.needsRestart = true;
+    startThumb();
 }
 
 /** The slot's targets, bundle by bundle: [{ b, targets }]. */
@@ -325,6 +412,14 @@ async function setPicture(n, topDownRgba) {
         S.busy = true; writeStatus();
         try {
             let rgba = Buffer.from(topDownRgba);
+            if (slot.files) {
+                for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;
+                const count = await setStart(slot, rgba);
+                S.rev++;
+                log('start-up screen replaced (' + count + ' files)');
+                say('go', 'Đã đổi màn hình khởi động. Khởi động lại màn hình xe để thấy.');
+                return;
+            }
             if (slot.alpha) rgba = feather(rgba, slot.w, slot.h);     // the car's picture keeps its transparency (a cut-out car)
             else for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;   // opaque: a transparent corner would show the screen behind
             // every new file first (nothing is written if one cannot be made), then all of them in one writable moment
@@ -360,7 +455,10 @@ async function restore(which) {          // a slot's number, or 'all'
                 const todo = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => b.usable && Object.keys(b.changed).length);
                 const files = todo.map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
                 await writable(async () => files.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; }));
-                Object.keys(S.slots).forEach((k) => { const s = S.slots[k]; if (todo.indexOf(s.targets[0].b) >= 0) thumbFrom(s, readOriginal(s.targets[0].b)); });
+                Object.keys(S.slots).forEach((k) => { const s = S.slots[k]; if (!s.files && todo.indexOf(s.targets[0].b) >= 0) thumbFrom(s, readOriginal(s.targets[0].b)); });
+                await restoreStart();
+            } else if (slot.files) {
+                await restoreStart();
             } else {
                 const files = byBundle(slot).map((g) => {
                     const orig = readOriginal(g.b), replace = {};
@@ -372,7 +470,7 @@ async function restore(which) {          // a slot's number, or 'all'
             }
             S.rev++;
             log('restored ' + which);
-            say('go', (!slot ? 'Đã khôi phục tất cả hình gốc.' : which <= SLOTS ? 'Đã khôi phục hình số ' + which + '.' : 'Đã khôi phục hình "' + slot.label + '".') + ' Khởi động lại màn hình xe để thấy.');
+            say('go', (!slot ? 'Đã khôi phục tất cả hình gốc.' : slot.files ? 'Đã khôi phục màn hình khởi động gốc.' : which <= SLOTS ? 'Đã khôi phục hình số ' + which + '.' : 'Đã khôi phục hình "' + slot.label + '".') + ' Khởi động lại màn hình xe để thấy.');
         } finally { S.busy = false; writeStatus(); }
     });
 }
@@ -405,7 +503,7 @@ function writeStatus() {
         message: S.message, messageKind: S.messageKind, needsRestart: S.needsRestart,
         backup: S.compatible ? S.backupNote : '', smallIcons: S.smallIcons, anyChanged: S.compatible && anyChanged(),
         slots: S.compatible ? slotList(1, SLOTS).map((s) => ({ n: s.n, changed: s.changed })) : [],
-        more: S.compatible ? slotList(CAR, CAR).concat(slotList(MORE0, CAR - 1)).map((s) => ({ n: s.n, changed: s.changed, label: s.n === CAR ? 'Hình xe' : s.label })) : [],
+        more: S.compatible ? slotList(CAR, CAR).concat(slotList(START, START), slotList(MORE0, CAR - 1)).map((s) => ({ n: s.n, changed: s.changed, label: s.n === CAR ? 'Hình xe' : s.n === START ? 'Khởi động' : s.label })) : [],
     };
     try { writeAtomic(path.join(CFG.run, 'status.json'), JSON.stringify(st)); } catch (e) { /* no RAM folder (tests) */ }
     return st;
@@ -468,7 +566,7 @@ async function handle(req, res) {
         const st = writeStatus();
         return json(res, 200, { ok: true, version: VERSION, compatible: st.compatible, error: st.error, busy: st.busy, message: st.message,
             messageKind: st.messageKind, needsRestart: st.needsRestart, rev: S.rev, size: W.SIZE, backup: st.compatible, smallIcons: st.smallIcons,
-            anyChanged: st.anyChanged, slots: slotList(1, SLOTS), more: slotList(MORE0, CAR - 1), car: slotList(CAR, CAR) });
+            anyChanged: st.anyChanged, slots: slotList(1, SLOTS), more: slotList(MORE0, CAR - 1), car: slotList(CAR, CAR), start: slotList(START, START) });
     }
     let m = /^\/api\/thumb\/(\d+)$/.exec(p);
     if (req.method === 'GET' && m) {
@@ -545,4 +643,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, MORE, MORE0, CAR, CAR_W, CAR_H, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, MORE, MORE0, START, CAR, CAR_W, CAR_H, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

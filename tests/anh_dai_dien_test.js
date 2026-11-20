@@ -105,6 +105,21 @@ const mk = makeBundle();
     assert.strictEqual(p.slice(1, 4).toString(), 'PNG'); assert.strictEqual(p.readUInt32BE(16), 3); assert.strictEqual(p.readUInt32BE(20), 2);
     assert.strictEqual(W.crc32(Buffer.from('123456789')), 0xcbf43926);
     ok('flip, resize, fitting into a frame, PNG and CRC');
+    {
+        const B = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'boot.js'));
+        const pic = picture(5, 100, 52);                       // not whole macroblocks: 112 x 64 with cropping
+        const v = B.stillVideo(pic, 100, 52, { frames: 5 });
+        assert.deepStrictEqual(B.h264Info(v), { w: 100, h: 52, level: 31, profile: 66, frames: 5 });
+        const list = B.nals(v); assert.deepStrictEqual(list.map((x) => x.type), [7, 8, 5, 1, 1, 1, 1]);
+        assert.strictEqual(list[2].end - list[2].start, 4 + 28 * 384 + 27 * 2 + 1);    // the header with the first type, 28 macroblocks of 384 bytes, 27 more types, the stop bit
+        list.forEach((x) => { for (let i = x.start; i + 2 < x.end; i++) assert.ok(!(v[i] === 0 && v[i + 1] === 0 && v[i + 2] <= 2), 'a start code inside a unit at ' + i); });
+        assert.strictEqual(B.h264Info(B.stillVideo(picture(1, 1920, 720), 1920, 720, { frames: 2, level: 31 })).level, 40);   // too many macroblocks for 3.1
+        const png = W.png(pic, 100, 52), back = B.pngDecode(png);
+        assert.strictEqual(back.w, 100); assert.strictEqual(Buffer.compare(back.rgba, pic), 0);
+        assert.throws(() => B.pngInfo(Buffer.from('nope, not a picture at all, not a picture')), /not a PNG/);
+        assert.throws(() => B.h264Info(Buffer.alloc(100)), /no SPS/);
+        ok('the still video (headers, uncompressed macroblocks, skipped pictures) and the PNG reader');
+    }
     if (process.env.AVATAR_REAL_RES) {
         const real = W.selfTest(fs.readFileSync(process.env.AVATAR_REAL_RES), fs.readFileSync(process.env.AVATAR_REAL_IDS, 'utf8'));
         assert.strictEqual(real.entries.length, 21);
@@ -145,8 +160,22 @@ const mkBig = makeBundle(carPics(672, 336)), mkSmall = makeBundle(carPics(440, 2
 const vehicles = path.join(tmp, 'vehicles');
 const putCar = (sub, b) => { const d = path.join(vehicles, 'G20', sub); mkdirs(d); fs.writeFileSync(path.join(d, 'bitmaps.res'), b.data); fs.writeFileSync(path.join(d, 'bitmaps.res.ids'), b.ids); };
 putCar('vehicle2D_big', mkBig); putCar('vehicle2D_small', mkSmall); mkdirs(path.join(vehicles, 'G20', 'vehicle'));
+// the start-up screen: a still picture and the two videos per size, for this head unit's generation and for another
+const BOOT = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'boot.js'));
+const bootDir = path.join(tmp, 'animationplayer'), startFiles = {};
+[['mgu18', 1280, 480, '0x02'], ['mgu18', 1440, 540, '0x03'], ['mgu21', 1920, 720, '0x06']].forEach((d) => {
+    mkdirs(path.join(bootDir, d[0]));
+    const pic = picture(d[1] & 31, d[1], d[2]);
+    const put1 = (name, buf) => { fs.writeFileSync(path.join(bootDir, d[0], name), buf); startFiles[d[0] + '/' + name] = buf; };
+    put1('eva_splash_0x00_0x0_' + d[3] + '_noloop.png', W.png(pic, d[1], d[2]));
+    put1('eva_hi_0x00_0x0_' + d[3] + '_noloop.h264', BOOT.stillVideo(pic, d[1], d[2], { frames: 6 }));
+    put1('eva_hi_0x00_0x0_' + d[3] + '_loop.h264', BOOT.stillVideo(pic, d[1], d[2], { frames: 6 }));
+    put1('eva_bye_0x00_0x0_' + d[3] + '_noloop.h264', BOOT.stillVideo(pic, d[1], d[2], { frames: 4 }));
+});
+fs.writeFileSync(path.join(bootDir, 'mgu18', 'notes.txt'), 'x'); fs.writeFileSync(path.join(tmp, 'variant.env'), 'MGUVAR=high\nHWGEN=18\n');
+const startFile = (rel) => fs.readFileSync(path.join(bootDir, rel));
 const carFile = (sub) => fs.readFileSync(path.join(vehicles, 'G20', sub, 'bitmaps.res'));
-Object.assign(process.env, { AVATAR_VEHICLES: vehicles, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
+Object.assign(process.env, { AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
 const svc = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'anh-dai-dien.js'));
 const fileOf = (rel) => fs.readFileSync(path.join(root, rel, 'wbitmaps.res'));
 const BT = svc.MORE0, USB = svc.MORE0 + 1;
@@ -177,7 +206,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     const st0 = JSON.parse(fs.readFileSync(path.join(run, 'status.json'), 'utf8'));
     assert.strictEqual(st0.url, 'http://192.168.7.9:' + svc.S.port + '/?pin=' + pin);
     assert.strictEqual(st0.slots.length, 15); assert.ok(!st0.slots.some((s) => s.changed)); assert.strictEqual(st0.anyChanged, false);
-    assert.deepStrictEqual(st0.more, [{ n: svc.CAR, changed: false, label: 'Hình xe' }, { n: BT, changed: false, label: 'Nhạc Bluetooth' }]);     // the USB bundle is not what is expected, the others are not on this car
+    assert.deepStrictEqual(st0.more, [{ n: svc.CAR, changed: false, label: 'Hình xe' }, { n: svc.START, changed: false, label: 'Khởi động' }, { n: BT, changed: false, label: 'Nhạc Bluetooth' }]);     // the USB bundle is not what is expected, the others are not on this car
     assert.strictEqual(fs.statSync(path.join(run, 't01.rgba')).size, 96 * 96 * 4);
     assert.ok(!fs.existsSync(path.join(state, 'backup', 'replacement_media_plug_usb.res.orig')));
     ok('starts, keeps every bundle\'s original, tells the app the address, the PIN, 15 pictures and the placeholders this car has');
@@ -264,6 +293,32 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     await call('POST', '/api/picture/' + svc.CAR + q, cut);
     ok('the car\'s picture: a cut-out goes into every trim of the big and the small bundle, the paint masks are emptied, a plain photo gets soft edges');
 
+    // the start-up screen: the picture and a still video at every size of this generation, the other generation untouched
+    const sp = picture(41, 1920, 720);
+    r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.start.length, 1); assert.strictEqual(r.json.start[0].w, 1920); assert.ok(!r.json.start[0].changed);
+    r = await call('POST', '/api/picture/' + svc.START + q, sp); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
+    [[1280, 480, '0x02'], [1440, 540, '0x03']].forEach((d) => {
+        const want = W.fit(sp, 1920, 720, d[0], d[1]);
+        const png = BOOT.pngDecode(startFile('mgu18/eva_splash_0x00_0x0_' + d[2] + '_noloop.png'));
+        assert.strictEqual(png.w, d[0]); assert.strictEqual(Buffer.compare(png.rgba, want), 0);
+        const hi = startFile('mgu18/eva_hi_0x00_0x0_' + d[2] + '_noloop.h264');
+        assert.deepStrictEqual(BOOT.h264Info(hi), { w: d[0], h: d[1], level: 31, profile: 66, frames: 6 });
+        assert.strictEqual(Buffer.compare(hi, BOOT.stillVideo(want, d[0], d[1], { frames: 6, level: 31 })), 0);
+        assert.strictEqual(BOOT.h264Info(startFile('mgu18/eva_bye_0x00_0x0_' + d[2] + '_noloop.h264')).frames, 4);
+        // the loop and the no-loop video are the same bytes: one file on the disk
+        assert.strictEqual(fs.statSync(path.join(bootDir, 'mgu18', 'eva_hi_0x00_0x0_' + d[2] + '_loop.h264')).ino, fs.statSync(path.join(bootDir, 'mgu18', 'eva_hi_0x00_0x0_' + d[2] + '_noloop.h264')).ino);
+    });
+    Object.keys(startFiles).filter((k) => /^mgu21/.test(k)).forEach((k) => assert.strictEqual(Buffer.compare(startFile(k), startFiles[k]), 0, k));
+    assert.strictEqual(fs.readFileSync(path.join(bootDir, 'mgu18', 'notes.txt'), 'utf8'), 'x');
+    assert.ok(!fs.readdirSync(path.join(bootDir, 'mgu18')).some((f) => /\.new$/.test(f)));
+    r = await call('GET', '/api/state' + q); assert.ok(r.json.start[0].changed && r.json.anyChanged);
+    r = await call('POST', '/api/picture/' + svc.START + q, picture(42, 1920, 720)); assert.strictEqual(r.code, 200);   // a second time: over the links
+    r = await call('POST', '/api/restore/' + svc.START + q); assert.strictEqual(r.code, 200);
+    Object.keys(startFiles).forEach((k) => assert.strictEqual(Buffer.compare(startFile(k), startFiles[k]), 0, k));
+    r = await call('GET', '/api/state' + q); assert.ok(!r.json.start[0].changed);
+    await call('POST', '/api/picture/' + svc.START + q, sp);
+    ok('the start-up screen: the picture and a still video at every size, same bytes linked, another generation untouched, restored byte for byte');
+
     r = await call('POST', '/api/restore/3' + q); assert.strictEqual(r.code, 200);
     now = new W.Bundle(fileOf(AV), mk.ids);
     assert.strictEqual(Buffer.compare(now.blob('S03'), new W.Bundle(mk.data, mk.ids).blob('S03')), 0);
@@ -277,7 +332,8 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     assert.strictEqual(Buffer.compare(fileOf(AV), mk.data), 0); assert.strictEqual(Buffer.compare(fileOf(REG), mkReg.data), 0);
     assert.strictEqual(Buffer.compare(fileOf(STA), mkSta.data), 0); assert.strictEqual(Buffer.compare(fileOf(REPL + 'replacement_media_wireless_bluetooth'), mkBt.data), 0);
     assert.strictEqual(Buffer.compare(carFile('vehicle2D_big'), mkBig.data), 0); assert.strictEqual(Buffer.compare(carFile('vehicle2D_small'), mkSmall.data), 0);
-    r = await call('GET', '/api/state' + q); assert.ok(!r.json.slots.some((s) => s.changed) && !r.json.more.some((s) => s.changed) && !r.json.car[0].changed && !r.json.anyChanged);
+    Object.keys(startFiles).forEach((k) => assert.strictEqual(Buffer.compare(startFile(k), startFiles[k]), 0, k));
+    r = await call('GET', '/api/state' + q); assert.ok(!r.json.slots.some((s) => s.changed) && !r.json.more.some((s) => s.changed) && !r.json.car[0].changed && !r.json.start[0].changed && !r.json.anyChanged);
     ok('restoring one picture, then all, brings back every original file byte for byte');
 
     // the app's commands: only what was written after the start counts
@@ -306,7 +362,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     // a profile bundle of another layout is reported and never written
     const odd = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-odd-'));
     fs.writeFileSync(path.join(odd, 'wbitmaps.res'), Buffer.concat([mk.data, Buffer.from('x')])); fs.writeFileSync(path.join(odd, 'wbitmaps.res.ids'), mk.ids);
-    Object.assign(svc.CFG, { dir: odd, state: path.join(odd, 'st'), root: path.join(odd, 'none'), vehicles: path.join(odd, 'none') });
+    Object.assign(svc.CFG, { dir: odd, state: path.join(odd, 'st'), root: path.join(odd, 'none'), vehicles: path.join(odd, 'none'), boot: path.join(odd, 'none') });
     assert.strictEqual(svc.load(), false); assert.ok(/cấu trúc lạ/.test(svc.S.error)); assert.strictEqual(svc.S.compatible, false);
     await assert.rejects(() => svc.setPicture(1, picture(1)), /cấu trúc lạ|không dùng được/);
     assert.strictEqual(fs.readFileSync(path.join(odd, 'wbitmaps.res')).length, mk.data.length + 1);

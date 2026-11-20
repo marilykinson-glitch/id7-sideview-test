@@ -9,7 +9,7 @@ const acorn = require('acorn');
 
 const ROOT = path.join(__dirname, '..');
 const FILES = ['apps/xinhan_cam/main.js', 'apps/xinhan_cam/logic.js', 'apps/xinhan_cam/camera.js', 'apps/xinhan_cam/ui.js', 'tools/xinhan-cam/xinhan-cam.js', 'tools/xinhan-cam/nav.js', 'tools/xinhan-cam-log/print-log.js', 'tools/xinhan-cam/oapgen-gen.js',
-    'apps/anh_dai_dien/main.js', 'apps/anh_dai_dien/ui.js', 'tools/anh-dai-dien/anh-dai-dien.js', 'tools/anh-dai-dien/wbm.js'];
+    'apps/anh_dai_dien/main.js', 'apps/anh_dai_dien/ui.js', 'tools/anh-dai-dien/anh-dai-dien.js', 'tools/anh-dai-dien/wbm.js', 'tools/anh-dai-dien/boot.js'];
 // newer than Node 8: optional catch binding and spread are syntax (the parser finds them); these are library
 const NEWER = [/\.finally\(/, /\.flat\(/, /\.flatMap\(/, /Object\.fromEntries/, /recursive:\s*true/, /\.matchAll\(/, /\.trimStart\(|\.trimEnd\(/,
     /globalThis/, /\bBigInt\b/, /\.allSettled\(/, /\.replaceAll\(/, /\.at\(-?\d/, /fs\.promises|require\('fs\/promises'\)/, /\.rmSync\(/, /queueMicrotask/,

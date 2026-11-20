@@ -29,6 +29,7 @@ h1{margin:0;font-size:28px;letter-spacing:.2px}
 .sec+.hint{margin-top:6px}
 .grid.wide{grid-template-columns:repeat(2,1fr)}
 .grid.one{grid-template-columns:1fr}.grid.one .tile{aspect-ratio:2}.grid.one .tile img{object-fit:contain}
+.grid.one.start .tile{aspect-ratio:8/3;background:#000}
 .chk{background:#0d1219 conic-gradient(#161e2a 25%,transparent 0 50%,#161e2a 0 75%,transparent 0) 0 0/22px 22px}
 .cap{position:absolute;left:0;right:0;bottom:0;padding:26px 10px 9px;text-align:left;background:linear-gradient(transparent,rgba(6,9,14,.9));font-weight:700;font-size:14.5px;line-height:1.2}
 .cap small{display:block;font-weight:400;font-size:11.5px;color:#b9c6d8;margin-top:2px}
@@ -75,7 +76,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
   <header>
     <div class="stripes"><i></i><i></i><i></i></div>
     <h1>ID Studio</h1>
-    <p class="sub">Tuỳ biến hình ảnh iDrive: chiếc xe, ảnh đại diện và các hình mặc định.</p>
+    <p class="sub">Tuỳ biến hình ảnh iDrive: chiếc xe, màn hình khởi động, ảnh đại diện và các hình mặc định.</p>
   </header>
 
   <section id="pinBox" class="pin hide">
@@ -92,6 +93,11 @@ input[type=range]{flex:1;accent-color:var(--acc)}
       <div class="sec">Hình chiếc xe</div>
       <p class="hint">Chiếc xe ở ô xe ngoài màn hình chính và trong menu Xe của tôi. Thay bằng ảnh xe của bạn.</p>
       <div class="grid one" id="car"></div>
+    </div>
+    <div id="startBox" class="hide">
+      <div class="sec">Màn hình khởi động</div>
+      <p class="hint">Hình lúc màn hình khởi động, lúc chào khi lên xe và lúc tạm biệt. Thay chữ BMW bằng ảnh của bạn.</p>
+      <div class="grid one start" id="start"></div>
     </div>
     <div class="sec">Ảnh đại diện</div>
     <p class="hint">Chạm vào một hình để thay bằng ảnh của bạn. Số hình là thứ tự trong danh sách chọn ảnh trên xe.</p>
@@ -139,7 +145,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
   var $ = function (id) { return document.getElementById(id); };
   var SW = 570, SH = 570, pin = '', rev = 0, cur = null, state = null;
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function name(s) { return s.n <= 15 ? 'hình số ' + s.n : s.alpha ? 'hình chiếc xe' : 'hình “' + s.label + '”'; }
+  function name(s) { return s.n <= 15 ? 'hình số ' + s.n : s.alpha ? 'hình chiếc xe' : s.w !== s.h ? 'màn hình khởi động' : 'hình “' + s.label + '”'; }
 
   function qs() { var m = /[?&]pin=(\d+)/.exec(location.search); return m ? m[1] : ''; }
   function api(path, opt) {
@@ -190,6 +196,14 @@ input[type=range]{flex:1;accent-color:var(--acc)}
       c.appendChild(b);
     });
     $('carBox').className = (j.car || []).length ? '' : 'hide';
+    var st = $('start'); st.innerHTML = '';
+    (j.start || []).forEach(function (s) {
+      var b = document.createElement('button'); b.className = 'tile';
+      b.innerHTML = '<img alt="" src="/api/thumb/' + s.n + '?pin=' + pin + '&r=' + rev + '">' + (s.changed ? '<span class="chg top">Đã đổi</span>' : '');
+      b.onclick = function () { openSheet(s); };
+      st.appendChild(b);
+    });
+    $('startBox').className = (j.start || []).length ? '' : 'hide';
     $('resetAll').disabled = !j.backup || !j.anyChanged;
   }
   function refresh() { return api('/api/state').then(function (j) { if (j.ok) show(j); }); }
@@ -230,8 +244,9 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     img = null; draw();
     $('shTitle').textContent = s.n <= 15 ? 'Hình số ' + n : s.label;
     $('note').textContent = s.alpha ? 'Đẹp nhất là ảnh xe đã tách nền (PNG nền trong suốt): xe nổi trên nền menu như xe gốc. Ảnh thường thì được làm mờ viền. Xe sẽ không còn đổi theo màu sơn hay gói trang bị.'
+      : s.w !== s.h ? 'Hiện ' + s.where + '. Là ảnh đứng yên (không còn hiệu ứng chữ chạy). Bạn sẽ thấy đúng phần trong khung.'
       : (s.where ? 'Hiện ' + s.where + '. ' : '') + 'Ảnh được cắt vuông, bạn sẽ thấy đúng phần trong khung.';
-    $('emptyText').innerHTML = s.alpha ? 'Chọn ảnh chiếc xe của bạn.<br>Sau đó kéo và phóng to cho vừa khung.' : 'Chọn một ảnh từ điện thoại.<br>Sau đó kéo và phóng to để cắt vuông.';
+    $('emptyText').innerHTML = s.alpha ? 'Chọn ảnh chiếc xe của bạn.<br>Sau đó kéo và phóng to cho vừa khung.' : (s.w !== s.h ? 'Chọn một ảnh từ điện thoại.<br>Sau đó kéo và phóng to cho vừa khung.' : 'Chọn một ảnh từ điện thoại.<br>Sau đó kéo và phóng to để cắt vuông.');
     $('empty').className = 'empty'; $('zoomRow').className = 'zoom hide'; $('editRow').className = 'row hide';
     $('resetOne').className = 'btn danger' + (changed ? '' : ' hide'); $('pick').textContent = 'Chọn ảnh từ điện thoại';
     var t = new Image(); t.onload = function () { if (!img) { ctx.drawImage(t, 0, 0, SW, SH); } }; t.src = '/api/thumb/' + n + '?pin=' + pin + '&r=' + rev;
