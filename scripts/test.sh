@@ -9,4 +9,5 @@ cmp native/build/mgu-sidecam tools/xinhan-cam/mgu-sidecam || echo "note: tools/x
 node tests/logic_test.js
 node tests/nav_read_test.js
 python3 tests/system_test.py
+node tests/anh_dai_dien_test.js
 node scripts/check_node8.js

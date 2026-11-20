@@ -6,6 +6,18 @@ Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. H
 
 > **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
 
+## Ảnh đại diện 0.1.0 (app thứ hai trong nguồn này)
+
+Xe không có Connected Drive thì không đổi được ảnh đại diện của profile, và danh sách hình có sẵn chỉ có 15 hình. App này cho đặt ảnh của chính mình vào danh sách đó, gửi từ điện thoại.
+
+**Dùng:** cài **Ảnh đại diện** từ MGU Store (cùng nguồn `marilykinson-glitch/id7-sideview-test`, nhánh `main`; Store cài luôn **Trợ thủ Ảnh đại diện**), khởi động lại màn hình một lần. Mở app trên xe: màn hình hiện mã QR và mã PIN. Quét QR bằng điện thoại (điện thoại và xe cùng Wi-Fi hoặc điểm phát sóng), chạm một hình, chọn ảnh, kéo và phóng to để cắt vuông, bấm **Dùng ảnh này**. Khởi động lại màn hình xe để danh sách chọn ảnh dùng hình mới. Số hình là thứ tự trong danh sách chọn ảnh trên xe.
+
+**Khôi phục:** trên trang điện thoại có nút khôi phục từng hình và tất cả; trên xe có nút **Khôi phục tất cả**. Hình gốc được sao lưu một lần ở `/var/opt/anh-dai-dien/backup/` trước khi đổi gì (nếu đã có bản `/var/opt/avatar_backup/wbitmaps.res.orig` tự sao lưu thì lấy bản đó làm bản gốc).
+
+**Cách hoạt động:** 15 hình nằm trong gói `wbitmaps.res` (định dạng tài nguyên Ramses, mỗi hình 570x570 RGBA, nén LZ4) trên phân vùng chỉ đọc `/mnt/dataro`. Trợ thủ đọc gói, thay đúng các hình được chọn, kiểm tra gói mới đọc lại được, mở ghi phân vùng trong giây lát, ghi file mới cạnh file cũ rồi đổi tên đè lên (một thao tác), và khóa chỉ đọc lại. Gói có cấu trúc lạ (xe khác, bản phần mềm khác) thì không ghi gì. Trang điện thoại phục vụ qua HTTP trong mạng nội bộ cổng 8137, cần mã PIN 4 số hiện trên xe (sai 5 lần thì khóa địa chỉ đó 1 phút). Mã nguồn: `tools/anh-dai-dien/` (`wbm.js` đọc/ghi gói, `anh-dai-dien.js` dịch vụ, `page.html` trang điện thoại) và `apps/anh_dai_dien/`.
+
+**Chưa kiểm tra trên xe (mới ở 0.1.0):** xe có cho điện thoại nối vào cổng 8137 không (tường lửa), xe có kiểm tra mã băm gói ảnh lúc khởi động và khôi phục lại không, ảnh có bị bo tròn hay lật khi hiện trên xe không. File thử `wbitmaps_test.res` đã đổi 15 hình thành ô số trên xe thật; gói thật của xe đọc và ghi lại giống từng byte.
+
 ## Mới trong 0.7.11 (trợ thủ 0.7.9)
 
 - **Vòng xuyến có mũi tên trên camera.** Trước đây vòng xuyến chỉ có ô trên cùng, trên hình không vẽ gì. Giờ vẽ mũi tên chếch về phía xe đi vào vòng (đi bên phải: chếch phải), ô trên cùng vẫn có hình vòng và số lối ra.

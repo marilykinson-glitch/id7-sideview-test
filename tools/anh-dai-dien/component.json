@@ -1,0 +1,50 @@
+{
+  "id": "anh-dai-dien",
+  "kind": "tool",
+  "version": "0.1.0",
+  "title": "Trợ thủ Ảnh đại diện",
+  "description": "Mở một trang web cho điện thoại (cùng mạng với xe, có mã PIN) để chọn ảnh, cắt vuông và đặt vào danh sách ảnh đại diện của profile trên xe; ghi vào gói ảnh của đầu xe (phân vùng chỉ đọc, được mở ghi trong giây lát), sao lưu bản gốc trước khi đổi và khôi phục khi cần. Sau khi cài hoặc cập nhật, và sau khi đổi ảnh, cần khởi động lại màn hình.",
+  "license": "GPL-3.0-or-later",
+  "mguHmi": [
+    "ID7"
+  ],
+  "uninstallable": true,
+  "requires": {
+    "mgu-deploy": "0.7.11"
+  },
+  "files": [
+    {
+      "path": "anh-dai-dien.js",
+      "mode": "0644"
+    },
+    {
+      "path": "wbm.js",
+      "mode": "0644"
+    },
+    {
+      "path": "page.html",
+      "mode": "0644"
+    },
+    {
+      "path": "LICENSE.GPL-3.0",
+      "mode": "0644"
+    }
+  ],
+  "units": [
+    {
+      "name": "anh-dai-dien.service"
+    }
+  ],
+  "enable": [
+    {
+      "unit": "anh-dai-dien.service",
+      "target": "multi-user.target"
+    }
+  ],
+  "recmgr": [
+    "anh-dai-dien"
+  ],
+  "restart": [
+    "anh-dai-dien.service"
+  ]
+}

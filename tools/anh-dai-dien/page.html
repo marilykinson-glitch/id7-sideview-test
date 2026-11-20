@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0e14">
+<title>Ảnh đại diện · BMW</title>
+<style>
+:root{--bg:#0a0e14;--card:#131a24;--line:#243042;--text:#eef3fa;--dim:#8a99ad;--acc:#2b87ff;--acc2:#81c4ff;--go:#2fd27a;--warn:#ffb020;--crit:#ff5a5f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+body{min-height:100vh;padding:env(safe-area-inset-top) 0 calc(28px + env(safe-area-inset-bottom));background:radial-gradient(120% 60% at 50% -10%,#16314f 0,transparent 60%),var(--bg)}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px}
+header{padding:26px 2px 14px}
+.stripes{display:flex;gap:4px;height:4px;margin-bottom:16px;max-width:140px}.stripes i{flex:1;border-radius:2px}.stripes i:nth-child(1){background:#81c4ff}.stripes i:nth-child(2){background:#1c4fa0}.stripes i:nth-child(3){background:#e5202e}
+h1{margin:0;font-size:28px;letter-spacing:.2px}
+.sub{color:var(--dim);margin:6px 0 0;font-size:15px}
+.banner{display:none;margin:14px 0 0;padding:13px 15px;border-radius:14px;background:rgba(255,176,32,.12);border:1px solid rgba(255,176,32,.45);color:#ffd27a;font-size:14.5px}
+.banner.show{display:block}.banner b{color:#fff}
+.err{display:none;margin:14px 0 0;padding:13px 15px;border-radius:14px;background:rgba(255,90,95,.12);border:1px solid rgba(255,90,95,.5);color:#ffb3b5;font-size:14.5px}.err.show{display:block}
+.hint{color:var(--dim);font-size:14px;margin:18px 2px 10px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tile{position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;background:var(--card);border:1px solid var(--line);padding:0;cursor:pointer;color:inherit}
+.tile img{width:100%;height:100%;object-fit:cover;display:block}
+.tile:active{transform:scale(.97)}
+.num{position:absolute;left:8px;top:8px;min-width:26px;height:26px;padding:0 8px;border-radius:13px;background:rgba(10,14,20,.72);backdrop-filter:blur(6px);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
+.chg{position:absolute;right:8px;bottom:8px;padding:2px 9px;border-radius:11px;background:rgba(47,210,122,.9);color:#04150c;font-size:12px;font-weight:700}
+.btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:999px;padding:14px 20px;font:inherit;font-weight:600;cursor:pointer;width:100%}
+.btn:active{filter:brightness(1.2)}
+.btn.pri{background:linear-gradient(180deg,#3b95ff,#1d6fe0);border-color:#4aa0ff;color:#fff}
+.btn.danger{color:#ffb3b5;border-color:rgba(255,90,95,.45)}
+.btn[disabled]{opacity:.45}
+.row{display:flex;gap:10px}.row .btn{flex:1}
+.foot{margin-top:26px}
+.foot p{color:var(--dim);font-size:13px;margin:10px 4px 0}
+/* editor */
+.sheet{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;z-index:5;overflow:auto;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.sheet.show{display:flex}
+.bar{display:flex;align-items:center;gap:10px;padding:14px 16px}
+.bar h2{margin:0;font-size:20px;flex:1}
+.x{appearance:none;border:0;background:var(--card);color:var(--text);width:38px;height:38px;border-radius:19px;font-size:20px;cursor:pointer}
+.stage{margin:4px auto 0;width:min(86vw,380px)}
+.crop{position:relative;width:100%;aspect-ratio:1;border-radius:22px;overflow:hidden;background:#000;border:1px solid var(--line);touch-action:none}
+.crop canvas{width:100%;height:100%;display:block}
+.guide{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(255,255,255,.28);border-radius:22px;background:linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.22)) 33.3% 0/1px 100% no-repeat,linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.22)) 66.6% 0/1px 100% no-repeat,linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.22)) 0 33.3%/100% 1px no-repeat,linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.22)) 0 66.6%/100% 1px no-repeat}
+.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--dim);text-align:center;padding:20px}
+.empty svg{width:54px;height:54px;opacity:.7}
+.ctl{margin:16px auto 0;width:min(86vw,380px);display:flex;flex-direction:column;gap:12px}
+.zoom{display:flex;align-items:center;gap:12px;color:var(--dim);font-size:13px}
+input[type=range]{flex:1;accent-color:var(--acc)}
+.small{font-size:13px;color:var(--dim);text-align:center;margin:2px 0 0}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,30px);opacity:0;background:#1b2535;border:1px solid var(--line);padding:12px 18px;border-radius:14px;max-width:88vw;z-index:9;transition:.25s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.go{border-color:rgba(47,210,122,.6)}.toast.crit{border-color:rgba(255,90,95,.7)}
+/* pin */
+.pin{text-align:center;padding-top:40px}
+.pin input{width:200px;font-size:38px;text-align:center;letter-spacing:12px;padding:12px 6px 12px 18px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--text);margin:18px 0}
+.hide{display:none!important}
+.busy{position:fixed;inset:0;background:rgba(10,14,20,.78);z-index:8;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.busy.show{display:flex}
+.spin{width:42px;height:42px;border-radius:50%;border:4px solid #24344b;border-top-color:var(--acc2);animation:r 0.9s linear infinite}@keyframes r{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="stripes"><i></i><i></i><i></i></div>
+    <h1>Ảnh đại diện</h1>
+    <p class="sub">Đặt ảnh của bạn vào danh sách hình chọn trên màn hình xe.</p>
+  </header>
+
+  <section id="pinBox" class="pin hide">
+    <p class="sub">Nhập mã PIN đang hiện trên màn hình xe</p>
+    <input id="pinIn" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="····">
+    <button class="btn pri" id="pinGo">Vào</button>
+    <p class="small" id="pinErr" style="color:var(--crit)"></p>
+  </section>
+
+  <section id="main" class="hide">
+    <div class="err" id="err"></div>
+    <div class="banner" id="restart"><b>Khởi động lại màn hình xe để thấy hình mới.</b> Giữ nút nguồn/âm lượng khoảng 30 giây, hoặc khóa xe và chờ xe ngủ.</div>
+    <p class="hint">Chạm vào một hình để thay bằng ảnh của bạn. Số hình là thứ tự trong danh sách chọn ảnh trên xe.</p>
+    <div class="grid" id="grid"></div>
+    <div class="foot">
+      <button class="btn danger" id="resetAll">Khôi phục tất cả hình gốc</button>
+      <p>Hình gốc của xe được sao lưu trước khi đổi gì, nên khôi phục lại được bất cứ lúc nào.</p>
+    </div>
+  </section>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="bar"><h2 id="shTitle">Hình số 1</h2><button class="x" id="shClose" aria-label="Đóng">×</button></div>
+  <div class="stage">
+    <div class="crop" id="crop">
+      <canvas id="cv" width="570" height="570"></canvas>
+      <div class="guide" id="guide"></div>
+      <div class="empty" id="empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-8 8"/></svg>
+        <span>Chọn một ảnh từ điện thoại.<br>Sau đó kéo và phóng to để cắt vuông.</span>
+      </div>
+    </div>
+  </div>
+  <div class="ctl">
+    <div class="zoom hide" id="zoomRow"><span>Nhỏ</span><input type="range" id="zoom" min="0" max="100" value="0"><span>Lớn</span></div>
+    <input type="file" id="file" accept="image/*" class="hide">
+    <button class="btn" id="pick">Chọn ảnh từ điện thoại</button>
+    <div class="row hide" id="editRow"><button class="btn" id="rot">Xoay 90°</button><button class="btn pri" id="use">Dùng ảnh này</button></div>
+    <button class="btn danger hide" id="resetOne">Khôi phục hình gốc số này</button>
+    <p class="small">Ảnh được cắt vuông 570 × 570. Bạn sẽ thấy đúng phần trong khung.</p>
+  </div>
+</div>
+
+<div class="busy" id="busy"><div class="spin"></div><div id="busyText">Đang gửi ảnh lên xe…</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var S = 570, pin = '', rev = 0, cur = 0, state = null;
+
+  function qs() { var m = /[?&]pin=(\d+)/.exec(location.search); return m ? m[1] : ''; }
+  function api(path, opt) {
+    opt = opt || {}; opt.headers = Object.assign({ 'X-Pin': pin }, opt.headers || {});
+    return fetch(path, opt).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Lỗi ' + r.status }; }).then(function (j) { j.status = r.status; return j; }); });
+  }
+  function toast(t, kind) { var e = $('toast'); e.textContent = t; e.className = 'toast show ' + (kind || ''); clearTimeout(toast.t); toast.t = setTimeout(function () { e.className = 'toast'; }, 3600); }
+  function busy(on, text) { $('busy').className = 'busy' + (on ? ' show' : ''); if (text) $('busyText').textContent = text; }
+
+  /* ---- start: the PIN ---- */
+  function enter(p) {
+    pin = p;
+    return api('/api/state').then(function (j) {
+      if (j.status === 401 || j.status === 429) { $('pinBox').className = 'pin'; $('main').className = 'hide'; $('pinErr').textContent = pin ? j.error : ''; return false; }
+      try { sessionStorage.setItem('pin', pin); } catch (e) {}
+      if (qs() && history.replaceState) history.replaceState(null, '', location.pathname);
+      $('pinBox').className = 'pin hide'; $('main').className = ''; show(j); return true;
+    }).catch(function () { $('pinBox').className = 'pin'; $('pinErr').textContent = 'Không nối được với xe. Kiểm tra điện thoại và xe cùng mạng.'; });
+  }
+  $('pinGo').onclick = function () { enter($('pinIn').value.trim()); };
+  $('pinIn').onkeydown = function (e) { if (e.key === 'Enter') $('pinGo').click(); };
+
+  /* ---- the fifteen pictures ---- */
+  function show(j) {
+    state = j; rev = j.rev;
+    $('err').className = 'err' + (j.compatible ? '' : ' show'); $('err').textContent = j.compatible ? '' : 'Xe này có gói ảnh mà app chưa biết cách đổi: ' + j.error;
+    $('restart').className = 'banner' + (j.needsRestart ? ' show' : '');
+    var g = $('grid'); g.innerHTML = '';
+    (j.slots || []).forEach(function (s) {
+      var b = document.createElement('button'); b.className = 'tile';
+      b.innerHTML = '<img alt="" src="/api/thumb/' + s.n + '?pin=' + pin + '&r=' + rev + '"><span class="num">' + s.n + '</span>' + (s.changed ? '<span class="chg">Đã đổi</span>' : '');
+      b.onclick = function () { openSheet(s.n, s.changed); };
+      g.appendChild(b);
+    });
+    $('resetAll').disabled = !j.backup || !(j.slots || []).some(function (s) { return s.changed; });
+  }
+  function refresh() { return api('/api/state').then(function (j) { if (j.ok) show(j); }); }
+
+  /* ---- the editor ---- */
+  var img = null, k = 1, ox = 0, oy = 0, kMin = 1;
+  var cv = $('cv'), ctx = cv.getContext('2d');
+  function draw() {
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S, S);
+    if (img) ctx.drawImage(img, ox, oy, img.width * k, img.height * k);
+  }
+  function clamp() {
+    var w = img.width * k, h = img.height * k;
+    ox = Math.min(0, Math.max(S - w, ox)); oy = Math.min(0, Math.max(S - h, oy));
+  }
+  function setZoom(nk, cx, cy) {        // keeps the point (cx, cy) of the frame where it is
+    nk = Math.max(kMin, Math.min(kMin * 5, nk));
+    ox = cx - (cx - ox) * nk / k; oy = cy - (cy - oy) * nk / k; k = nk; clamp(); draw();
+    $('zoom').value = Math.round((k / kMin - 1) / 4 * 100);
+  }
+  function load(src) {
+    img = src; kMin = Math.max(S / img.width, S / img.height); k = kMin;
+    ox = (S - img.width * k) / 2; oy = (S - img.height * k) / 2; clamp(); draw();
+    $('empty').className = 'empty hide'; $('zoomRow').className = 'zoom'; $('editRow').className = 'row'; $('zoom').value = 0;
+    $('pick').textContent = 'Chọn ảnh khác';
+  }
+  function openSheet(n, changed) {
+    cur = n; img = null; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S, S);
+    $('shTitle').textContent = 'Hình số ' + n;
+    $('empty').className = 'empty'; $('zoomRow').className = 'zoom hide'; $('editRow').className = 'row hide';
+    $('resetOne').className = 'btn danger' + (changed ? '' : ' hide'); $('pick').textContent = 'Chọn ảnh từ điện thoại';
+    var t = new Image(); t.onload = function () { if (!img) { ctx.drawImage(t, 0, 0, S, S); } }; t.src = '/api/thumb/' + n + '?pin=' + pin + '&r=' + rev;
+    $('sheet').className = 'sheet show'; document.body.style.overflow = 'hidden';
+  }
+  function closeSheet() { $('sheet').className = 'sheet'; document.body.style.overflow = ''; }
+  $('shClose').onclick = closeSheet;
+  $('pick').onclick = function () { $('file').value = ''; $('file').click(); };
+  $('file').onchange = function () {
+    var f = this.files && this.files[0]; if (!f) return;
+    var u = URL.createObjectURL(f), t = new Image();
+    t.onload = function () { URL.revokeObjectURL(u); load(t); };
+    t.onerror = function () { toast('Không mở được ảnh này. Thử ảnh JPG hoặc PNG khác.', 'crit'); };
+    t.src = u;
+  };
+  $('zoom').oninput = function () { if (img) setZoom(kMin * (1 + this.value / 100 * 4), S / 2, S / 2); };
+  $('rot').onclick = function () {
+    if (!img) return;
+    var c = document.createElement('canvas'); c.width = img.height; c.height = img.width;
+    var x = c.getContext('2d'); x.translate(c.width, 0); x.rotate(Math.PI / 2); x.drawImage(img, 0, 0);
+    load(c);
+  };
+
+  /* drag, pinch and wheel on the frame */
+  var pts = {}, last = null;
+  var crop = $('crop');
+  function pos(e) { var r = crop.getBoundingClientRect(); return { x: (e.clientX - r.left) * S / r.width, y: (e.clientY - r.top) * S / r.height }; }
+  crop.addEventListener('pointerdown', function (e) { if (!img) return; crop.setPointerCapture(e.pointerId); pts[e.pointerId] = pos(e); last = null; });
+  crop.addEventListener('pointermove', function (e) {
+    if (!img || !pts[e.pointerId]) return;
+    var p = pos(e), ids = Object.keys(pts);
+    if (ids.length === 1) { ox += p.x - pts[e.pointerId].x; oy += p.y - pts[e.pointerId].y; clamp(); draw(); }
+    else if (ids.length === 2) {
+      var a = pts[ids[0]], b = pts[ids[1]]; pts[e.pointerId] = p;
+      var a2 = pts[ids[0]], b2 = pts[ids[1]];
+      var d0 = Math.hypot(a.x - b.x, a.y - b.y), d1 = Math.hypot(a2.x - b2.x, a2.y - b2.y);
+      if (d0 > 8) setZoom(k * d1 / d0, (a2.x + b2.x) / 2, (a2.y + b2.y) / 2);
+      return;
+    }
+    pts[e.pointerId] = p;
+  });
+  function up(e) { delete pts[e.pointerId]; }
+  crop.addEventListener('pointerup', up); crop.addEventListener('pointercancel', up);
+  crop.addEventListener('wheel', function (e) { if (!img) return; e.preventDefault(); var p = pos(e); setZoom(k * (e.deltaY < 0 ? 1.08 : 0.92), p.x, p.y); }, { passive: false });
+
+  /* ---- send ---- */
+  $('use').onclick = function () {
+    if (!img) return;
+    var out = document.createElement('canvas'); out.width = S; out.height = S;
+    var x = out.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, S, S); x.drawImage(img, ox, oy, img.width * k, img.height * k);
+    var data = x.getImageData(0, 0, S, S).data;
+    busy(true, 'Đang gửi ảnh lên xe…');
+    api('/api/picture/' + cur, { method: 'POST', body: data.buffer, headers: { 'Content-Type': 'application/octet-stream' } }).then(function (j) {
+      busy(false);
+      if (j.ok) { closeSheet(); toast('Đã đổi hình số ' + cur + '. Khởi động lại màn hình xe để thấy.', 'go'); refresh(); }
+      else toast(j.error || 'Không đổi được', 'crit');
+    }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
+  };
+  $('resetOne').onclick = function () {
+    busy(true, 'Đang khôi phục…');
+    api('/api/restore/' + cur, { method: 'POST' }).then(function (j) {
+      busy(false);
+      if (j.ok) { closeSheet(); toast('Đã khôi phục hình số ' + cur + '.', 'go'); refresh(); } else toast(j.error || 'Không khôi phục được', 'crit');
+    }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
+  };
+  var armed = 0;
+  $('resetAll').onclick = function () {
+    var b = this;
+    if (!armed || Date.now() - armed > 4000) { armed = Date.now(); b.textContent = 'Chạm lần nữa để khôi phục tất cả'; setTimeout(function () { if (Date.now() - armed >= 3900) { b.textContent = 'Khôi phục tất cả hình gốc'; armed = 0; } }, 4000); return; }
+    armed = 0; b.textContent = 'Khôi phục tất cả hình gốc'; busy(true, 'Đang khôi phục…');
+    api('/api/restore/all', { method: 'POST' }).then(function (j) {
+      busy(false);
+      if (j.ok) { toast('Đã khôi phục tất cả hình gốc.', 'go'); refresh(); } else toast(j.error || 'Không khôi phục được', 'crit');
+    }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
+  };
+
+  var saved = ''; try { saved = sessionStorage.getItem('pin') || ''; } catch (e) {}
+  var first = qs() || saved;
+  if (first) enter(first); else { $('pinBox').className = 'pin'; }
+})();
+</script>
+</body>
+</html>

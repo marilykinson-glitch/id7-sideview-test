@@ -37,6 +37,43 @@
           "oap-sdk"
         ]
       }
+    },
+    {
+      "id": "anh_dai_dien",
+      "kind": "app",
+      "path": "apps/anh_dai_dien",
+      "manifest": "app.json",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
+      ],
+      "requires": {
+        "anh-dai-dien": "0.1.0",
+        "idrive7-renderd": "2.1.7",
+        "mgu-inputgate": "1.0.0"
+      },
+      "build": {
+        "python": "kit/tools/build.py",
+        "args": [
+          "--language",
+          "vi",
+          "--plain-version",
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz",
+        "shared": [
+          "kit/runtime",
+          "kit/platform",
+          "kit/localization",
+          "kit/tools/build.py",
+          "kit/tools/pack_data.py",
+          "kit/tools/localize.py",
+          "kit/tools/locale-revisions.json",
+          "kit/tools/oapgen",
+          "oap-sdk"
+        ]
+      }
     }
   ],
   "tools": [
@@ -52,6 +89,14 @@
       "id": "xinhan-cam-log",
       "path": "tools/xinhan-cam-log",
       "title": "Nhật ký Camera xi nhan",
+      "mguHmi": [
+        "ID7"
+      ]
+    },
+    {
+      "id": "anh-dai-dien",
+      "path": "tools/anh-dai-dien",
+      "title": "Trợ thủ Ảnh đại diện",
       "mguHmi": [
         "ID7"
       ]
