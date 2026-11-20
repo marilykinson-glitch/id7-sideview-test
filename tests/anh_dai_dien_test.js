@@ -174,6 +174,48 @@ const bootDir = path.join(tmp, 'animationplayer'), startFiles = {};
 });
 fs.writeFileSync(path.join(bootDir, 'mgu18', 'notes.txt'), 'x'); fs.writeFileSync(path.join(tmp, 'variant.env'), 'MGUVAR=high\nHWGEN=18\n');
 const startFile = (rel) => fs.readFileSync(path.join(bootDir, rel));
+// the 3D vehicle: effects (plain shader text) and textures in resource files of mixed kinds, as on the head unit
+const { Res } = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'res.js'));
+const CAR3D = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'car3d.js'));
+function makeRes(list) {                       // [{ name, type, header, payload, dec, comp }]
+    const head = Buffer.from('[RamsesVersion:19.0.14]\n[GitHash:test]\n', 'latin1'), n = list.length;
+    const ids = [], tabA = [], hashes = [];
+    list.forEach((x) => {
+        const content = crypto.randomBytes(16), idHex = crypto.randomBytes(16).toString('hex');
+        ids.push('0x' + idHex + ' ' + x.name); hashes.push(content);
+        tabA.push(Buffer.concat([crypto.randomBytes(5 + (x.name.length % 7)), content, Buffer.from(idHex.slice(0, 16), 'hex').reverse(), Buffer.from(idHex.slice(16), 'hex').reverse(), crypto.randomBytes(9)]));
+    });
+    const A = Buffer.concat([Buffer.alloc(16)].concat(tabA)), offA = head.length + 16, offB = offA + A.length;
+    const pre = Buffer.alloc(16); pre.writeUInt32LE(offA, 0); pre.writeUInt32LE(offB, 8);
+    let off = offB + 4 + 36 * n;
+    const rows = list.map((x, i) => {
+        const blob = Buffer.concat([x.header, x.payload]), r = Buffer.alloc(36);
+        r.writeUInt32LE(x.type, 0); hashes[i].copy(r, 4); r.writeUInt32LE(x.dec, 20); r.writeUInt32LE(x.comp, 24); r.writeUInt32LE(off, 28); r.writeUInt32LE(blob.length, 32); off += blob.length; return r;
+    });
+    const c = Buffer.alloc(4); c.writeUInt32LE(n, 0);
+    return { data: Buffer.concat([head, pre, A, c].concat(rows, list.map((x) => Buffer.concat([x.header, x.payload])))), ids: ids.join('\n') + '\n' };
+}
+function effect(name, vertex, fragment) {
+    const v = Buffer.from(vertex + '\0', 'latin1'), f = Buffer.from(fragment + '\0', 'latin1'), meta = crypto.randomBytes(40 + name.length);
+    const h = Buffer.alloc(11 + 16 + meta.length + 4); h.writeUInt32LE(6, 0); h.writeUInt32LE(3, 4); h.write('shd', 8, 'latin1');
+    h.writeUInt32LE(v.length + f.length, 19); h.writeInt32LE(-1, 23); meta.copy(h, 27); h.writeUInt32LE(v.length, h.length - 4);
+    return { name, type: 6, header: h, payload: Buffer.concat([v, f]), dec: v.length + f.length, comp: 0 };
+}
+function texture(name, w, h, bpp, seed) {
+    const raw = bpp === 4 ? picture(seed, w, h) : crypto.randomBytes(w * h * bpp), z = W.lz4Compress(raw);
+    const hd = Buffer.alloc(45); hd.writeUInt32LE(3, 0); hd.writeUInt32LE(1, 8); hd.writeUInt32LE(z.length, 12); hd.writeUInt32LE(raw.length, 16); hd.writeInt32LE(-1, 20);
+    hd.writeUInt32LE(w, 24); hd.writeUInt32LE(h, 28); hd.writeUInt32LE(bpp === 4 ? 9 : 1, 32); hd.writeUInt32LE(1, 36); hd.writeUInt32LE(raw.length, 40);
+    return { name, type: 3, header: hd, payload: z, dec: raw.length, comp: z.length };
+}
+const VS = '#version 300 es\nin vec3 a_Position;\nin vec2 a_TextureCoordinate;\nuniform mat4 u_MVPMatrix;\nout mediump vec2 uv;\nvoid main(void) {\n\tuv = a_TextureCoordinate;\n\tgl_Position = u_MVPMatrix * vec4(a_Position, 1.);\n}';
+const FS = '#version 300 es\nout mediump vec4 FragData[ 2 ];\nprecision mediump float;\nuniform sampler2D tex0;\nuniform float u_Opacity;\nin mediump vec2 uv;\nvoid main(void) {\n\tFragData[0] = texture(tex0, uv) * u_Opacity;\n\tFragData[1] = vec4(0.);\n}';
+const QUAD = '#version 100\nattribute vec2 a_TextureCoordinate;\nvoid main(void) {\n\tgl_Position = vec4(sign(a_TextureCoordinate - vec2(0.5)), 0.0, 1.0);\n}';
+const mkFx = makeRes([effect('M_CAR_MCP1_CARPAINT1', VS, FS), effect('M_CAR_MGRO_GROUND', VS, FS), effect('M_CAR_Quad_RL0', QUAD, FS.replace('300 es', '100')), effect('M_CAR_MWRM_WHEELRIM', VS, FS), effect('M_HMI_SAFEAREA', VS, FS)]);
+const mkTx = makeRes([texture('TEX_MCP1_CARPAINT1_bitmap', 64, 64, 1, 0), texture('TEX_MGRO_GROUND_bitmap', 960, 304, 4, 9), texture('TEX_MLID_LIGHTDOOR_bitmap', 32, 32, 4, 2)]);
+const car3dDir = path.join(vehicles, 'G20', 'vehicle');
+[['effects.res', mkFx], ['bitmaps.res', mkTx]].forEach((d) => { fs.writeFileSync(path.join(car3dDir, d[0]), d[1].data); fs.writeFileSync(path.join(car3dDir, d[0] + '.ids'), d[1].ids); });
+mkdirs(path.join(vehicles, 'F40', 'vehicle')); fs.writeFileSync(path.join(vehicles, 'F40', 'vehicle', 'effects.res'), 'not one');      // a model this does not know: left alone
+const car3dFile = (name) => fs.readFileSync(path.join(car3dDir, name));
 const carFile = (sub) => fs.readFileSync(path.join(vehicles, 'G20', sub, 'bitmaps.res'));
 Object.assign(process.env, { AVATAR_NFT: path.join(tmp, 'no-nft'), AVATAR_FW_MS: '0', AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
 const svc = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'anh-dai-dien.js'));
@@ -217,8 +259,8 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('GET', '/api/state?pin=' + (pin === '1234' ? '4321' : '1234')); assert.strictEqual(r.code, 401);
     r = await call('GET', '/api/state' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.json.slots.length, 15);
     assert.strictEqual(r.json.slots[0].size, 570); assert.strictEqual(r.json.more[0].size, 1305); assert.ok(r.json.more[0].where);
-    assert.strictEqual(r.json.more.length, 1); assert.strictEqual(r.json.car.length, 1); assert.ok(r.json.car[0].alpha); assert.strictEqual(r.json.car[0].w, 1344); assert.strictEqual(r.json.car[0].h, 672);
-    r = await call('GET', '/api/thumb/' + svc.CAR + q); assert.strictEqual(r.body.readUInt32BE(16), 512); assert.strictEqual(r.body.readUInt32BE(20), 256);
+    assert.strictEqual(r.json.more.length, 1); assert.strictEqual(r.json.car.length, 1); assert.ok(r.json.car[0].alpha); assert.strictEqual(r.json.car[0].w, 1920); assert.strictEqual(r.json.car[0].h, 608);
+    r = await call('GET', '/api/thumb/' + svc.CAR + q); assert.strictEqual(r.body.readUInt32BE(20), 256);
     r = await call('GET', '/api/thumb/4' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.type, 'image/png'); assert.strictEqual(r.body.readUInt32BE(16), 256);
     r = await call('GET', '/api/thumb/' + BT + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.readUInt32BE(16), 256);
     r = await call('GET', '/api/thumb/16' + q); assert.strictEqual(r.code, 404);
@@ -270,28 +312,33 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('GET', '/api/state' + q); assert.ok(r.json.more[0].changed);
     ok('a placeholder picture goes into all four sizes and both colours of its bundle');
 
-    // the car: a cut-out photo goes in as it is (colours multiplied by transparency), the paint masks are emptied
-    const CW = svc.CAR_W, CH = svc.CAR_H, cut = picture(31, CW, CH);
+    // the 3D car: its materials hidden, the ground a picture facing the camera with the photo as its texture
+    const CW = svc.CAR_W, CH = 608, cut = picture(31, CW, CH);
     for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) { const d = Math.hypot((x - CW / 2) / (CW / 2), (y - CH / 2) / (CH / 2)); cut[(y * CW + x) * 4 + 3] = d < 0.7 ? 255 : d < 0.9 ? 128 : 0; }
+    r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.car[0].h, 608);
     r = await call('POST', '/api/picture/' + svc.CAR + q, cut); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
-    let big = new W.Bundle(carFile('vehicle2D_big'), mkBig.ids), small = new W.Bundle(carFile('vehicle2D_small'), mkSmall.ids);
-    const wantBig = W.flipRows(svc.premultiply(W.fit(cut, CW, CH, 672, 336)), 672, 336);
-    ['tex_vehicle_welcome_g05_trimA7_bitmap', 'tex_vehicle_welcome_g05_trimA9_bitmap'].forEach((k) => assert.strictEqual(Buffer.compare(big.rgba(k), wantBig), 0, k));
-    ['tex_vehicle_welcome_g05_trimA_mask8_bitmap', 'tex_vehicle_welcome_g05_trimA_mask10_bitmap'].forEach((k) => { assert.ok(big.rgba(k).every((v) => v === 0), k); assert.ok(small.rgba(k).every((v) => v === 0), k); });
-    assert.strictEqual(Buffer.compare(small.rgba('tex_vehicle_welcome_g05_trimA7_bitmap'), W.flipRows(svc.premultiply(W.fit(cut, CW, CH, 440, 222)), 440, 222)), 0);
-    const mid = W.flipRows(big.rgba('tex_vehicle_welcome_g05_trimA7_bitmap'), 672, 336);
-    assert.strictEqual(mid[3], 0); assert.strictEqual(mid[0] + mid[1] + mid[2], 0); assert.strictEqual(mid[(168 * 672 + 336) * 4 + 3], 255);
-    const half = (168 * 672 + 336 + Math.round(0.8 * 336)) * 4; assert.strictEqual(mid[half + 3], 128); assert.ok(mid[half] <= 128 && mid[half + 1] <= 128 && mid[half + 2] <= 128);
-    // a plain photo gets soft edges instead of a hard rectangle
+    let fx = new Res(car3dFile('effects.res'), mkFx.ids), tx = new Res(car3dFile('bitmaps.res'), mkTx.ids);
+    assert.ok(/gl_Position = vec4\(2\., 2\., 2\., 1\.\);\n\}$/.test(fx.shaders('M_CAR_MCP1_CARPAINT1').vertex) && /vec4\(2\., 2\./.test(fx.shaders('M_CAR_MWRM_WHEELRIM').vertex));
+    assert.strictEqual(fx.shaders('M_CAR_MCP1_CARPAINT1').fragment, FS);
+    assert.strictEqual(fx.shaders('M_CAR_Quad_RL0').vertex, QUAD); assert.strictEqual(fx.shaders('M_HMI_SAFEAREA').vertex, VS);
+    const gnd = fx.shaders('M_CAR_MGRO_GROUND');
+    assert.ok(gnd.vertex.indexOf(VS.slice(0, -1)) === 0 && /vec3 pc_m = vec3\(150\., 0\., 60\.\);/.test(gnd.vertex) && /vec2\(279\.47, 88\.5\)/.test(gnd.vertex) && /gl_Position = vec4\(pc_n \+/.test(gnd.vertex));
+    assert.ok(/FragData\[0\] = texture\(tex0, uv\) \* max\(u_Opacity, 1\.\);\n\tFragData\[1\] = vec4\(0\.\);\n\}$/.test(gnd.fragment));
+    assert.strictEqual(Buffer.compare(tx.payload('TEX_MGRO_GROUND_bitmap'), W.flipRows(svc.premultiply(W.fit(cut, CW, CH, 960, 304)), 960, 304)), 0);
+    const tx0 = new Res(mkTx.data, mkTx.ids);
+    ['TEX_MCP1_CARPAINT1_bitmap', 'TEX_MLID_LIGHTDOOR_bitmap'].forEach((k) => assert.strictEqual(Buffer.compare(tx.blob(k), tx0.blob(k)), 0, k));
+    assert.strictEqual(fs.readFileSync(path.join(vehicles, 'F40', 'vehicle', 'effects.res'), 'utf8'), 'not one');
+    r = await call('GET', '/api/state' + q); assert.ok(r.json.car[0].changed && r.json.anyChanged);
+    // a second photo starts from the originals again, not from the changed files
     r = await call('POST', '/api/picture/' + svc.CAR + q, picture(32, CW, CH)); assert.strictEqual(r.code, 200);
-    big = new W.Bundle(carFile('vehicle2D_big'), mkBig.ids);
-    const soft = W.flipRows(big.rgba('tex_vehicle_welcome_g05_trimA9_bitmap'), 672, 336);
-    assert.ok(soft[3] < 40); assert.strictEqual(soft[(168 * 672 + 336) * 4 + 3], 255); assert.ok(soft[(168 * 672 + 6) * 4 + 3] < 255 && soft[(168 * 672 + 6) * 4 + 3] > 0);
-    r = await call('GET', '/api/state' + q); assert.ok(r.json.car[0].changed);
+    fx = new Res(car3dFile('effects.res'), mkFx.ids);
+    assert.strictEqual(fx.shaders('M_CAR_MCP1_CARPAINT1').vertex.split('vec4(2., 2.').length, 2); assert.strictEqual(fx.shaders('M_CAR_MGRO_GROUND').vertex.split('pc_m =').length, 2);
+    const soft = W.flipRows(new Res(car3dFile('bitmaps.res'), mkTx.ids).payload('TEX_MGRO_GROUND_bitmap'), 960, 304);       // a plain photo: soft edges
+    assert.ok(soft[3] < 40); assert.strictEqual(soft[(152 * 960 + 480) * 4 + 3], 255);
     r = await call('POST', '/api/restore/' + svc.CAR + q); assert.strictEqual(r.code, 200);
-    assert.strictEqual(Buffer.compare(carFile('vehicle2D_big'), mkBig.data), 0); assert.strictEqual(Buffer.compare(carFile('vehicle2D_small'), mkSmall.data), 0);
+    assert.strictEqual(Buffer.compare(car3dFile('effects.res'), mkFx.data), 0); assert.strictEqual(Buffer.compare(car3dFile('bitmaps.res'), mkTx.data), 0);
     await call('POST', '/api/picture/' + svc.CAR + q, cut);
-    ok('the car\'s picture: a cut-out goes into every trim of the big and the small bundle, the paint masks are emptied, a plain photo gets soft edges');
+    ok('the 3D car: every material hidden, the ground a picture facing the camera, the photo its texture, restored byte for byte');
 
     // the start-up screen: the picture and a still video at every size of this generation, the other generation untouched
     const sp = picture(41, 1920, 720);
@@ -425,6 +472,22 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     await svc.restore('all');
     assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(dir2, 'wbitmaps.res')), mod.data), 0);
     ok('the owner\'s hand-made backup is the original, even when the bundle now on the car is changed');
+
+    // what a version before 0.5.0 did to the cluster's car pictures is put back at the start
+    {
+        const veh2 = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-2d-')), st2d = path.join(veh2, 'st');
+        const put2 = (sub, b) => { const d = path.join(veh2, 'G20', sub); mkdirs(d); fs.writeFileSync(path.join(d, 'bitmaps.res'), b.data); fs.writeFileSync(path.join(d, 'bitmaps.res.ids'), b.ids); };
+        put2('vehicle2D_big', mkBig); put2('vehicle2D_small', mkSmall);
+        Object.assign(svc.CFG, { vehicles: veh2, state: st2d, boot: path.join(veh2, 'none') });
+        assert.ok(svc.load());                                   // the originals are copied
+        const bigNow = new W.Bundle(mkBig.data, mkBig.ids), k7 = 'tex_vehicle_welcome_g05_trimA7_bitmap';
+        fs.writeFileSync(path.join(veh2, 'G20', 'vehicle2D_big', 'bitmaps.res'), bigNow.build({ [k7]: picture(77, 672, 336) }));
+        assert.ok(svc.load()); assert.ok(svc.writeStatus().anyChanged);
+        await svc.restoreOld2d();
+        assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(veh2, 'G20', 'vehicle2D_big', 'bitmaps.res')), mkBig.data), 0);
+        assert.ok(!svc.writeStatus().anyChanged); assert.ok(!svc.S.slots[svc.CAR]);          // and no 3D model here: no car to set
+        ok('the cluster\'s car pictures changed by an earlier version are put back');
+    }
 
     /* ---------- the car screen ---------- */
     const load = Module._load;       // the app finds the kit as ./kit/...: here it is the repository's

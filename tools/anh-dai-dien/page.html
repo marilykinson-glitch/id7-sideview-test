@@ -90,8 +90,8 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     <div class="err" id="err"></div>
     <div class="banner" id="restart"><b>Khởi động lại màn hình xe để thấy hình mới.</b> Giữ nút nguồn/âm lượng khoảng 30 giây, hoặc khóa xe và chờ xe ngủ.</div>
     <div id="carBox" class="hide">
-      <div class="sec">Hình chiếc xe</div>
-      <p class="hint">Chiếc xe ở ô xe ngoài màn hình chính và trong menu Xe của tôi. Thay bằng ảnh xe của bạn.</p>
+      <div class="sec">Hình chiếc xe <span style="color:var(--warn);letter-spacing:0;text-transform:none;font-weight:600">· thử nghiệm</span></div>
+      <p class="hint">Chiếc xe 3D ở ô xe ngoài màn hình chính và trong menu Xe của tôi. Thay bằng ảnh xe của bạn: mô hình được ẩn đi, ảnh đứng đúng chỗ chiếc xe.</p>
       <div class="grid one" id="car"></div>
     </div>
     <div id="startBox" class="hide">
@@ -243,7 +243,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     var n = s.n, changed = s.changed;
     img = null; draw();
     $('shTitle').textContent = s.n <= 15 ? 'Hình số ' + n : s.label;
-    $('note').textContent = s.alpha ? 'Đẹp nhất là ảnh xe đã tách nền (PNG nền trong suốt): xe nổi trên nền menu như xe gốc. Ảnh thường thì được làm mờ viền. Xe sẽ không còn đổi theo màu sơn hay gói trang bị.'
+    $('note').textContent = s.alpha ? 'Đẹp nhất là ảnh xe đã tách nền (PNG nền trong suốt), chụp ngang hoặc chéo, đặt bánh xe sát mép dưới khung. Ảnh thường thì được làm mờ viền. Ảnh không xoay theo góc nhìn và không mở cửa như mô hình 3D. Nếu màn hình xe hiện sai, bấm Khôi phục hình gốc.'
       : s.w !== s.h ? 'Hiện ' + s.where + '. Là ảnh đứng yên (không còn hiệu ứng chữ chạy). Bạn sẽ thấy đúng phần trong khung.'
       : (s.where ? 'Hiện ' + s.where + '. ' : '') + 'Ảnh được cắt vuông, bạn sẽ thấy đúng phần trong khung.';
     $('emptyText').innerHTML = s.alpha ? 'Chọn ảnh chiếc xe của bạn.<br>Sau đó kéo và phóng to cho vừa khung.' : (s.w !== s.h ? 'Chọn một ảnh từ điện thoại.<br>Sau đó kéo và phóng to cho vừa khung.' : 'Chọn một ảnh từ điện thoại.<br>Sau đó kéo và phóng to để cắt vuông.');
