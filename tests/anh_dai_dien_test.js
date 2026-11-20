@@ -241,9 +241,14 @@ mkdirs(path.join(vehicles, 'F40', 'vehicle')); fs.writeFileSync(path.join(vehicl
 // a model an earlier version changed and this one cannot (no meshes): its originals are kept, and are put back
 const oldDir = path.join(vehicles, 'G99', 'vehicle'), oldBk = path.join(state, 'backup', 'car3d', 'G99'); mkdirs(oldDir); mkdirs(oldBk);
 ['effects.res', 'bitmaps.res'].forEach((f) => { fs.writeFileSync(path.join(oldDir, f), 'changed ' + f); fs.writeFileSync(path.join(oldBk, f), 'original ' + f); });
+// a second folder of vehicles, another brand's (BMW M): its models carry the brand in their name
+const vehiclesM = path.join(tmp, 'bmwm', 'widgetasset', 'vehicles');
+const mkM = makeBundle(['A', 'B'].map((k) => ({ name: 'tex_vehicle_herohalf_f90_trim' + k + '_bitmap', w: 44, h: 22 })).concat(['A', 'B'].map((k) => ({ name: 'tex_vehicle_herohalf_f90_trim' + k + '_mask_bitmap', w: 44, h: 22 }))));
+{ const d = path.join(vehiclesM, 'F90LCI', 'vehicle2D_small'); mkdirs(d); fs.writeFileSync(path.join(d, 'bitmaps.res'), mkM.data); fs.writeFileSync(path.join(d, 'bitmaps.res.ids'), mkM.ids);
+  const d3 = path.join(vehiclesM, 'F90LCI', 'vehicle'); mkdirs(d3); [['effects.res', mkFx], ['bitmaps.res', mkTx], ['meshes.res', mkMesh]].forEach((x) => { fs.writeFileSync(path.join(d3, x[0]), x[1].data); fs.writeFileSync(path.join(d3, x[0] + '.ids'), x[1].ids); }); fs.writeFileSync(path.join(d3, 'meshes.res.attributes'), mkAttrs); }
 const car3dFile = (name) => fs.readFileSync(path.join(car3dDir, name));
 const carFile = (sub) => fs.readFileSync(path.join(vehicles, 'G20', sub, 'bitmaps.res'));
-Object.assign(process.env, { AVATAR_NFT: path.join(tmp, 'no-nft'), AVATAR_FW_MS: '0', AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_SHADERS: shaderDir, AVATAR_REBOOT: 'echo again > ' + path.join(tmp, 'rebooted'), AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
+Object.assign(process.env, { AVATAR_NFT: path.join(tmp, 'no-nft'), AVATAR_FW_MS: '0', AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles + ':' + vehiclesM + ':' + path.join(tmp, 'no-such-brand'), AVATAR_SHADERS: shaderDir, AVATAR_REBOOT: 'echo again > ' + path.join(tmp, 'rebooted'), AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
 const svc = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'anh-dai-dien.js'));
 const fileOf = (rel) => fs.readFileSync(path.join(root, rel, 'wbitmaps.res'));
 const BT = svc.MORE0, USB = svc.MORE0 + 1;
@@ -376,6 +381,13 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     assert.strictEqual(fs.readFileSync(path.join(vehicles, 'F40', 'vehicle', 'effects.res'), 'utf8'), 'not one');
     assert.deepStrictEqual(fs.readdirSync(shaderDir), ['00112233445566778899aabbccddeeff.bin']);          // the model's compiled shaders are gone, others stay
     ['effects.res', 'bitmaps.res'].forEach((f) => assert.strictEqual(fs.readFileSync(path.join(oldDir, f), 'utf8'), 'original ' + f));     // the earlier version's change is undone
+    {   // the other brand's model is changed the same way, under its own name
+        const mfx = new Res(fs.readFileSync(path.join(vehiclesM, 'F90LCI', 'vehicle', 'effects.res')), mkFx.ids);
+        assert.ok(/pc_uv/.test(mfx.shaders('M_CAR_MCP1_CARPAINT1').vertex));
+        assert.ok(fs.existsSync(path.join(state, 'backup', 'car3d', 'bmwm-F90LCI', 'effects.res')) && svc.S.bundles['car-bmwm-F90LCI-small'].usable);
+        const now = new W.Bundle(fs.readFileSync(path.join(vehiclesM, 'F90LCI', 'vehicle2D_small', 'bitmaps.res')), mkM.ids);
+        assert.ok(now.rgba('tex_vehicle_herohalf_f90_trimA_mask_bitmap').every((v) => v === 0) && !now.rgba('tex_vehicle_herohalf_f90_trimA_bitmap').every((v) => v === 0));
+    }
     {   // the 2D pictures: every trim the photo, every paint mask empty
         const big = new W.Bundle(carFile('vehicle2D_big'), mkBig.ids), small = new W.Bundle(carFile('vehicle2D_small'), mkSmall.ids);
         const want = W.flipRows(svc.premultiply(W.fit(svc.feather(cut, CW, CH), CW, CH, 672, 336)), 672, 336);
@@ -394,6 +406,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     assert.strictEqual(Buffer.compare(car3dFile('effects.res'), mkFx.data), 0); assert.strictEqual(Buffer.compare(car3dFile('bitmaps.res'), mkTx.data), 0);
     assert.strictEqual(Buffer.compare(carFile('vehicle2D_big'), mkBig.data), 0); assert.strictEqual(Buffer.compare(carFile('vehicle2D_small'), mkSmall.data), 0);
     assert.deepStrictEqual(fs.readdirSync(shaderDir), ['00112233445566778899aabbccddeeff.bin']);
+    assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(vehiclesM, 'F90LCI', 'vehicle', 'effects.res')), mkFx.data), 0); assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(vehiclesM, 'F90LCI', 'vehicle2D_small', 'bitmaps.res')), mkM.data), 0);
     r = await call('GET', '/api/state' + q); assert.ok(!r.json.car[0].changed);
     await call('POST', '/api/picture/' + svc.CAR + q, cut);
     ok('the car: the 3D model hidden and its body a picture of the photo, the 2D pictures the photo, compiled shaders removed, all restored byte for byte');
@@ -416,7 +429,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
             got[name] = r.body.slice(o + 512, o + 512 + size); o += 512 + Math.ceil(size / 512) * 512;
         }
         const report = got['report.txt'].toString('utf8');
-        assert.ok(/MGU Studio/.test(report) && report.indexOf(car3dDir + '  (HmiMain3D)') > 0 && /car slot: models G20; 2D targets 8/.test(report) && /== log/.test(report));
+        assert.ok(/MGU Studio/.test(report) && report.indexOf(car3dDir + '  (HmiMain3D)') > 0 && /car slot: models G20,bmwm-F90LCI; 2D targets 12/.test(report) && /== log/.test(report));
         assert.strictEqual(Buffer.compare(got['vehicles/G20/vehicle/effects.res'], car3dFile('effects.res')), 0);          // as it is now: this tool's
         assert.strictEqual(Buffer.compare(got['vehicles/G20/vehicle.orig/effects.res'], mkFx.data), 0);                    // and the original
         assert.strictEqual(Buffer.compare(got['vehicles/G20/vehicle/meshes.res'], mkMesh.data), 0); assert.ok(got['2d/car-G20-big/original.res']);

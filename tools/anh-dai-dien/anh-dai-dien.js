@@ -48,13 +48,14 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.7.4';
+const VERSION = '0.7.5';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
 const CFG = {
     root: env('AVATAR_ROOT', '/mnt/dataro/dataro1/hmi/bmw/id7/assetDB'),
-    vehicles: env('AVATAR_VEHICLES', '/mnt/dataro/dataro1/hmi/bmw/widgetasset/vehicles'),   // <model>/vehicle2D_big, vehicle2D_small
+    // <model>/vehicle (3D), vehicle2D_big, vehicle2D_small; one folder per brand (BMW, BMW M: an M5 is bmwm/.../F90LCI), ':' between them
+    vehicles: env('AVATAR_VEHICLES', '/mnt/dataro/dataro1/hmi/bmw/widgetasset/vehicles:/mnt/dataro/dataro1/hmi/bmwm/widgetasset/vehicles:/mnt/dataro/dataro1/hmi/mini/widgetasset/vehicles'),
     boot: env('AVATAR_BOOT', '/mnt/dataro/dataro1/ent/animationplayer'),   // mgu<gen>/eva_splash_*.png, eva_hi_*.h264, eva_bye_*.h264
     route: env('AVATAR_ROUTE', '/proc/net/route'),
     nft: env('AVATAR_NFT', 'nft'),
@@ -75,6 +76,17 @@ const CFG = {
     scanMs: Number(env('AVATAR_SCAN_MS', 5000)),        // how often the app is looked for while it is missing
 };
 const APP = /^anh_dai_dien\d*$/;
+/** Every vehicle folder: [{ model (its name; with the brand before it for all but the first folder), base }]. */
+function vehicleDirs() {
+    const out = [];
+    String(CFG.vehicles).split(':').filter(Boolean).forEach((root, i) => {
+        let names = [];
+        try { names = fs.readdirSync(root).sort(); } catch (e) { return; }
+        const brand = i ? path.basename(path.dirname(path.dirname(root))) + '-' : '';
+        names.forEach((name) => out.push({ model: brand + name, base: path.join(root, name), root }));
+    });
+    return out;
+}
 const SLOTS = 15, THUMB = 256, SMALL = 96, MINI = 48, MORE0 = 21, CAR = 41, CAR_W = 1920, START = 51, START_W = 1920, START_H = 720;
 const key = (n) => 'S' + (n < 10 ? '0' : '') + n;
 const two = (n) => (n < 10 ? '0' : '') + n;
@@ -230,11 +242,11 @@ function thumbFrom(slot, parsed) {
 function loadCar() {
     let models = [];
     S.hero = null;
-    try { models = fs.readdirSync(CFG.vehicles).sort(); } catch (e) { return; }
+    models = vehicleDirs();
     const targets = [];
     let first = null;
-    models.forEach((model) => ['vehicle2D_big', 'vehicle2D_small'].forEach((sub) => {
-        const dir = path.join(CFG.vehicles, model, sub);
+    models.forEach((v) => ['vehicle2D_big', 'vehicle2D_small'].forEach((sub) => {
+        const model = v.model, dir = path.join(v.base, sub);
         if (!fs.existsSync(path.join(dir, 'bitmaps.res'))) return;
         const id = 'car-' + model + '-' + sub.slice(10);
         const b = bundle(id, dir, id + '.res.orig', 'bitmaps.res');
@@ -364,11 +376,11 @@ const CAR_NEEDS = CAR_FILES.concat(['effects.res.ids', 'bitmaps.res.ids', 'meshe
 /** The 3D vehicles this can change: <vehicles>/<model>/vehicle with the body effect and texture known (car3d.js). */
 function loadCar3d() {
     let models = [];
-    try { models = fs.readdirSync(CFG.vehicles).sort(); } catch (e) { models = []; }
+    models = vehicleDirs();
     S.carChanged = fs.existsSync(carMark());
     const found = [], old = [];              // old: changed by an earlier version of this, not a model this one changes: only put back
-    models.forEach((model) => {
-        const dir = path.join(CFG.vehicles, model, 'vehicle');
+    models.forEach((v) => {
+        const model = v.model, dir = path.join(v.base, 'vehicle');
         const m = { model, dir };
         const kept = () => { if (CAR_FILES.every((f) => fs.existsSync(carBackup(m, f)) && fs.existsSync(path.join(dir, f)))) old.push(m); };
         if (!CAR_NEEDS.every((f) => fs.existsSync(path.join(dir, f)))) return kept();
@@ -868,8 +880,10 @@ function openVehicles() {
         fds.forEach((fd) => {
             let to = '';
             try { to = fs.readlinkSync(path.join(CFG.proc, pid, 'fd', fd)); } catch (e) { return; }
-            const real = (() => { try { return fs.realpathSync(CFG.vehicles); } catch (e) { return CFG.vehicles; } })();
-            [CFG.vehicles, real].forEach((root) => { if (to.indexOf(root + '/') === 0) out[path.join(CFG.vehicles, path.dirname(to.slice(root.length + 1)))] = comm; });
+            String(CFG.vehicles).split(':').filter(Boolean).forEach((given) => {
+                const real = (() => { try { return fs.realpathSync(given); } catch (e) { return given; } })();
+                [given, real].forEach((root) => { if (to.indexOf(root + '/') === 0) out[path.join(given, path.dirname(to.slice(root.length + 1)))] = comm; });
+            });
         });
     });
     return Object.keys(out).sort().map((dir) => ({ dir, by: out[dir] }));
@@ -893,10 +907,10 @@ function diagFiles() {
     add(''); add('== vehicle folders the HMI has open'); open.forEach((o) => add(o.dir + '  (' + o.by + ')'));
     add(''); add('== vehicles');
     try {
-        fs.readdirSync(CFG.vehicles).sort().forEach((model) => {
+        vehicleDirs().forEach((v) => {
             let subs = [];
-            try { subs = fs.readdirSync(path.join(CFG.vehicles, model)).sort(); } catch (e) { add(model + ' (a file)'); return; }
-            add(model + ': ' + subs.map((sub) => { let n = ''; try { n = fs.readdirSync(path.join(CFG.vehicles, model, sub)).map((f) => f + ' ' + fs.statSync(path.join(CFG.vehicles, model, sub, f)).size).join(', '); } catch (e) { n = '-'; } return sub + ' [' + n + ']'; }).join('  '));
+            try { subs = fs.readdirSync(v.base).sort(); } catch (e) { add(v.model + ' (a file)'); return; }
+            add(v.model + ': ' + subs.map((sub) => { let n = ''; try { n = fs.readdirSync(path.join(v.base, sub)).map((f) => f + ' ' + fs.statSync(path.join(v.base, sub, f)).size).join(', '); } catch (e) { n = '-'; } return sub + ' [' + n + ']'; }).join('  '));
         });
     } catch (e) { add('vehicles: ' + e.message); }
     add(''); add('== every file the central screen has open');
@@ -914,9 +928,10 @@ function diagFiles() {
     add(''); add('== compiled shaders kept: ' + (() => { try { return fs.readdirSync(CFG.shaders).length; } catch (e) { return e.message; } })());
     add(''); add('== log'); LOGS.forEach((l) => add(l));
     open.filter((o) => o.by === 'HmiMain3D').forEach((o) => {             // the central screen's only: the cluster keeps every model open
-        const rel = path.relative(CFG.vehicles, o.dir);
+        const v = vehicleDirs().filter((x) => o.dir.indexOf(x.base + path.sep) === 0)[0];
+        if (!v) return;
+        const model = v.model, rel = model + path.sep + path.relative(v.base, o.dir);
         try { fs.readdirSync(o.dir).forEach((f) => put('vehicles/' + rel + '/' + f, path.join(o.dir, f))); } catch (e) { /* gone */ }
-        const model = rel.split(path.sep)[0];
         if (path.basename(o.dir) === 'vehicle') CAR_FILES.forEach((f) => put('vehicles/' + rel + '.orig/' + f, carBackup({ model }, f)));
     });
     Object.keys(S.bundles).filter((id) => /^car-/.test(id)).forEach((id) => { const b = S.bundles[id]; put('2d/' + id + '/bitmaps.res', path.join(b.dir, b.file)); put('2d/' + id + '/bitmaps.res.ids', path.join(b.dir, b.file + '.ids')); put('2d/' + id + '/original.res', b.bk); });
