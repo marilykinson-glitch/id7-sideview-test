@@ -48,7 +48,7 @@
         "ID7"
       ],
       "requires": {
-        "anh-dai-dien": "0.3.0",
+        "anh-dai-dien": "0.3.1",
         "idrive7-renderd": "2.1.7",
         "mgu-inputgate": "1.0.0"
       },
@@ -96,7 +96,7 @@
     {
       "id": "anh-dai-dien",
       "path": "tools/anh-dai-dien",
-      "title": "Trợ thủ Dấu Ấn",
+      "title": "Trợ thủ ID Studio",
       "mguHmi": [
         "ID7"
       ]

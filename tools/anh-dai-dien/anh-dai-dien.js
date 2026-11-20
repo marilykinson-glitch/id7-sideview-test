@@ -35,7 +35,7 @@ const crypto = require('crypto');
 const cp = require('child_process');
 const W = require('./wbm');
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';

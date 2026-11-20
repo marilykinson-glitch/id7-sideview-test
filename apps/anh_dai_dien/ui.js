@@ -76,7 +76,7 @@ function chips(cv, G, t, v, x, y) {
 function draw(cv, G, t, v, act) {
     act = act || {};
     cv.clear(t.bg);
-    G.frame(cv, t, ['Dấu Ấn'], 0, []);
+    G.frame(cv, t, ['ID Studio'], 0, []);
     G.panel(cv, t, 24, G.TOP, W - 48, G.BOTTOM - G.TOP, null);
     const acc = t.accent2 || '#81c4ff', go = t.go || '#2fd27a', red = t.crit || '#ef2b2d';
     const bottom = G.pageBottom(cv) - (cv.own ? G.MARGIN : 0);
@@ -98,8 +98,8 @@ function draw(cv, G, t, v, act) {
 
     // right: title, state, the steps, the pictures
     const rx = 460;
-    cv.text('DẤU ẤN', rx, G.TOP + 76, 40, t.text, { literal: true, font: 'bold', spacing: 3 });
-    cv.text('Hình trên xe, theo ý bạn', rx + cv.textWidth('DẤU ẤN', 40, { literal: true, font: 'bold', spacing: 3 }) + 20, G.TOP + 76, 20, t.dim, { literal: true, font: 'label' });
+    cv.text('ID STUDIO', rx, G.TOP + 76, 40, t.text, { literal: true, font: 'bold', spacing: 3 });
+    cv.text('Tuỳ biến hình ảnh iDrive', rx + cv.textWidth('ID STUDIO', 40, { literal: true, font: 'bold', spacing: 3 }) + 20, G.TOP + 76, 20, t.dim, { literal: true, font: 'label' });
     const stateText = v.state === 'down' ? 'Trợ thủ chưa chạy: khởi động lại màn hình xe' : v.state === 'bad' ? (v.error || 'Gói ảnh của xe này chưa dùng được')
         : !v.url ? 'Xe chưa vào mạng Wi-Fi nào: nối Wi-Fi hoặc điểm phát sóng của điện thoại' : v.busy ? 'Đang ghi vào xe…' : 'Sẵn sàng';
     const stateKind = v.state === 'ok' && v.url ? (v.busy ? 'warn' : 'go') : 'warn';

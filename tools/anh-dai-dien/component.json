@@ -1,8 +1,8 @@
 {
   "id": "anh-dai-dien",
   "kind": "tool",
-  "version": "0.3.0",
-  "title": "Trợ thủ Dấu Ấn",
+  "version": "0.3.1",
+  "title": "Trợ thủ ID Studio",
   "description": "Mở một trang web cho điện thoại (cùng mạng với xe, có mã PIN) để chọn ảnh, cắt vuông và đặt vào danh sách ảnh đại diện của profile trên xe; ghi vào gói ảnh của đầu xe (phân vùng chỉ đọc, được mở ghi trong giây lát), sao lưu bản gốc trước khi đổi và khôi phục khi cần. Sau khi cài hoặc cập nhật, và sau khi đổi ảnh, cần khởi động lại màn hình.",
   "license": "GPL-3.0-or-later",
   "mguHmi": [
