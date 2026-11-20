@@ -22,10 +22,15 @@
  * the owner made a copy by hand), and is what "restore" puts back. A bundle whose layout is not the one known is
  * left alone. The head unit reads the pictures at start-up: a restart of the screen shows the change.
  *
+ * The head unit's firewall (nftables: table ip filter, chain input) drops what it does not accept: while this runs it
+ * keeps one rule that lets the page's port in on the interface of the address in the QR code (checked every 30 s, a
+ * ruleset load drops it), and removes it when it stops.
+ *
  * The phone page needs the PIN the app shows (4 digits; five wrong guesses lock an address for a minute).
  *
  *   node anh-dai-dien.js run       the service (anh-dai-dien.service)
  *   node anh-dai-dien.js status    print the status file
+ *   node anh-dai-dien.js fwclose   remove the firewall rule (the unit's ExecStopPost)
  * Node 8 (the head unit's), no dependencies.
  */
 const fs = require('fs');
@@ -38,7 +43,7 @@ const cp = require('child_process');
 const W = require('./wbm');
 const BOOT = require('./boot');
 
-const VERSION = '0.4.1';
+const VERSION = '0.4.2';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -47,6 +52,8 @@ const CFG = {
     vehicles: env('AVATAR_VEHICLES', '/mnt/dataro/dataro1/hmi/bmw/widgetasset/vehicles'),   // <model>/vehicle2D_big, vehicle2D_small
     boot: env('AVATAR_BOOT', '/mnt/dataro/dataro1/ent/animationplayer'),   // mgu<gen>/eva_splash_*.png, eva_hi_*.h264, eva_bye_*.h264
     route: env('AVATAR_ROUTE', '/proc/net/route'),
+    nft: env('AVATAR_NFT', 'nft'),
+    fwMs: Number(env('AVATAR_FW_MS', 30000)),
     variant: env('AVATAR_VARIANT', '/run/etc/variant.env'),             // HWGEN=18: which mgu<gen> folder this head unit plays
     dir: env('AVATAR_DIR', ''),                         // the profile pictures' bundle, if not under the root (tests)
     mount: process.env.AVATAR_MOUNT !== undefined ? process.env.AVATAR_MOUNT : '/mnt/dataro',   // '' = nothing to remount (tests)
@@ -494,9 +501,59 @@ function addresses() {
     Object.keys(nets).forEach((name) => (nets[name] || []).forEach((a) => {
         if (a.internal || (a.family !== 'IPv4' && a.family !== 4) || /^169\.254\./.test(a.address)) return;
         const range = /^192\.168\./.test(a.address) ? 0 : /^172\.(1[6-9]|2\d|3[01])\./.test(a.address) ? 1 : /^10\./.test(a.address) ? 2 : 3;
-        out.push({ ip: a.address, rank: (name === via ? 0 : /^(wl|ml|uap|ap|wifi)/i.test(name) ? 10 : 20) + range });
+        out.push({ ip: a.address, iface: name, rank: (name === via ? 0 : /^(wl|ml|uap|ap|wifi)/i.test(name) ? 10 : 20) + range });
     }));
+    lastIfaces = {}; out.forEach((a) => { lastIfaces[a.ip] = a.iface; });
     return out.sort((a, b) => a.rank - b.rank).map((a) => a.ip);
+}
+let lastIfaces = {};
+
+/* ---------------- the firewall ---------------- */
+const FW_TAG = 'id-studio';
+function execNft(args) {
+    return new Promise((resolve, reject) => cp.execFile(CFG.nft, args, { timeout: 15000, maxBuffer: 4 << 20 }, (err, out, stderr) => {
+        if (!err) return resolve(out);
+        const e = new Error('nft ' + args.join(' ') + ': ' + (String(stderr || '').trim() || err.message));
+        e.absent = err.code === 'ENOENT' || /No such file or directory/.test(String(stderr));      // no nft, or no such table or chain: nothing to open
+        reject(e);
+    }));
+}
+const fwRules = (out) => out.split('\n').filter((l) => /# handle \d+\s*$/.test(l) && !/^\s*(chain|table)\b/.test(l));
+const fwMine = (rules) => rules.filter((l) => l.indexOf('comment "' + FW_TAG + '"') >= 0);
+
+/** Removes this tool's rules. */
+async function fwClose(nft) {
+    nft = nft || execNft;
+    let out;
+    try { out = await nft(['-a', 'list', 'chain', 'ip', 'filter', 'input']); } catch (e) { if (e.absent) return 'absent'; throw e; }
+    const mine = fwMine(fwRules(out));
+    for (let i = 0; i < mine.length; i++) await nft(['delete', 'rule', 'ip', 'filter', 'input', 'handle', /# handle (\d+)\s*$/.exec(mine[i])[1]]);
+    return 'closed';
+}
+
+/** Exactly one rule of this tool, at the top of ip filter input: the page's port, on `iface` when that is known. 'kept' | 'added' | 'absent'. */
+async function fwEnsure(port, iface, nft) {
+    nft = nft || execNft;
+    let out;
+    try { out = await nft(['-a', 'list', 'chain', 'ip', 'filter', 'input']); } catch (e) { if (e.absent) return 'absent'; throw e; }
+    const rules = fwRules(out), mine = fwMine(rules);
+    const want = (iface ? ['iifname', '"' + iface + '"'] : []).concat(['tcp', 'dport', String(port), 'accept', 'comment', '"' + FW_TAG + '"']);
+    const same = (l) => l.indexOf('dport ' + port + ' ') >= 0 && (iface ? l.indexOf('iifname "' + iface + '"') >= 0 : l.indexOf('iifname') < 0);   // however nft spells the rest
+    if (mine.length === 1 && rules[0] === mine[0] && same(mine[0])) return 'kept';
+    await fwClose(nft);
+    await nft(['insert', 'rule', 'ip', 'filter', 'input'].concat(want));
+    return 'added';
+}
+
+let fwLast = '', fwBusy = false;
+function fwCheck() {
+    if (fwBusy || !S.port) return Promise.resolve();
+    const ips = addresses(), ip = ips.length ? ips[S.ipIndex % ips.length] : '';
+    fwBusy = true;
+    return fwEnsure(S.port, ip ? (lastIfaces[ip] || '') : '').then((r) => {
+        if (r !== 'kept' && r !== fwLast) log(r === 'added' ? 'firewall: port ' + S.port + ' open on ' + (lastIfaces[ip] || 'every interface') : 'firewall: no ip filter input chain, nothing to open');
+        if (r !== 'kept') fwLast = r;
+    }, (e) => { if (e.message !== fwLast) log('firewall: ' + e.message); fwLast = e.message; }).then(() => { fwBusy = false; });
 }
 
 /* ---------------- status for the app ---------------- */
@@ -630,7 +687,7 @@ function pollCommands() {
     log('command ' + c.cmd);
     if (c.cmd === 'restore_all') restore('all').catch((e) => { log('restore failed: ' + e.message); say('crit', 'Lỗi: ' + e.message); });
     else if (c.cmd === 'new_pin') { S.pin = newPin(); say('dim', 'Đã đổi mã PIN.'); }
-    else if (c.cmd === 'next_ip') { S.ipIndex++; say('dim', 'Đã đổi sang địa chỉ khác của xe. Quét lại mã QR.'); }
+    else if (c.cmd === 'next_ip') { S.ipIndex++; fwLast = ''; fwCheck(); say('dim', 'Đã đổi sang địa chỉ khác của xe. Quét lại mã QR.'); }
 }
 
 /* ---------------- run ---------------- */
@@ -643,17 +700,19 @@ function start() {
     const server = http.createServer((req, res) => handle(req, res).catch((e) => { log('request failed: ' + e.message); try { json(res, 500, { ok: false, error: e.message }); } catch (e2) { /* gone */ } }));
     let port = CFG.port;
     server.on('error', (e) => { if (e.code === 'EADDRINUSE' && port < CFG.port + 9) { port++; server.listen(port, '0.0.0.0'); } else { log('server: ' + e.message); setTimeout(() => process.exit(1), 100); } });
-    server.on('listening', () => { S.port = server.address().port; log('page on port ' + S.port + ', PIN ' + S.pin); writeStatus(); });
+    server.on('listening', () => { S.port = server.address().port; log('page on port ' + S.port + ', PIN ' + S.pin); writeStatus(); fwCheck(); });
     server.listen(port, '0.0.0.0');
     setInterval(() => { pollCommands(); writeStatus(); }, 1500);
-    process.on('SIGTERM', () => { server.close(); setTimeout(() => process.exit(0), 200); });
+    if (CFG.fwMs > 0) setInterval(fwCheck, CFG.fwMs);
+    process.on('SIGTERM', () => { server.close(); const bye = () => process.exit(0); setTimeout(bye, 3000); fwClose().then(bye, bye); });
     return server;
 }
 
 if (require.main === module) {
     const cmd = process.argv[2] || 'run';
-    if (cmd === 'status') process.stdout.write(JSON.stringify(readJson(path.join(CFG.run, 'status.json')) || {}, null, 2) + '\n');
+    if (cmd === 'fwclose') fwClose().then(() => process.exit(0), (e) => { process.stderr.write(e.message + '\n'); process.exit(1); });
+    else if (cmd === 'status') process.stdout.write(JSON.stringify(readJson(path.join(CFG.run, 'status.json')) || {}, null, 2) + '\n');
     else start();
 }
 
-module.exports = { CFG, S, addresses, MORE, MORE0, START, CAR, CAR_W, CAR_H, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, CAR_H, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

@@ -175,7 +175,7 @@ const bootDir = path.join(tmp, 'animationplayer'), startFiles = {};
 fs.writeFileSync(path.join(bootDir, 'mgu18', 'notes.txt'), 'x'); fs.writeFileSync(path.join(tmp, 'variant.env'), 'MGUVAR=high\nHWGEN=18\n');
 const startFile = (rel) => fs.readFileSync(path.join(bootDir, rel));
 const carFile = (sub) => fs.readFileSync(path.join(vehicles, 'G20', sub, 'bitmaps.res'));
-Object.assign(process.env, { AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
+Object.assign(process.env, { AVATAR_NFT: path.join(tmp, 'no-nft'), AVATAR_FW_MS: '0', AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
 const svc = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'anh-dai-dien.js'));
 const fileOf = (rel) => fs.readFileSync(path.join(root, rel, 'wbitmaps.res'));
 const BT = svc.MORE0, USB = svc.MORE0 + 1;
@@ -365,6 +365,31 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
         const st3 = svc.writeStatus(); assert.ok(/192\.168\.73\.1/.test(st3.url)); assert.strictEqual(st3.ipIndex, 1);
         os2.networkInterfaces = real; svc.CFG.ips = ips0; svc.S.ipIndex = 0;
         ok('the QR code\'s address: the default route\'s interface first, then Wi-Fi; the app can step to the next');
+    }
+
+    // the firewall: one tagged rule at the top of the head unit's input chain, replaced when it is not the one wanted, removed at the end
+    {
+        let rules = ['ct state established,related accept', 'iifname "lo" accept'], handle = 10, calls = [];
+        const hs = {}; rules.forEach((r) => { hs[r] = ++handle; });
+        const nft = async (args) => {
+            calls.push(args.join(' '));
+            if (args[1] === 'list') return 'table ip filter {\n\tchain input { # handle 1\n\t\ttype filter hook input priority 0; policy drop;\n' + rules.map((r) => '\t\t' + r + ' # handle ' + hs[r]).join('\n') + '\n\t}\n}\n';
+            if (args[0] === 'insert') { const r = args.slice(5).join(' '); hs[r] = ++handle; rules.unshift(r); return ''; }
+            if (args[0] === 'delete') { rules = rules.filter((r) => String(hs[r]) !== args[6]); return ''; }
+            throw new Error('unexpected ' + args.join(' '));
+        };
+        assert.strictEqual(await svc.fwEnsure(8137, 'wlan_bridge', nft), 'added');
+        assert.strictEqual(rules[0], 'iifname "wlan_bridge" tcp dport 8137 accept comment "id-studio"'); assert.strictEqual(rules.length, 3);
+        assert.strictEqual(await svc.fwEnsure(8137, 'wlan_bridge', nft), 'kept');
+        rules.push(rules.shift());                                   // a ruleset change put another rule before it
+        assert.strictEqual(await svc.fwEnsure(8137, 'wlan_bridge', nft), 'added'); assert.strictEqual(rules.length, 3); assert.ok(/id-studio/.test(rules[0]));
+        assert.strictEqual(await svc.fwEnsure(8137, 'wlan0', nft), 'added'); assert.strictEqual(rules.filter((r) => /id-studio/.test(r)).length, 1); assert.ok(/"wlan0"/.test(rules[0]));
+        assert.strictEqual(await svc.fwEnsure(8138, '', nft), 'added'); assert.strictEqual(rules[0], 'tcp dport 8138 accept comment "id-studio"');
+        assert.strictEqual(await svc.fwClose(nft), 'closed'); assert.deepStrictEqual(rules, ['ct state established,related accept', 'iifname "lo" accept']);
+        const none = async () => { const e = new Error('no chain'); e.absent = true; throw e; };
+        assert.strictEqual(await svc.fwEnsure(8137, 'x', none), 'absent'); assert.strictEqual(await svc.fwClose(none), 'absent');
+        assert.strictEqual(await svc.fwEnsure(8137, 'x'), 'absent');       // no nft program at all (this machine)
+        ok('the firewall rule: added at the top, kept, put back, moved to another interface, removed; nothing without nftables');
     }
 
     // five wrong PINs lock the address

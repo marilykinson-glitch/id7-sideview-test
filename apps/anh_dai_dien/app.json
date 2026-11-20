@@ -2,7 +2,7 @@
   "id": "anh_dai_dien",
   "title": "ID Studio",
   "description": "Đặt ảnh của bạn lên màn hình xe: hình chiếc xe ở màn hình chính và menu Xe của tôi, màn hình khởi động, ảnh đại diện của profile, ảnh bìa mặc định khi phát nhạc, ảnh người gọi. Quét mã QR, chọn ảnh trên điện thoại, cắt vuông. Xe không cần Connected Drive. Cần trợ thủ anh-dai-dien (tự cài kèm); hình gốc được sao lưu và khôi phục được.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "vendor": "custom",
   "loggingId": "OAAD",
   "signals": {},
