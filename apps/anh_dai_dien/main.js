@@ -36,7 +36,7 @@ mgu.run({
                 // the small pictures for the cards: the car and the start-up screen as the tool made them (48 wide),
                 // the changed profile pictures (96 x 96 from the tool) taken down to 24 x 24
                 const t = {}, file = (name) => { try { return fs.readFileSync(path.join(RUN, name)); } catch (e) { return null; } };
-                [41, 51].forEach((n) => { const b = file('t' + n + '.rgba'); if (b && b.length >= UI.MINI * 4 && b.length % (UI.MINI * 4) === 0) t[n] = b; });
+                [41, 51].forEach((n) => { const b = file('t' + n + '.rgba'); if (!b || b.length < UI.MINI * 4 || b.length % (UI.MINI * 4) !== 0) return; for (let i = 3; i < b.length; i += 4) if (b[i] > 40 && b[i - 1] + b[i - 2] + b[i - 3] > 60) { t[n] = b; return; } });   // an empty picture is no picture
                 (status.slots || []).filter((x) => x.changed).slice(0, 2).forEach((x) => {
                     const b = file('t' + (x.n < 10 ? '0' : '') + x.n + '.rgba');
                     if (!b || b.length !== 96 * 96 * 4) return;

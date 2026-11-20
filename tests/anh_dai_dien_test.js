@@ -383,6 +383,31 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     await call('POST', '/api/picture/' + svc.CAR + q, cut);
     ok('the car: the 3D model hidden and its body a picture of the photo, the 2D pictures the photo, compiled shaders removed, all restored byte for byte');
 
+    // the diagnostic file: a report and the files of the vehicle folders the HMI has open, the originals too
+    {
+        const proc = path.join(tmp, 'proc'); mkdirs(path.join(proc, '321', 'fd')); mkdirs(path.join(proc, '9', 'fd')); mkdirs(path.join(proc, 'self'));
+        fs.writeFileSync(path.join(proc, '321', 'comm'), 'HmiMain3D\n'); fs.writeFileSync(path.join(proc, '9', 'comm'), 'other\n');
+        fs.symlinkSync(path.join(car3dDir, 'effects.res'), path.join(proc, '321', 'fd', '7')); fs.symlinkSync('/dev/null', path.join(proc, '321', 'fd', '0'));
+        fs.symlinkSync(path.join(vehicles, 'G20', 'vehicle2D_big', 'bitmaps.res'), path.join(proc, '9', 'fd', '3'));
+        svc.CFG.proc = proc;
+        assert.deepStrictEqual(svc.openVehicles(), [{ dir: car3dDir, by: 'HmiMain3D' }]);
+        r = await call('GET', '/api/diag'); assert.strictEqual(r.code, 401);
+        r = await call('GET', '/api/diag' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.length % 512, 0);
+        const got = {};
+        for (let o = 0; o + 512 <= r.body.length && r.body[o];) {
+            const name = r.body.toString('utf8', o, o + 100).replace(/\0.*$/, ''), size = parseInt(r.body.toString('latin1', o + 124, o + 135), 8);
+            let sum = 0; for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 32 : r.body[o + i];
+            assert.strictEqual(parseInt(r.body.toString('latin1', o + 148, o + 154), 8), sum, name);
+            got[name] = r.body.slice(o + 512, o + 512 + size); o += 512 + Math.ceil(size / 512) * 512;
+        }
+        const report = got['report.txt'].toString('utf8');
+        assert.ok(/MGU Studio/.test(report) && report.indexOf(car3dDir + '  (HmiMain3D)') > 0 && /car slot: models G20; 2D targets 8/.test(report) && /== log/.test(report));
+        assert.strictEqual(Buffer.compare(got['vehicles/G20/vehicle/effects.res'], car3dFile('effects.res')), 0);          // as it is now: this tool's
+        assert.strictEqual(Buffer.compare(got['vehicles/G20/vehicle.orig/effects.res'], mkFx.data), 0);                    // and the original
+        assert.strictEqual(Buffer.compare(got['vehicles/G20/vehicle/meshes.res'], mkMesh.data), 0); assert.ok(got['2d/car-G20-big/original.res']);
+        ok('the diagnostic file: a tar with a report and the open vehicle folders, originals too, behind the PIN');
+    }
+
     // the start-up screen: the picture and a still video at every size of this generation, the other generation untouched
     const sp = picture(41, 1920, 720);
     r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.start.length, 1); assert.strictEqual(r.json.start[0].w, 1920); assert.ok(!r.json.start[0].changed);

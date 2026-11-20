@@ -48,7 +48,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.7.1';
+const VERSION = '0.7.2';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -64,7 +64,9 @@ const CFG = {
     mount: process.env.AVATAR_MOUNT !== undefined ? process.env.AVATAR_MOUNT : '/mnt/dataro',   // '' = nothing to remount (tests)
     state: env('AVATAR_STATE', '/var/opt/anh-dai-dien'),
     shaders: env('AVATAR_SHADERS', '/var/opt/target/shader-cache'),
-    reboot: env('AVATAR_REBOOT', 'sync; reboot'),
+    // BMW's own way first (the node state manager, as the Store's tools ask for a restart), then systemd's
+    reboot: env('AVATAR_REBOOT', 'sync; /usr/bin/nsm_control --requestRestart 7 --normal || systemctl reboot || /sbin/reboot || reboot'),
+    proc: env('AVATAR_PROC', '/proc'),
     legacy: env('AVATAR_LEGACY', '/var/opt/avatar_backup'),
     run: env('AVATAR_RUN', '/run/anh-dai-dien'),
     oap: env('AVATAR_OAP', '/var/opt/public/oap'),
@@ -91,7 +93,9 @@ const MORE = [
 ];
 const SIZES4 = [570, 735, 1008, 1305], COLOURS = ['blue', 'red'];
 
+const LOGS = [];                        // the last lines, for the diagnostic file
 function log(m) {
+    LOGS.push(new Date().toISOString() + ' ' + m); if (LOGS.length > 400) LOGS.shift();
     process.stdout.write(m + '\n');
     try {
         const f = path.join(CFG.state, 'anh-dai-dien.log');
@@ -813,6 +817,11 @@ async function handle(req, res) {
     if (req.method === 'POST' && m) {
         try { await restore(m[1] === 'all' ? 'all' : Number(m[1])); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'restore'); }
     }
+    if (req.method === 'GET' && p === '/api/diag') {
+        const list = diagFiles();
+        res.writeHead(200, { 'Content-Type': 'application/x-tar', 'Content-Disposition': 'attachment; filename="mgu-studio-chan-doan.tar"', 'Cache-Control': 'no-store' });
+        return tar(res, list);
+    }
     if (req.method === 'POST' && p === '/api/reboot') { reboot(); return json(res, 200, { ok: true, message: S.message }); }
     json(res, 404, { ok: false, error: 'không có' });
 }
@@ -833,6 +842,91 @@ function findApp(now) {
         }
     }
     return null;
+}
+
+/* ---------------- the diagnostic file ---------------- */
+/** The vehicle folders the HMI has open now (from /proc): what this car really shows. */
+function openVehicles() {
+    const out = {};
+    let pids = [];
+    try { pids = fs.readdirSync(CFG.proc).filter((d) => /^\d+$/.test(d)); } catch (e) { return []; }
+    pids.forEach((pid) => {
+        let comm = '';
+        try { comm = fs.readFileSync(path.join(CFG.proc, pid, 'comm'), 'utf8').trim(); } catch (e) { return; }
+        if (!/^Hmi/.test(comm)) return;
+        let fds = [];
+        try { fds = fs.readdirSync(path.join(CFG.proc, pid, 'fd')); } catch (e) { return; }
+        fds.forEach((fd) => {
+            let to = '';
+            try { to = fs.readlinkSync(path.join(CFG.proc, pid, 'fd', fd)); } catch (e) { return; }
+            const real = (() => { try { return fs.realpathSync(CFG.vehicles); } catch (e) { return CFG.vehicles; } })();
+            [CFG.vehicles, real].forEach((root) => { if (to.indexOf(root + '/') === 0) out[path.join(CFG.vehicles, path.dirname(to.slice(root.length + 1)))] = comm; });
+        });
+    });
+    return Object.keys(out).sort().map((dir) => ({ dir, by: out[dir] }));
+}
+/** What the diagnostic file holds: a report, and the files of the vehicle folders the HMI has open (originals too). */
+function diagFiles() {
+    const lines = ['MGU Studio ' + VERSION + '  ' + new Date().toISOString(), ''];
+    const add = (t) => lines.push(t);
+    const files = [], seen = {};
+    const put = (name, file) => { if (seen[name]) return; try { const st = fs.statSync(file); if (!st.isFile() || st.size > (64 << 20)) return; seen[name] = 1; files.push({ name, file, size: st.size }); } catch (e) { /* not there */ } };
+    try {
+        add('== state'); add(JSON.stringify({ compatible: S.compatible, error: S.error, carChanged: !!S.carChanged, startChanged: !!S.startChanged, hero: !!S.hero, slots: Object.keys(S.slots).join(' ') }));
+        const car = S.slots[CAR];
+        add('car slot: ' + (car ? 'models ' + car.models.map((m) => m.model).join(',') + '; 2D targets ' + car.targets.length + '; where: ' + car.where : 'none'));
+        add('bundles: ' + Object.keys(S.bundles).map((id) => id + (S.bundles[id].usable ? '' : ' (not usable: ' + S.bundles[id].error + ')') + (Object.keys(S.bundles[id].changed).length ? ' changed' : '')).join('; '));
+        const start = S.slots[START];
+        add('start-up files: ' + (start ? start.files.map((f) => f.sub + '/' + f.name + ' ' + f.w + 'x' + f.h + (f.frames ? ' ' + f.frames + 'f' : '')).join('; ') : 'none'));
+    } catch (e) { add('state: ' + e.message); }
+    let open = [];
+    try { open = openVehicles(); } catch (e) { add('open: ' + e.message); }
+    add(''); add('== vehicle folders the HMI has open'); open.forEach((o) => add(o.dir + '  (' + o.by + ')'));
+    add(''); add('== vehicles');
+    try {
+        fs.readdirSync(CFG.vehicles).sort().forEach((model) => {
+            let subs = [];
+            try { subs = fs.readdirSync(path.join(CFG.vehicles, model)).sort(); } catch (e) { add(model + ' (a file)'); return; }
+            add(model + ': ' + subs.map((sub) => { let n = ''; try { n = fs.readdirSync(path.join(CFG.vehicles, model, sub)).map((f) => f + ' ' + fs.statSync(path.join(CFG.vehicles, model, sub, f)).size).join(', '); } catch (e) { n = '-'; } return sub + ' [' + n + ']'; }).join('  '));
+        });
+    } catch (e) { add('vehicles: ' + e.message); }
+    add(''); add('== compiled shaders kept: ' + (() => { try { return fs.readdirSync(CFG.shaders).length; } catch (e) { return e.message; } })());
+    add(''); add('== log'); LOGS.forEach((l) => add(l));
+    open.forEach((o) => {
+        const rel = path.relative(CFG.vehicles, o.dir);
+        try { fs.readdirSync(o.dir).forEach((f) => put('vehicles/' + rel + '/' + f, path.join(o.dir, f))); } catch (e) { /* gone */ }
+        const model = rel.split(path.sep)[0];
+        if (path.basename(o.dir) === 'vehicle') CAR_FILES.forEach((f) => put('vehicles/' + rel + '.orig/' + f, carBackup({ model }, f)));
+    });
+    Object.keys(S.bundles).filter((id) => /^car-/.test(id)).forEach((id) => { const b = S.bundles[id]; put('2d/' + id + '/bitmaps.res', path.join(b.dir, b.file)); put('2d/' + id + '/bitmaps.res.ids', path.join(b.dir, b.file + '.ids')); put('2d/' + id + '/original.res', b.bk); });
+    put('log/anh-dai-dien.log', path.join(CFG.state, 'anh-dai-dien.log')); put('log/anh-dai-dien.log.1', path.join(CFG.state, 'anh-dai-dien.log.1'));
+    add(''); add('== files in this archive'); files.forEach((f) => add(f.name + ' ' + f.size));
+    return [{ name: 'report.txt', buf: Buffer.from(lines.join('\n') + '\n', 'utf8') }].concat(files);
+}
+/** Writes the entries ({ name, buf } or { name, file, size }) as a tar archive to `out` and ends it. */
+function tar(out, list) {
+    const header = (name, size) => {
+        const h = Buffer.alloc(512);
+        h.write(name.slice(-99), 0, 'utf8'); h.write('0000644\0', 100); h.write('0000000\0', 108); h.write('0000000\0', 116);
+        h.write(('00000000000' + size.toString(8)).slice(-11) + '\0', 124); h.write(('00000000000' + Math.floor(Date.now() / 1000).toString(8)).slice(-11) + '\0', 136);
+        h.write('        ', 148); h[156] = 48; h.write('ustar\0' + '00', 257);
+        let sum = 0; for (let i = 0; i < 512; i++) sum += h[i];
+        h.write(('000000' + sum.toString(8)).slice(-6) + '\0 ', 148);
+        return h;
+    };
+    let i = 0;
+    const next = () => {
+        if (i >= list.length) return out.end(Buffer.alloc(1024));
+        const e = list[i++], size = e.buf ? e.buf.length : e.size, pad = Buffer.alloc((512 - (size % 512)) % 512);
+        out.write(header(e.name, size));
+        if (e.buf) { out.write(e.buf); out.write(pad); return next(); }
+        let sent = 0;
+        const rs = fs.createReadStream(e.file, { start: 0, end: Math.max(0, size - 1) });
+        rs.on('data', (d) => { sent += d.length; if (!out.write(d)) { rs.pause(); out.once('drain', () => rs.resume()); } });
+        rs.on('error', () => { out.write(Buffer.alloc(Math.max(0, size - sent))); out.write(pad); next(); });
+        rs.on('end', () => { if (sent < size) out.write(Buffer.alloc(size - sent)); out.write(pad); next(); });
+    };
+    next();
 }
 
 /** Restarts the head unit (what shows new pictures), a moment after saying so. */
@@ -884,4 +978,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, reboot, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, reboot, openVehicles, diagFiles, tar, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

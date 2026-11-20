@@ -111,6 +111,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
       <button class="btn" id="rebootBtn">Khởi động lại màn hình xe</button>
       <button class="btn danger" id="resetAll">Khôi phục tất cả hình gốc</button>
       <p>Hình gốc của xe được sao lưu trước khi đổi gì, nên khôi phục lại được bất cứ lúc nào.</p>
+      <p><a id="diag" href="#" style="color:inherit">Tải gói chẩn đoán</a> (khi có lỗi: gửi file này cho người hỗ trợ)</p>
     </div>
   </section>
 </div>
@@ -326,6 +327,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
   };
 
+  $('diag').onclick = function (e) { e.preventDefault(); location.href = '/api/diag?pin=' + encodeURIComponent(pin); };
   var armedR = 0;
   $('rebootBtn').onclick = function () {
     var b = this;

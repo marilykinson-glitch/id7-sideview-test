@@ -104,9 +104,11 @@ function draw(cv, G, t, v, act) {
     const stateText = v.state === 'down' ? 'Trợ thủ chưa chạy: khởi động lại màn hình xe' : v.state === 'bad' ? (v.error || 'Gói ảnh của xe này chưa dùng được')
         : !v.url ? 'Xe chưa vào mạng Wi-Fi nào: nối Wi-Fi hoặc điểm phát sóng của điện thoại' : v.busy ? 'Đang ghi vào xe…' : 'Sẵn sàng';
     const stateKind = v.state === 'ok' && v.url ? (v.busy ? 'warn' : 'go') : 'warn';
-    const sx = rx + cv.textWidth('MGU STUDIO', 40, { literal: true, font: 'bold', spacing: 3 }) + 28;
-    cv.circle(sx + 8, G.TOP + 63, 7, kindColor(t, stateKind));
-    cv.text(stateText, sx + 26, G.TOP + 70, 19, kindColor(t, stateKind), { literal: true, font: 'label' });
+    const note = 'Tuỳ biến hình ảnh MGU ID7', nx = rx + cv.textWidth('MGU STUDIO', 40, { literal: true, font: 'bold', spacing: 3 }) + 20;
+    cv.text(note, nx, G.TOP + 76, 18, t.dim, { literal: true, font: 'label' });
+    const sx = nx + cv.textWidth(note, 18, { literal: true, font: 'label' }) + 30;
+    cv.circle(sx + 8, G.TOP + 69, 7, kindColor(t, stateKind));
+    cv.text(fit(cv, stateText, 19, { literal: true, font: 'label' }, W - 64 - (sx + 26)), sx + 26, G.TOP + 76, 19, kindColor(t, stateKind), { literal: true, font: 'label' });
     if (v.version) cv.text(v.version, W - 64, G.TOP + 34, 14, G.withAlpha('#ffffff', 0.35), { literal: true, align: 'right', font: 'label' });
     cv.text('Quét mã QR bằng điện thoại, chọn ảnh, rồi bấm Khởi động lại để xe dùng hình mới.', rx, G.TOP + 112, 18, t.dim, { literal: true, font: 'label' });
 

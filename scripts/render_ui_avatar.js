@@ -26,14 +26,14 @@ if (process.argv[3]) { thumbs[41] = small(process.argv[3], 48, 24); thumbs[51] =
 Object.keys(thumbs).forEach((k) => { if (!thumbs[k]) delete thumbs[k]; });
 const slots = (changed) => Array.from({ length: 15 }, (_, i) => ({ n: i + 1, changed: changed.indexOf(i + 1) >= 0 }));
 const more = (changed) => [[41, 'Hình xe'], [51, 'Khởi động'], [21, 'Nhạc Bluetooth'], [22, 'Nhạc USB'], [23, 'Nhạc'], [24, 'Radio FM'], [25, 'Radio AM'], [26, 'Radio'], [27, 'Người gọi']].map((d) => ({ n: d[0], label: d[1], changed: changed.indexOf(d[0]) >= 0 }));
-const base = { state: 'ok', more: more([]), url: 'http://192.168.43.15:8137/?pin=4821', host: '192.168.43.15:8137', pin: '4821', slots: slots([]), thumbs, version: 'Bản 0.7.1', message: 'Sẵn sàng.', messageKind: 'dim', anyChanged: false };
+const base = { state: 'ok', more: more([]), url: 'http://192.168.43.15:8137/?pin=4821', host: '192.168.43.15:8137', pin: '4821', slots: slots([]), thumbs, version: 'Bản 0.7.2', message: 'Sẵn sàng.', messageKind: 'dim', anyChanged: false };
 const states = {
     '1-san-sang': base,
     '2-da-doi': Object.assign({}, base, { slots: slots([2, 7]), more: more([41, 51, 21]), anyChanged: true, needsRestart: true, message: 'Đã đổi hình số 7. Khởi động lại màn hình xe để thấy.', messageKind: 'go' }),
     '3-dang-ghi': Object.assign({}, base, { busy: true, slots: slots([3]), anyChanged: true }),
     '4-chua-co-mang': Object.assign({}, base, { url: '', host: '', pin: '4821' }),
-    '5-tro-thu-chua-chay': { state: 'down', slots: [], version: 'Bản 0.7.1' },
-    '6-goi-la': { state: 'bad', error: 'Gói ảnh có cấu trúc lạ (pictures are not back to back)', slots: [], version: 'Bản 0.7.1' },
+    '5-tro-thu-chua-chay': { state: 'down', slots: [], version: 'Bản 0.7.2' },
+    '6-goi-la': { state: 'bad', error: 'Gói ảnh có cấu trúc lạ (pictures are not back to back)', slots: [], version: 'Bản 0.7.2' },
 };
 Object.keys(states).forEach((k) => {
     const r = new Recorder(UI.W, UI.H, { textScale: 1 });
