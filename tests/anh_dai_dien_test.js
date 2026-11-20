@@ -350,6 +350,23 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     assert.strictEqual(Buffer.compare(fileOf(AV), mk.data), 0); assert.strictEqual(Buffer.compare(fileOf(REG), mkReg.data), 0);
     ok('the app\'s commands: an old one is ignored, a new PIN, restore all');
 
+    // the address for the QR code: the default route's interface first; the app can ask for the next one
+    {
+        const os2 = require('os'), real = os2.networkInterfaces, ips0 = svc.CFG.ips, rt = path.join(tmp, 'route');
+        os2.networkInterfaces = () => ({ lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true }], vlan73: [{ address: '192.168.73.1', family: 'IPv4', internal: false }],
+            usb0: [{ address: '169.254.213.49', family: 'IPv4', internal: false }], wlan0: [{ address: '172.16.222.97', family: 'IPv4', internal: false }], eth9: [{ address: '10.1.2.3', family: 'IPv4', internal: false }] });
+        fs.writeFileSync(rt, 'Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\nvlan73\t0049A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0\neth9\t00000000\t0102010A\t0003\t0\t0\t600\t00000000\t0\t0\t0\nwlan0\t00000000\t01DE10AC\t0003\t0\t0\t300\t00000000\t0\t0\t0\n');
+        svc.CFG.ips = ''; svc.CFG.route = rt;
+        assert.deepStrictEqual(svc.addresses(), ['172.16.222.97', '192.168.73.1', '10.1.2.3']);
+        svc.CFG.route = path.join(tmp, 'no-route');
+        assert.deepStrictEqual(svc.addresses(), ['172.16.222.97', '192.168.73.1', '10.1.2.3']);      // no route table: Wi-Fi first
+        assert.ok(/172\.16\.222\.97/.test(svc.writeStatus().url));
+        fs.writeFileSync(path.join(app, 'data', 'command.json'), JSON.stringify({ id: 8, cmd: 'next_ip' })); svc.pollCommands();
+        const st3 = svc.writeStatus(); assert.ok(/192\.168\.73\.1/.test(st3.url)); assert.strictEqual(st3.ipIndex, 1);
+        os2.networkInterfaces = real; svc.CFG.ips = ips0; svc.S.ipIndex = 0;
+        ok('the QR code\'s address: the default route\'s interface first, then Wi-Fi; the app can step to the next');
+    }
+
     // five wrong PINs lock the address
     const wrong = svc.S.pin === '1111' ? '2222' : '1111';
     for (let i = 0; i < 5; i++) await call('GET', '/api/state?pin=' + wrong);
@@ -396,7 +413,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     const thumbs = {}; for (let i = 1; i <= 15; i++) thumbs[i] = Buffer.alloc(UI.SMALL * UI.SMALL * 4, 40 + i * 10);
     const slots = Array.from({ length: 15 }, (_, i) => ({ n: i + 1, changed: i === 2 }));
     const more = [{ n: 21, label: 'Nhạc Bluetooth', changed: true }, { n: 22, label: 'Nhạc USB', changed: false }];
-    const base = { state: 'ok', url: 'http://192.168.7.9:8137/?pin=4821', host: '192.168.7.9:8137', pin: '4821', slots, more, thumbs, anyChanged: true };
+    const base = { state: 'ok', ipCount: 2, ipIndex: 1, url: 'http://192.168.7.9:8137/?pin=4821', host: '192.168.7.9:8137', pin: '4821', slots, more, thumbs, anyChanged: true };
     const draws = [base, Object.assign({}, base, { busy: true }), Object.assign({}, base, { url: '' }), { state: 'down', slots: [], thumbs: {} }, { state: 'bad', error: 'x', slots: [], thumbs: {} }];
     draws.forEach((v) => {
         const rec = new Recorder(UI.W, UI.H, { textScale: 1 }); rec.own = true;
@@ -404,7 +421,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
         const cv = new Canvas(UI.W, UI.H); play(rec.words(), cv);
     });
     const rec = new Recorder(UI.W, UI.H, { textScale: 1 }); rec.own = true; UI.draw(rec, G, theme, base, {});
-    assert.ok(rec.targets.some((t) => t.key === 'adRestore') && rec.targets.some((t) => t.key === 'adPin'));
+    assert.ok(rec.targets.some((t) => t.key === 'adRestore') && rec.targets.some((t) => t.key === 'adPin') && rec.targets.some((t) => t.key === 'adIp'));
     const none = new Recorder(UI.W, UI.H, { textScale: 1 }); none.own = true; UI.draw(none, G, theme, Object.assign({}, base, { anyChanged: false }), {});
     assert.ok(!none.targets.some((t) => t.key === 'adRestore'));
     ok('the car screen draws in every state; "restore all" is a button only when something changed');

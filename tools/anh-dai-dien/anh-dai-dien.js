@@ -12,7 +12,7 @@
  *                                  (Bluetooth, USB, music, radio), the caller without a photo
  *
  *   the phone   -> http://<head unit>:8137/?pin=NNNN   a page (page.html) to pick a photo, crop it, send it
- *   the app     -> <its folder>/data/command.json       { id, cmd: 'restore_all' | 'new_pin' }
+ *   the app     -> <its folder>/data/command.json       { id, cmd: 'restore_all' | 'new_pin' | 'next_ip' }
  *   this        -> /run/anh-dai-dien/status.json        what the app shows: address, PIN, pictures, messages
  *                  /run/anh-dai-dien/t01.rgba..t15.rgba the fifteen profile pictures at 96x96 for the app (top-down RGBA)
  *
@@ -38,7 +38,7 @@ const cp = require('child_process');
 const W = require('./wbm');
 const BOOT = require('./boot');
 
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -46,6 +46,7 @@ const CFG = {
     root: env('AVATAR_ROOT', '/mnt/dataro/dataro1/hmi/bmw/id7/assetDB'),
     vehicles: env('AVATAR_VEHICLES', '/mnt/dataro/dataro1/hmi/bmw/widgetasset/vehicles'),   // <model>/vehicle2D_big, vehicle2D_small
     boot: env('AVATAR_BOOT', '/mnt/dataro/dataro1/ent/animationplayer'),   // mgu<gen>/eva_splash_*.png, eva_hi_*.h264, eva_bye_*.h264
+    route: env('AVATAR_ROUTE', '/proc/net/route'),
     variant: env('AVATAR_VARIANT', '/run/etc/variant.env'),             // HWGEN=18: which mgu<gen> folder this head unit plays
     dir: env('AVATAR_DIR', ''),                         // the profile pictures' bundle, if not under the root (tests)
     mount: process.env.AVATAR_MOUNT !== undefined ? process.env.AVATAR_MOUNT : '/mnt/dataro',   // '' = nothing to remount (tests)
@@ -90,7 +91,7 @@ function log(m) {
 // A slot (one picture the owner sets): { n, label, where, w, h (what the phone sends), alpha (its transparency is kept),
 //   targets: [{ b, key, w, h, box, zero (this picture is emptied: a paint mask) }] }.
 const S = {
-    bundles: {}, slots: {}, startChanged: false, compatible: false, error: '', backupNote: '', smallIcons: false,
+    ipIndex: 0, bundles: {}, slots: {}, startChanged: false, compatible: false, error: '', backupNote: '', smallIcons: false,
     thumbs: {}, rev: 0, busy: false, message: '', messageKind: 'dim', needsRestart: false, pin: '', port: 0, startedAt: Date.now(),
 };
 let queue = Promise.resolve();
@@ -476,16 +477,26 @@ async function restore(which) {          // a slot's number, or 'all'
 }
 
 /* ---------------- the address the phone opens ---------------- */
+/** The interface the default route leaves by (what the head unit reaches the phone's network through), or ''. */
+function defaultInterface() {
+    try {
+        const rows = fs.readFileSync(CFG.route, 'utf8').split('\n').slice(1).map((l) => l.trim().split(/\s+/)).filter((c) => c.length > 7 && c[1] === '00000000' && c[7] === '00000000');
+        rows.sort((x, y) => Number(x[6]) - Number(y[6]));          // the lowest metric
+        return rows.length ? rows[0][0] : '';
+    } catch (e) { return ''; }
+}
+
+/** The head unit's addresses, the likeliest for a phone first: the default route's, then Wi-Fi's, then private ranges. */
 function addresses() {
     if (CFG.ips) return CFG.ips.split(',');
-    const out = [];
+    const out = [], via = defaultInterface();
     const nets = os.networkInterfaces();
     Object.keys(nets).forEach((name) => (nets[name] || []).forEach((a) => {
         if (a.internal || (a.family !== 'IPv4' && a.family !== 4) || /^169\.254\./.test(a.address)) return;
-        out.push(a.address);
+        const range = /^192\.168\./.test(a.address) ? 0 : /^172\.(1[6-9]|2\d|3[01])\./.test(a.address) ? 1 : /^10\./.test(a.address) ? 2 : 3;
+        out.push({ ip: a.address, rank: (name === via ? 0 : /^(wl|ml|uap|ap|wifi)/i.test(name) ? 10 : 20) + range });
     }));
-    const rank = (ip) => (/^192\.168\./.test(ip) ? 0 : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 1 : /^10\./.test(ip) ? 2 : 3);
-    return out.sort((a, b) => rank(a) - rank(b));
+    return out.sort((a, b) => a.rank - b.rank).map((a) => a.ip);
 }
 
 /* ---------------- status for the app ---------------- */
@@ -499,7 +510,8 @@ function writeStatus() {
     const st = {
         at: Date.now(), version: VERSION, rev: S.rev, up: Math.round((Date.now() - S.startedAt) / 1000),
         compatible: S.compatible, error: S.error, busy: S.busy,
-        port: S.port, pin: S.pin, ips, url: ips.length && S.port ? 'http://' + ips[0] + ':' + S.port + '/?pin=' + S.pin : '',
+        port: S.port, pin: S.pin, ips, ipIndex: ips.length ? S.ipIndex % ips.length : 0,
+        url: ips.length && S.port ? 'http://' + ips[S.ipIndex % ips.length] + ':' + S.port + '/?pin=' + S.pin : '',
         message: S.message, messageKind: S.messageKind, needsRestart: S.needsRestart,
         backup: S.compatible ? S.backupNote : '', smallIcons: S.smallIcons, anyChanged: S.compatible && anyChanged(),
         slots: S.compatible ? slotList(1, SLOTS).map((s) => ({ n: s.n, changed: s.changed })) : [],
@@ -618,6 +630,7 @@ function pollCommands() {
     log('command ' + c.cmd);
     if (c.cmd === 'restore_all') restore('all').catch((e) => { log('restore failed: ' + e.message); say('crit', 'Lỗi: ' + e.message); });
     else if (c.cmd === 'new_pin') { S.pin = newPin(); say('dim', 'Đã đổi mã PIN.'); }
+    else if (c.cmd === 'next_ip') { S.ipIndex++; say('dim', 'Đã đổi sang địa chỉ khác của xe. Quét lại mã QR.'); }
 }
 
 /* ---------------- run ---------------- */
@@ -643,4 +656,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, MORE, MORE0, START, CAR, CAR_W, CAR_H, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, addresses, MORE, MORE0, START, CAR, CAR_W, CAR_H, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

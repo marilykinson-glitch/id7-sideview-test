@@ -6,7 +6,7 @@ Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. H
 
 > **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
 
-## ID Studio 0.4.0 (app thứ hai trong nguồn này; tên cũ: Ảnh đại diện, Dấu Ấn)
+## ID Studio 0.4.1 (app thứ hai trong nguồn này; tên cũ: Ảnh đại diện, Dấu Ấn)
 
 Xe không có Connected Drive thì không đổi được ảnh đại diện của profile, và danh sách hình có sẵn chỉ có 15 hình. App này cho đặt ảnh của chính mình lên xe, gửi từ điện thoại:
 

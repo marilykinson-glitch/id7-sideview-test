@@ -6,7 +6,7 @@
  * the car now, and has the two buttons: a new PIN, restore everything.
  *
  *   the tool  -> /run/anh-dai-dien/status.json, t01.rgba .. t15.rgba   (RAM; read here)
- *   this app  -> <its folder>/data/command.json  { id, cmd: 'restore_all' | 'new_pin' }   (the tool reads it)
+ *   this app  -> <its folder>/data/command.json  { id, cmd: 'restore_all' | 'new_pin' | 'next_ip' }   (the tool reads it)
  *
  * Node 8.
  */
@@ -51,13 +51,14 @@ mgu.run({
             } catch (e) { log.warn('command ' + cmd + ': ' + (e && e.message)); }
             readAt = 0;
         }
-        const acts = { restoreAll: () => { send('restore_all'); return repaint(); }, newPin: () => { send('new_pin'); return repaint(); } };
+        const acts = { restoreAll: () => { send('restore_all'); return repaint(); }, newPin: () => { send('new_pin'); return repaint(); }, nextIp: () => { send('next_ip'); return repaint(); } };
 
         function model() {
             readStatus(Date.now());
             const s = status;
             const hostOf = (u) => String(u || '').replace(/^http:\/\//, '').replace(/\/\?pin=\d+$/, '');
             return {
+                ipCount: s && s.ips ? s.ips.length : 0, ipIndex: s ? (s.ipIndex || 0) : 0,
                 state: !s ? 'down' : !s.compatible ? 'bad' : 'ok', error: s && s.error, url: s && s.url, host: s && hostOf(s.url), pin: s && s.pin,
                 slots: s && s.compatible ? s.slots : [], more: s && s.compatible ? (s.more || []) : [], thumbs, message: s && s.message, messageKind: s && s.messageKind,
                 needsRestart: !!(s && s.needsRestart), busy: !!(s && s.busy), backup: s && s.backup,
@@ -77,9 +78,10 @@ mgu.run({
         };
         const loop = ctx.loop('MAIN', 2, render);
         function repaint() { lastKey = ''; return loop && loop.kick ? loop.kick() : render(); }
-        ['BTN_PIN', 'BTN_RESTORE'].forEach((b) => { if (ctx.hideButton) ctx.hideButton(b); });
+        ['BTN_PIN', 'BTN_RESTORE', 'BTN_IP'].forEach((b) => { if (ctx.hideButton) ctx.hideButton(b); });
         ui.onClick('BTN_PIN', acts.newPin);
         ui.onClick('BTN_RESTORE', acts.restoreAll);
+        ui.onClick('BTN_IP', acts.nextIp);
         await render();
         log.info('anh_dai_dien ready');
     },

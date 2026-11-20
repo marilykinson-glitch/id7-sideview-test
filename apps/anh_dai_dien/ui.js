@@ -9,7 +9,7 @@
  * v = { state: 'ok' | 'down' | 'bad', url, host, pin, slots: [{ n, changed }], thumbs: { n: RGBA 96x96 },
  *       more: [{ n, label, changed }] (the placeholder pictures: named, not drawn),
  *       message, messageKind ('go' | 'warn' | 'crit' | 'dim'), needsRestart, busy, error, backup, anyChanged, version }
- * act = { restoreAll, newPin }
+ * act = { restoreAll, newPin, nextIp }   (nextIp: the QR code for the head unit's next address, when it has several)
  * Node 8.
  */
 const QR = require('./kit/qr');
@@ -87,7 +87,7 @@ function draw(cv, G, t, v, act) {
         let side = 0;
         try { side = QR.draw(cv, v.url, lx, top, 7); } catch (e) { side = 0; }
         const qx = lx + (side || 259) / 2;
-        cv.text(v.host || '', qx, top + (side || 259) + 28, 17, t.dim, { literal: true, align: 'center', font: 'label' });
+        cv.text((v.host || '') + (v.ipCount > 1 ? '  (' + (v.ipIndex + 1) + '/' + v.ipCount + ')' : ''), qx, top + (side || 259) + 28, 17, t.dim, { literal: true, align: 'center', font: 'label' });
         cv.text('MÃ PIN', qx, top + (side || 259) + 62, 14, t.dim, { literal: true, align: 'center', font: 'bold', spacing: 2 });
         cv.text(String(v.pin || '').split('').join(' '), qx, top + (side || 259) + 112, 54, t.text, { literal: true, align: 'center', font: 'bold', spacing: 3 });
     } else {
@@ -122,6 +122,7 @@ function draw(cv, G, t, v, act) {
     if (msg && !(v.state !== 'ok')) cv.text(msg, rx, by + 35, 18, kindColor(t, kind), { literal: true, font: 'label' });
     const bx = W - 64 - 250 - 14 - 190;
     G.button(cv, t, bx, by, 190, 54, 'Mã PIN mới', act.newPin || nop, { key: 'adPin' });
+    if (v.state === 'ok' && v.ipCount > 1) G.button(cv, t, bx - 14 - 230, by, 230, 54, 'Địa chỉ khác', act.nextIp || nop, { key: 'adIp' });
     G.button(cv, t, bx + 204, by, 250, 54, 'Khôi phục tất cả', act.restoreAll || nop, { key: 'adRestore', color: v.anyChanged ? red : undefined, busy: !v.anyChanged, confirm: true });
     return cv;
 }
