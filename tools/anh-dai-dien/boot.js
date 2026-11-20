@@ -6,6 +6,8 @@
  *   h264Info(buf)                      size, level and number of pictures of an H.264 elementary stream (its first SPS)
  *   stillVideo(rgba, w, h, opt)        an H.264 stream that shows one picture for `frames` pictures:
  *                                      the first picture as uncompressed (I_PCM) macroblocks, the rest "nothing changed"
+ *   openingVideo(rgba, w, h, opt)      the same without an encoder, moving: the picture opens out of black from its
+ *                                      middle (or closes into black), each part sent once, uncompressed, in its turn
  *   pngInfo(buf), pngDecode(buf)       size of a PNG; its pixels as RGBA (8-bit, not interlaced: what the head unit has)
  *
  * The stream is Constrained Baseline, CAVLC, pictures shown in the order decoded, the same timing - as the originals.
@@ -119,17 +121,9 @@ function planes(rgba, w, h, W, H) {
     return { Y, U, V };
 }
 
-/**
- * An H.264 stream showing the RGBA picture (top-down, w x h) for opt.frames pictures.
- * opt: { frames (60), level (31) }.
- */
-function stillVideo(rgba, w, h, opt) {
-    opt = opt || {};
-    if (rgba.length !== w * h * 4) throw new Error('wrong picture size');
-    const frames = Math.max(1, opt.frames || 60);
-    const mw = Math.ceil(w / 16), mh = Math.ceil(h / 16), W = mw * 16, H = mh * 16, mbs = mw * mh;
-    const level = Math.max(opt.level || 31, mbs > 8192 ? 50 : mbs > 3600 ? 40 : mbs > 1620 ? 31 : 30);
-
+/** The stream's two parameter sets for a picture of mw x mh macroblocks showing w x h. */
+function headers(w, h, mw, mh, level) {
+    const W = mw * 16, H = mh * 16;
     const sps = new BitWriter(64);
     sps.u(8, 66); sps.u(8, 0xc0); sps.u(8, level);          // Baseline with constraint_set0 and 1: Constrained Baseline
     sps.ue(0);                                              // seq_parameter_set_id
@@ -152,35 +146,99 @@ function stillVideo(rgba, w, h, opt) {
     pps.se(0); pps.se(0); pps.se(0);                            // qp
     pps.u(1, 1); pps.u(1, 0); pps.u(1, 0);                      // the slice says "no deblocking"; the rest off
     pps.trailing();
-
-    // the first picture: every macroblock I_PCM (mb_type 25 of an I slice), its 256 + 64 + 64 samples as they are
-    const pl = planes(rgba, w, h, W, H);
-    const idr = new BitWriter(64 + mbs * (2 + 384));
+    return [nal(3, 7, sps.done()), nal(3, 8, pps.done())];
+}
+/** The 384 samples of macroblock (mx, my) of the planes: 256 of brightness, 64 + 64 of colour. */
+function samples(pl, W, mx, my, mb) {
+    for (let y = 0; y < 16; y++) pl.Y.copy(mb, y * 16, (my * 16 + y) * W + mx * 16, (my * 16 + y) * W + mx * 16 + 16);
+    for (let y = 0; y < 8; y++) {
+        pl.U.copy(mb, 256 + y * 8, (my * 8 + y) * (W >> 1) + mx * 8, (my * 8 + y) * (W >> 1) + mx * 8 + 8);
+        pl.V.copy(mb, 320 + y * 8, (my * 8 + y) * (W >> 1) + mx * 8, (my * 8 + y) * (W >> 1) + mx * 8 + 8);
+    }
+    return mb;
+}
+const BLACK = Buffer.concat([Buffer.alloc(256, 16), Buffer.alloc(128, 128)]);
+/** The first picture: every macroblock I_PCM (mb_type 25 of an I slice), its samples as they are; black without planes. */
+function firstPicture(pl, W, mw, mh) {
+    const idr = new BitWriter(64 + mw * mh * (2 + 384));
     idr.ue(0); idr.ue(7); idr.ue(0); idr.u(4, 0); idr.ue(0);    // first_mb, I slice, pps, frame_num, idr_pic_id
     idr.u(1, 0); idr.u(1, 0);                                   // dec_ref_pic_marking of an IDR picture
     idr.se(0); idr.ue(1);                                       // slice_qp_delta; deblocking off
     const mb = Buffer.alloc(384);
-    for (let my = 0; my < mh; my++) for (let mx = 0; mx < mw; mx++) {
-        idr.ue(25); idr.align();
-        for (let y = 0; y < 16; y++) pl.Y.copy(mb, y * 16, (my * 16 + y) * W + mx * 16, (my * 16 + y) * W + mx * 16 + 16);
-        for (let y = 0; y < 8; y++) {
-            pl.U.copy(mb, 256 + y * 8, (my * 8 + y) * (W >> 1) + mx * 8, (my * 8 + y) * (W >> 1) + mx * 8 + 8);
-            pl.V.copy(mb, 320 + y * 8, (my * 8 + y) * (W >> 1) + mx * 8, (my * 8 + y) * (W >> 1) + mx * 8 + 8);
-        }
-        idr.bytes(mb);
-    }
+    for (let my = 0; my < mh; my++) for (let mx = 0; mx < mw; mx++) { idr.ue(25); idr.align(); idr.bytes(pl ? samples(pl, W, mx, my, mb) : BLACK); }
     idr.trailing();
+    return nal(3, 5, idr.done());
+}
+/**
+ * A later picture: the macroblocks in `list` (their numbers, ascending) anew as I_PCM (mb_type 30 of a P slice), every
+ * other one skipped: as it was. `get(n)` gives a macroblock's 384 samples.
+ */
+function nextPicture(f, mbs, list, get) {
+    const p = new BitWriter(32 + list.length * (8 + 384));
+    p.ue(0); p.ue(5); p.ue(0); p.u(4, f & 15);                  // first_mb, P slice, pps, frame_num
+    p.u(1, 0); p.u(1, 0);                                       // the default number of references; the default list
+    p.u(1, 0);                                                  // sliding window
+    p.se(0); p.ue(1);                                           // slice_qp_delta; deblocking off
+    let at = 0;
+    list.forEach((n) => { p.ue(n - at); p.ue(30); p.align(); p.bytes(get(n)); at = n + 1; });
+    if (at < mbs) p.ue(mbs - at);                               // mb_skip_run: the rest
+    p.trailing();
+    return nal(2, 1, p.done());
+}
+function sizes(rgba, w, h, opt) {
+    if (rgba.length !== w * h * 4) throw new Error('wrong picture size');
+    const frames = Math.max(1, opt.frames || 60);
+    const mw = Math.ceil(w / 16), mh = Math.ceil(h / 16), mbs = mw * mh;
+    return { frames, mw, mh, W: mw * 16, H: mh * 16, mbs, level: Math.max(opt.level || 31, mbs > 8192 ? 50 : mbs > 3600 ? 40 : mbs > 1620 ? 31 : 30) };
+}
 
-    const parts = [nal(3, 7, sps.done()), nal(3, 8, pps.done()), nal(3, 5, idr.done())];
-    for (let f = 1; f < frames; f++) {                          // the others: a P slice whose macroblocks are all skipped
-        const p = new BitWriter(32);
-        p.ue(0); p.ue(5); p.ue(0); p.u(4, f & 15);              // first_mb, P slice, pps, frame_num
-        p.u(1, 0); p.u(1, 0);                                   // the default number of references; the default list
-        p.u(1, 0);                                              // sliding window
-        p.se(0); p.ue(1);                                       // slice_qp_delta; deblocking off
-        p.ue(mbs);                                              // mb_skip_run: all of them
-        p.trailing();
-        parts.push(nal(2, 1, p.done()));
+/**
+ * An H.264 stream showing the RGBA picture (top-down, w x h) for opt.frames pictures.
+ * opt: { frames (60), level (31) }.
+ */
+function stillVideo(rgba, w, h, opt) {
+    opt = opt || {};
+    const z = sizes(rgba, w, h, opt);
+    const parts = headers(w, h, z.mw, z.mh, z.level).concat([firstPicture(planes(rgba, w, h, z.W, z.H), z.W, z.mw, z.mh)]);
+    for (let f = 1; f < z.frames; f++) parts.push(nextPicture(f, z.mbs, [], null));
+    return Buffer.concat(parts);
+}
+
+/**
+ * When each macroblock of the opening appears, 0..1: first a band across the middle runs from the centre to both
+ * sides (two lines shooting out), then the picture opens from that band to the top and the bottom.
+ */
+function opening(mw, mh) {
+    const t = new Float32Array(mw * mh), cx = (mw - 1) / 2, cy = (mh - 1) / 2, band = Math.max(1, Math.round(mh / 14));
+    for (let my = 0; my < mh; my++) for (let mx = 0; mx < mw; mx++) {
+        const dy = Math.abs(my - cy), dx = Math.abs(mx - cx) / Math.max(1, cx);
+        t[my * mw + mx] = dy <= band ? 0.5 * dx : 0.5 + 0.5 * (dy - band) / Math.max(1, cy - band) + 0.04 * dx;
+    }
+    return t;
+}
+/**
+ * An H.264 stream of opt.frames pictures in which the RGBA picture opens out of black (or, opt.out, closes into it)
+ * as opening() says, with a moment of the whole picture (or of black) at the end. Every part of the picture is sent
+ * once, uncompressed, when its turn comes. opt: { frames (60), level (31), out }.
+ */
+function openingVideo(rgba, w, h, opt) {
+    opt = opt || {};
+    const z = sizes(rgba, w, h, opt), pl = planes(rgba, w, h, z.W, z.H), when = opening(z.mw, z.mh);
+    const moving = Math.max(1, Math.round((z.frames - 1) * 0.8));             // the last fifth stands still
+    const ease = (x) => 1 - Math.pow(1 - x, 2.2);                           // fast at first, settling
+    // the picture in which each macroblock changes: 1..moving
+    const turn = new Int32Array(z.mbs), max = when.reduce((m, v) => Math.max(m, v), 0) || 1;
+    for (let n = 0; n < z.mbs; n++) {
+        const want = (opt.out ? 1 - when[n] / max : when[n] / max);
+        let f = 1; while (f < moving && ease(f / moving) < want) f++;
+        turn[n] = f;
+    }
+    const mb = Buffer.alloc(384);
+    const parts = headers(w, h, z.mw, z.mh, z.level).concat([firstPicture(opt.out ? pl : null, z.W, z.mw, z.mh)]);
+    for (let f = 1; f < z.frames; f++) {
+        const list = [];
+        for (let n = 0; n < z.mbs; n++) if (turn[n] === f) list.push(n);
+        parts.push(nextPicture(f, z.mbs, list, (n) => (opt.out ? BLACK : samples(pl, z.W, n % z.mw, (n / z.mw) | 0, mb))));
     }
     return Buffer.concat(parts);
 }
@@ -233,4 +291,4 @@ function pngDecode(buf) {
     return { w, h, rgba: out };
 }
 
-module.exports = { h264Info, stillVideo, pngInfo, pngDecode, nals };
+module.exports = { h264Info, stillVideo, openingVideo, pngInfo, pngDecode, nals };

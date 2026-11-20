@@ -113,7 +113,16 @@ const mk = makeBundle();
         const list = B.nals(v); assert.deepStrictEqual(list.map((x) => x.type), [7, 8, 5, 1, 1, 1, 1]);
         assert.strictEqual(list[2].end - list[2].start, 4 + 28 * 384 + 27 * 2 + 1);    // the header with the first type, 28 macroblocks of 384 bytes, 27 more types, the stop bit
         list.forEach((x) => { for (let i = x.start; i + 2 < x.end; i++) assert.ok(!(v[i] === 0 && v[i + 1] === 0 && v[i + 2] <= 2), 'a start code inside a unit at ' + i); });
-        assert.strictEqual(B.h264Info(B.stillVideo(picture(1, 1920, 720), 1920, 720, { frames: 2, level: 31 })).level, 40);   // too many macroblocks for 3.1
+        assert.strictEqual(B.h264Info(B.stillVideo(picture(1, 1920, 720), 1920, 720, { frames: 2, level: 31 })).level, 40);
+        // the moving one: black first, every macroblock of the picture sent once in its turn, nothing in the still end
+        const mv = B.openingVideo(pic, 100, 52, { frames: 30 }), mi = B.h264Info(mv), ml = B.nals(mv).filter((n) => n.type === 1 || n.type === 5);
+        assert.strictEqual(mi.frames, 30); assert.strictEqual(mi.w, 100); assert.strictEqual(mi.h, 52);
+        const size = (n) => n.end - n.start, mbs = 7 * 4;
+        assert.ok(size(ml[0]) >= mbs * 384 && size(ml[0]) < mbs * 384 + 64);
+        const sent = ml.slice(1).reduce((t, n) => t + Math.floor(size(n) / 384), 0); assert.strictEqual(sent, mbs);
+        assert.ok(size(ml[1]) > 384 && size(ml[29]) < 16 && size(ml[26]) < 16);
+        const bye = B.openingVideo(pic, 100, 52, { frames: 30, out: true }), bl = B.nals(bye).filter((n) => n.type === 1 || n.type === 5);
+        assert.strictEqual(bl.slice(1).reduce((t, n) => t + Math.floor(size(n) / 384), 0), mbs); assert.ok(size(bl[29]) < 16);   // too many macroblocks for 3.1
         const png = W.png(pic, 100, 52), back = B.pngDecode(png);
         assert.strictEqual(back.w, 100); assert.strictEqual(Buffer.compare(back.rgba, pic), 0);
         assert.throws(() => B.pngInfo(Buffer.from('nope, not a picture at all, not a picture')), /not a PNG/);

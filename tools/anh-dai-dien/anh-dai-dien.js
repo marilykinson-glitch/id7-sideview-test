@@ -47,7 +47,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -518,10 +518,13 @@ async function setStart(slot, rgba) {
     if (slot.files.some((f) => !fs.existsSync(startBackup(f)))) throw new Error('thiếu bản gốc của màn hình khởi động');
     const made = {};                                                // files of one kind and size are the same bytes: one file, the others links to it
     const jobs = slot.files.map((f) => {
-        const id = f.kind + f.w + 'x' + f.h + (f.kind === 'h264' ? '/' + f.level + '/' + f.frames : '');
+        // the greeting (eva_hi_*_noloop) opens the picture out of black, the goodbye (eva_bye_*) closes it; anything
+        // shorter than a third of a second, and what loops, is the still picture
+        const move = f.kind !== 'h264' || f.frames < 20 ? '' : /^eva_hi_.*_noloop\./.test(f.name) ? 'in' : /^eva_bye_/.test(f.name) ? 'out' : '';
+        const id = f.kind + f.w + 'x' + f.h + (f.kind === 'h264' ? '/' + f.level + '/' + f.frames + '/' + move : '');
         if (!made[id]) {
-            const pic = W.fit(rgba, slot.w, slot.h, f.w, f.h);
-            made[id] = { buf: f.kind === 'png' ? W.png(pic, f.w, f.h) : BOOT.stillVideo(pic, f.w, f.h, { level: f.level, frames: f.frames }), first: '' };
+            const pic = W.fit(rgba, slot.w, slot.h, f.w, f.h), o = { level: f.level, frames: f.frames, out: move === 'out' };
+            made[id] = { buf: f.kind === 'png' ? W.png(pic, f.w, f.h) : move ? BOOT.openingVideo(pic, f.w, f.h, o) : BOOT.stillVideo(pic, f.w, f.h, o), first: '' };
             if (f.kind === 'h264') { const i = BOOT.h264Info(made[id].buf); if (i.w !== f.w || i.h !== f.h || i.frames !== f.frames) throw new Error('video made wrong'); }
         }
         return { f, m: made[id] };
