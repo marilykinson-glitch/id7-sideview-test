@@ -2,7 +2,7 @@
   "id": "anh_dai_dien",
   "title": "Ảnh đại diện",
   "description": "Đổi ảnh đại diện của profile trên xe bằng ảnh của bạn: quét mã QR, chọn ảnh trên điện thoại, cắt vuông. Xe không cần Connected Drive. Cần trợ thủ anh-dai-dien (tự cài kèm); hình gốc được sao lưu và khôi phục được.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "vendor": "custom",
   "loggingId": "OAAD",
   "signals": {},

@@ -25,6 +25,12 @@ h1{margin:0;font-size:28px;letter-spacing:.2px}
 .tile:active{transform:scale(.97)}
 .num{position:absolute;left:8px;top:8px;min-width:26px;height:26px;padding:0 8px;border-radius:13px;background:rgba(10,14,20,.72);backdrop-filter:blur(6px);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
 .chg{position:absolute;right:8px;bottom:8px;padding:2px 9px;border-radius:11px;background:rgba(47,210,122,.9);color:#04150c;font-size:12px;font-weight:700}
+.sec{margin:26px 2px 0;font-size:13px;font-weight:700;letter-spacing:1.6px;color:var(--acc2);text-transform:uppercase}
+.sec+.hint{margin-top:6px}
+.grid.wide{grid-template-columns:repeat(2,1fr)}
+.cap{position:absolute;left:0;right:0;bottom:0;padding:26px 10px 9px;text-align:left;background:linear-gradient(transparent,rgba(6,9,14,.9));font-weight:700;font-size:14.5px;line-height:1.2}
+.cap small{display:block;font-weight:400;font-size:11.5px;color:#b9c6d8;margin-top:2px}
+.tile .chg.top{bottom:auto;top:8px}
 .btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:999px;padding:14px 20px;font:inherit;font-weight:600;cursor:pointer;width:100%}
 .btn:active{filter:brightness(1.2)}
 .btn.pri{background:linear-gradient(180deg,#3b95ff,#1d6fe0);border-color:#4aa0ff;color:#fff}
@@ -43,7 +49,7 @@ h1{margin:0;font-size:28px;letter-spacing:.2px}
 .crop{position:relative;width:100%;aspect-ratio:1;border-radius:22px;overflow:hidden;background:#000;border:1px solid var(--line);touch-action:none}
 .crop canvas{width:100%;height:100%;display:block}
 .guide{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(255,255,255,.28);border-radius:22px;background:linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.22)) 33.3% 0/1px 100% no-repeat,linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.22)) 66.6% 0/1px 100% no-repeat,linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.22)) 0 33.3%/100% 1px no-repeat,linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.22)) 0 66.6%/100% 1px no-repeat}
-.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--dim);text-align:center;padding:20px}
+.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#dfe7f2;text-align:center;padding:20px;background:rgba(8,11,16,.62)}
 .empty svg{width:54px;height:54px;opacity:.7}
 .ctl{margin:16px auto 0;width:min(86vw,380px);display:flex;flex-direction:column;gap:12px}
 .zoom{display:flex;align-items:center;gap:12px;color:var(--dim);font-size:13px}
@@ -66,7 +72,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
   <header>
     <div class="stripes"><i></i><i></i><i></i></div>
     <h1>Ảnh đại diện</h1>
-    <p class="sub">Đặt ảnh của bạn vào danh sách hình chọn trên màn hình xe.</p>
+    <p class="sub">Đặt ảnh của bạn lên màn hình xe: ảnh đại diện của profile và các hình mặc định.</p>
   </header>
 
   <section id="pinBox" class="pin hide">
@@ -79,8 +85,14 @@ input[type=range]{flex:1;accent-color:var(--acc)}
   <section id="main" class="hide">
     <div class="err" id="err"></div>
     <div class="banner" id="restart"><b>Khởi động lại màn hình xe để thấy hình mới.</b> Giữ nút nguồn/âm lượng khoảng 30 giây, hoặc khóa xe và chờ xe ngủ.</div>
+    <div class="sec">Ảnh đại diện</div>
     <p class="hint">Chạm vào một hình để thay bằng ảnh của bạn. Số hình là thứ tự trong danh sách chọn ảnh trên xe.</p>
     <div class="grid" id="grid"></div>
+    <div id="moreBox" class="hide">
+      <div class="sec">Hình mặc định</div>
+      <p class="hint">Hình xe hiện khi không có ảnh bìa hay ảnh người gọi. Thay bằng ảnh bạn thích.</p>
+      <div class="grid wide" id="more"></div>
+    </div>
     <div class="foot">
       <button class="btn danger" id="resetAll">Khôi phục tất cả hình gốc</button>
       <p>Hình gốc của xe được sao lưu trước khi đổi gì, nên khôi phục lại được bất cứ lúc nào.</p>
@@ -105,8 +117,8 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     <input type="file" id="file" accept="image/*" class="hide">
     <button class="btn" id="pick">Chọn ảnh từ điện thoại</button>
     <div class="row hide" id="editRow"><button class="btn" id="rot">Xoay 90°</button><button class="btn pri" id="use">Dùng ảnh này</button></div>
-    <button class="btn danger hide" id="resetOne">Khôi phục hình gốc số này</button>
-    <p class="small">Ảnh được cắt vuông 570 × 570. Bạn sẽ thấy đúng phần trong khung.</p>
+    <button class="btn danger hide" id="resetOne">Khôi phục hình gốc</button>
+    <p class="small" id="note">Ảnh được cắt vuông. Bạn sẽ thấy đúng phần trong khung.</p>
   </div>
 </div>
 
@@ -117,7 +129,9 @@ input[type=range]{flex:1;accent-color:var(--acc)}
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var S = 570, pin = '', rev = 0, cur = 0, state = null;
+  var S = 570, pin = '', rev = 0, cur = null, state = null;
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function name(s) { return s.n <= 15 ? 'hình số ' + s.n : 'hình “' + s.label + '”'; }
 
   function qs() { var m = /[?&]pin=(\d+)/.exec(location.search); return m ? m[1] : ''; }
   function api(path, opt) {
@@ -149,10 +163,18 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     (j.slots || []).forEach(function (s) {
       var b = document.createElement('button'); b.className = 'tile';
       b.innerHTML = '<img alt="" src="/api/thumb/' + s.n + '?pin=' + pin + '&r=' + rev + '"><span class="num">' + s.n + '</span>' + (s.changed ? '<span class="chg">Đã đổi</span>' : '');
-      b.onclick = function () { openSheet(s.n, s.changed); };
+      b.onclick = function () { openSheet(s); };
       g.appendChild(b);
     });
-    $('resetAll').disabled = !j.backup || !(j.slots || []).some(function (s) { return s.changed; });
+    var m = $('more'); m.innerHTML = '';
+    (j.more || []).forEach(function (s) {
+      var b = document.createElement('button'); b.className = 'tile';
+      b.innerHTML = '<img alt="" src="/api/thumb/' + s.n + '?pin=' + pin + '&r=' + rev + '">' + (s.changed ? '<span class="chg top">Đã đổi</span>' : '') + '<span class="cap">' + esc(s.label) + '<small>' + esc(s.where || '') + '</small></span>';
+      b.onclick = function () { openSheet(s); };
+      m.appendChild(b);
+    });
+    $('moreBox').className = (j.more || []).length ? '' : 'hide';
+    $('resetAll').disabled = !j.backup || !j.anyChanged;
   }
   function refresh() { return api('/api/state').then(function (j) { if (j.ok) show(j); }); }
 
@@ -178,9 +200,12 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     $('empty').className = 'empty hide'; $('zoomRow').className = 'zoom'; $('editRow').className = 'row'; $('zoom').value = 0;
     $('pick').textContent = 'Chọn ảnh khác';
   }
-  function openSheet(n, changed) {
-    cur = n; img = null; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S, S);
-    $('shTitle').textContent = 'Hình số ' + n;
+  function openSheet(s) {
+    cur = s; S = s.size || 570; cv.width = S; cv.height = S; pts = {};
+    var n = s.n, changed = s.changed;
+    img = null; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S, S);
+    $('shTitle').textContent = s.n <= 15 ? 'Hình số ' + n : s.label;
+    $('note').textContent = (s.where ? 'Hiện ' + s.where + '. ' : '') + 'Ảnh được cắt vuông, bạn sẽ thấy đúng phần trong khung.';
     $('empty').className = 'empty'; $('zoomRow').className = 'zoom hide'; $('editRow').className = 'row hide';
     $('resetOne').className = 'btn danger' + (changed ? '' : ' hide'); $('pick').textContent = 'Chọn ảnh từ điện thoại';
     var t = new Image(); t.onload = function () { if (!img) { ctx.drawImage(t, 0, 0, S, S); } }; t.src = '/api/thumb/' + n + '?pin=' + pin + '&r=' + rev;
@@ -233,17 +258,17 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     var x = out.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, S, S); x.drawImage(img, ox, oy, img.width * k, img.height * k);
     var data = x.getImageData(0, 0, S, S).data;
     busy(true, 'Đang gửi ảnh lên xe…');
-    api('/api/picture/' + cur, { method: 'POST', body: data.buffer, headers: { 'Content-Type': 'application/octet-stream' } }).then(function (j) {
+    api('/api/picture/' + cur.n, { method: 'POST', body: data.buffer, headers: { 'Content-Type': 'application/octet-stream' } }).then(function (j) {
       busy(false);
-      if (j.ok) { closeSheet(); toast('Đã đổi hình số ' + cur + '. Khởi động lại màn hình xe để thấy.', 'go'); refresh(); }
+      if (j.ok) { closeSheet(); toast('Đã đổi ' + name(cur) + '. Khởi động lại màn hình xe để thấy.', 'go'); refresh(); }
       else toast(j.error || 'Không đổi được', 'crit');
     }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
   };
   $('resetOne').onclick = function () {
     busy(true, 'Đang khôi phục…');
-    api('/api/restore/' + cur, { method: 'POST' }).then(function (j) {
+    api('/api/restore/' + cur.n, { method: 'POST' }).then(function (j) {
       busy(false);
-      if (j.ok) { closeSheet(); toast('Đã khôi phục hình số ' + cur + '.', 'go'); refresh(); } else toast(j.error || 'Không khôi phục được', 'crit');
+      if (j.ok) { closeSheet(); toast('Đã khôi phục ' + name(cur) + '.', 'go'); refresh(); } else toast(j.error || 'Không khôi phục được', 'crit');
     }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
   };
   var armed = 0;

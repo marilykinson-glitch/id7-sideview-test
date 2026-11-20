@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Draws the Ảnh đại diện screen in a few states to PNG files:
- *   node scripts/render_ui_avatar.js <out dir> [wbitmaps.res wbitmaps.res.ids]
+ *   node scripts/render_ui_avatar.js <out dir> [wbitmaps.res wbitmaps.res.ids | the tool's run folder]
  * Uses the built app's kit (dist/anh_dai_dien, with the Vietnamese fonts): build first. With a bundle the
  * fifteen pictures are the real ones, else flat colours.
  */
@@ -22,7 +22,8 @@ const theme = themes.theme(themes.ids ? (Array.isArray(themes.ids) ? themes.ids[
 
 const thumbs = {};
 for (let n = 1; n <= 15; n++) {
-    if (process.argv[3]) {
+    if (process.argv[3] && !process.argv[4]) thumbs[n] = fs.readFileSync(path.join(process.argv[3], 't' + (n < 10 ? '0' : '') + n + '.rgba'));
+    else if (process.argv[3]) {
         if (n === 1) global.B = new W.Bundle(fs.readFileSync(process.argv[3]), fs.readFileSync(process.argv[4], 'utf8'));
         const full = W.flipRows(global.B.rgba('S' + (n < 10 ? '0' : '') + n), W.SIZE, W.SIZE);
         thumbs[n] = W.shrink(full, W.SIZE, W.SIZE, UI.SMALL);
@@ -33,14 +34,15 @@ for (let n = 1; n <= 15; n++) {
     }
 }
 const slots = (changed) => Array.from({ length: 15 }, (_, i) => ({ n: i + 1, changed: changed.indexOf(i + 1) >= 0 }));
-const base = { state: 'ok', url: 'http://192.168.43.15:8137/?pin=4821', host: '192.168.43.15:8137', pin: '4821', slots: slots([]), thumbs, version: 'Bản 0.1.0', message: 'Sẵn sàng.', messageKind: 'dim', anyChanged: false };
+const more = (changed) => ['Nhạc Bluetooth', 'Nhạc USB', 'Nhạc', 'Radio FM', 'Radio AM', 'Radio', 'Người gọi'].map((label, i) => ({ n: 21 + i, label, changed: changed.indexOf(21 + i) >= 0 }));
+const base = { state: 'ok', more: more([]), url: 'http://192.168.43.15:8137/?pin=4821', host: '192.168.43.15:8137', pin: '4821', slots: slots([]), thumbs, version: 'Bản 0.2.0', message: 'Sẵn sàng.', messageKind: 'dim', anyChanged: false };
 const states = {
     '1-san-sang': base,
-    '2-da-doi': Object.assign({}, base, { slots: slots([3, 7]), anyChanged: true, needsRestart: true, message: 'Đã đổi hình số 7. Khởi động lại màn hình xe để thấy.', messageKind: 'go' }),
+    '2-da-doi': Object.assign({}, base, { slots: slots([2, 7]), more: more([21, 27]), anyChanged: true, needsRestart: true, message: 'Đã đổi hình số 7. Khởi động lại màn hình xe để thấy.', messageKind: 'go' }),
     '3-dang-ghi': Object.assign({}, base, { busy: true, slots: slots([3]), anyChanged: true }),
     '4-chua-co-mang': Object.assign({}, base, { url: '', host: '', pin: '4821' }),
-    '5-tro-thu-chua-chay': { state: 'down', slots: [], thumbs: {}, version: 'Bản 0.1.0' },
-    '6-goi-la': { state: 'bad', error: 'Gói ảnh có cấu trúc lạ (pictures are not back to back)', slots: [], thumbs: {}, version: 'Bản 0.1.0' },
+    '5-tro-thu-chua-chay': { state: 'down', slots: [], thumbs: {}, version: 'Bản 0.2.0' },
+    '6-goi-la': { state: 'bad', error: 'Gói ảnh có cấu trúc lạ (pictures are not back to back)', slots: [], thumbs: {}, version: 'Bản 0.2.0' },
 };
 Object.keys(states).forEach((k) => {
     const r = new Recorder(UI.W, UI.H, { textScale: 1 });

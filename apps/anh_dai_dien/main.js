@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Ảnh đại diện - the screen of the tool anh-dai-dien (tools/anh-dai-dien), which does the work: a web page
- * for the phone (pick a photo, crop it square), writing it into the head unit's avatar bundle, the backup and
+ * for the phone (pick a photo, crop it square), writing it into the head unit's picture bundles, the backup and
  * the restore. This app shows how to reach the page (a QR code and a PIN), the fifteen pictures as they are on
  * the car now, and has the two buttons: a new PIN, restore everything.
  *
@@ -59,16 +59,16 @@ mgu.run({
             const hostOf = (u) => String(u || '').replace(/^http:\/\//, '').replace(/\/\?pin=\d+$/, '');
             return {
                 state: !s ? 'down' : !s.compatible ? 'bad' : 'ok', error: s && s.error, url: s && s.url, host: s && hostOf(s.url), pin: s && s.pin,
-                slots: s && s.compatible ? s.slots : [], thumbs, message: s && s.message, messageKind: s && s.messageKind,
+                slots: s && s.compatible ? s.slots : [], more: s && s.compatible ? (s.more || []) : [], thumbs, message: s && s.message, messageKind: s && s.messageKind,
                 needsRestart: !!(s && s.needsRestart), busy: !!(s && s.busy), backup: s && s.backup,
-                anyChanged: !!(s && (s.slots || []).some((x) => x.changed)), version,
+                anyChanged: !!(s && (s.anyChanged || (s.slots || []).some((x) => x.changed))), version,
             };
         }
 
         const render = async () => {
             const m = model();
             const vis = ui.isVisible('MAIN');
-            const key = JSON.stringify([m.state, m.error, m.url, m.pin, m.slots, thumbRev, m.message, m.messageKind, m.needsRestart, m.busy, m.anyChanged, vis]);
+            const key = JSON.stringify([m.state, m.error, m.url, m.pin, m.slots, m.more, thumbRev, m.message, m.messageKind, m.needsRestart, m.busy, m.anyChanged, vis]);
             if (key === lastKey && shown) return;
             lastKey = key; shown = true;
             const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);

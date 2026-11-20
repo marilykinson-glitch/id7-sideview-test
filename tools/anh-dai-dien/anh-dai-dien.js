@@ -1,18 +1,22 @@
 'use strict';
 /**
- * anh-dai-dien: swaps the pictures of the profile picker (the avatar bundle wbitmaps.res of assetDB, see wbm.js)
- * for photos the owner sends from a phone, and puts the originals back.
+ * anh-dai-dien: swaps pictures of the head unit's screens for photos the owner sends from a phone, and puts the
+ * originals back. The pictures live in bundles (wbitmaps.res, see wbm.js) under assetDB:
+ *
+ *   the fifteen profile pictures   three bundles: 570x570 (the picker), 84x72 and 72x72 icons (lists, the status bar)
+ *   placeholder pictures           one bundle each, 4 sizes x 2 colours: what a media source shows without a cover
+ *                                  (Bluetooth, USB, music, radio), the caller without a photo
  *
  *   the phone   -> http://<head unit>:8137/?pin=NNNN   a page (page.html) to pick a photo, crop it, send it
  *   the app     -> <its folder>/data/command.json       { id, cmd: 'restore_all' | 'new_pin' }
  *   this        -> /run/anh-dai-dien/status.json        what the app shows: address, PIN, pictures, messages
- *                  /run/anh-dai-dien/t01.rgba..t15.rgba the fifteen pictures at 96x96 for the app (top-down RGBA)
+ *                  /run/anh-dai-dien/t01.rgba..t15.rgba the fifteen profile pictures at 96x96 for the app (top-down RGBA)
  *
- * The bundle sits on a read-only partition: a write remounts it read-write for a moment, writes a new file next
- * to the old one, flips it in with one rename and mounts it read-only again. The original bundle is copied to
- * /var/opt/anh-dai-dien/backup once, before the first change (from /var/opt/avatar_backup if the owner made a
- * copy by hand), and is what "restore" puts back. The head unit reads the pictures at start-up: a restart of the
- * screen shows the change.
+ * The bundles sit on a read-only partition: a write remounts it read-write for a moment, writes a new file next
+ * to the old one, flips it in with one rename and mounts it read-only again. Each bundle's original is copied to
+ * /var/opt/anh-dai-dien/backup once, before its first change (the profile pictures' from /var/opt/avatar_backup if
+ * the owner made a copy by hand), and is what "restore" puts back. A bundle whose layout is not the one known is
+ * left alone. The head unit reads the pictures at start-up: a restart of the screen shows the change.
  *
  * The phone page needs the PIN the app shows (4 digits; five wrong guesses lock an address for a minute).
  *
@@ -29,10 +33,13 @@ const crypto = require('crypto');
 const cp = require('child_process');
 const W = require('./wbm');
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
+const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
+const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
 const CFG = {
-    dir: env('AVATAR_DIR', '/mnt/dataro/dataro1/hmi/bmw/id7/assetDB/High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar'),
+    root: env('AVATAR_ROOT', '/mnt/dataro/dataro1/hmi/bmw/id7/assetDB'),
+    dir: env('AVATAR_DIR', ''),                         // the profile pictures' bundle, if not under the root (tests)
     mount: process.env.AVATAR_MOUNT !== undefined ? process.env.AVATAR_MOUNT : '/mnt/dataro',   // '' = nothing to remount (tests)
     state: env('AVATAR_STATE', '/var/opt/anh-dai-dien'),
     legacy: env('AVATAR_LEGACY', '/var/opt/avatar_backup'),
@@ -43,14 +50,23 @@ const CFG = {
     scanMs: Number(env('AVATAR_SCAN_MS', 5000)),        // how often the app is looked for while it is missing
 };
 const APP = /^anh_dai_dien\d*$/;
-const SLOTS = 15, THUMB = 256, SMALL = 96;
-const RES = () => path.join(CFG.dir, 'wbitmaps.res');
-const IDS = () => path.join(CFG.dir, 'wbitmaps.res.ids');
-const BK = () => path.join(CFG.state, 'backup', 'wbitmaps.res.orig');
+const SLOTS = 15, THUMB = 256, SMALL = 96, MORE0 = 21;
 const key = (n) => 'S' + (n < 10 ? '0' : '') + n;
 const two = (n) => (n < 10 ? '0' : '') + n;
 const mkdirp = (d) => { if (fs.existsSync(d)) return; mkdirp(path.dirname(d)); try { fs.mkdirSync(d); } catch (e) { if (e.code !== 'EEXIST') throw e; } };
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return null; } };
+
+/* The placeholder pictures: [bundle folder under Replacement/4_sizes, what the phone page calls it, where the car shows it]. */
+const MORE = [
+    ['replacement_media_wireless_bluetooth', 'Nhạc Bluetooth', 'khi phát nhạc Bluetooth không có ảnh bìa'],
+    ['replacement_media_plug_usb', 'Nhạc USB', 'khi phát nhạc USB không có ảnh bìa'],
+    ['replacement_media_musiccontent_music', 'Nhạc', 'bài hát không có ảnh bìa'],
+    ['replacement_media_radio_fm', 'Radio FM', 'đài FM không có logo'],
+    ['replacement_media_radio_am', 'Radio AM', 'đài AM không có logo'],
+    ['replacement_media_radio', 'Radio', 'đài không có logo'],
+    ['replacement_communication_call_anonymous', 'Người gọi', 'cuộc gọi của người không có ảnh'],
+];
+const SIZES4 = [570, 735, 1008, 1305], COLOURS = ['blue', 'red'];
 
 function log(m) {
     process.stdout.write(m + '\n');
@@ -62,8 +78,10 @@ function log(m) {
 }
 
 /* ---------------- state ---------------- */
+// A bundle: { id, dir, bk (its original's copy), usable, error, changed: { key: true } }. Its bytes are read when needed, not kept.
+// A slot (one picture the owner sets): { n, label, where, size (what the phone sends, square), targets: [{ b, key, w, h, box }] }.
 const S = {
-    bundle: null, ids: '', backup: null, backupNote: '', compatible: false, error: '',
+    bundles: {}, slots: {}, compatible: false, error: '', backupNote: '', smallIcons: false,
     thumbs: {}, rev: 0, busy: false, message: '', messageKind: 'dim', needsRestart: false, pin: '', port: 0, startedAt: Date.now(),
 };
 let queue = Promise.resolve();
@@ -74,50 +92,48 @@ const newPin = () => String(1000 + crypto.randomBytes(2).readUInt16BE(0) % 9000)
 
 function say(kind, text) { S.messageKind = kind; S.message = text; S.rev++; writeStatus(); }
 
-/** Reads the bundle and decides whether it is the layout this knows. */
-function load() {
-    S.compatible = false; S.error = '';
-    let data, ids;
-    try { data = fs.readFileSync(RES()); ids = fs.readFileSync(IDS(), 'utf8'); } catch (e) { S.error = 'không đọc được gói ảnh: ' + e.message; return false; }
-    try { S.bundle = W.selfTest(data, ids); S.ids = ids; } catch (e) { S.error = 'gói ảnh có cấu trúc lạ (' + e.message + ')'; S.bundle = null; return false; }
-    for (let n = 1; n <= SLOTS; n++) if (!S.bundle.byKey[key(n)]) { S.error = 'thiếu hình ' + key(n); S.bundle = null; return false; }
-    S.compatible = true;
+const RES = (b) => path.join(b.dir, 'wbitmaps.res');
+const readBundle = (b) => new W.Bundle(fs.readFileSync(RES(b)), b.ids);
+const readOriginal = (b) => new W.Bundle(fs.readFileSync(b.bk), b.ids);
+
+function bundle(id, dir, bkName) {
+    const b = { id, dir, bk: path.join(CFG.state, 'backup', bkName), ids: '', usable: false, error: '', changed: {}, note: '' };
+    S.bundles[id] = b;
+    return b;
+}
+
+/** Reads a bundle, checks it is the layout this knows and has the pictures `want` ([{ key, w, h }]) at those sizes. */
+function check(b, want) {
+    let data;
+    try { data = fs.readFileSync(RES(b)); b.ids = fs.readFileSync(RES(b) + '.ids', 'utf8'); } catch (e) { b.error = 'không đọc được gói ảnh: ' + e.message; b.missing = e.code === 'ENOENT'; return null; }
+    let parsed;
+    try { parsed = W.selfTest(data, b.ids); } catch (e) { b.error = 'gói ảnh có cấu trúc lạ (' + e.message + ')'; return null; }
+    for (let i = 0; i < want.length; i++) {
+        const e = parsed.byKey[want[i].key];
+        if (!e) { b.error = 'thiếu hình ' + want[i].key; return null; }
+        if (e.w !== want[i].w || e.h !== want[i].h) { b.error = 'hình ' + want[i].key + ' có cỡ lạ ' + e.w + 'x' + e.h; return null; }
+    }
+    return parsed;
+}
+
+/** The bundle's original, copied once (from `legacy` if that is a copy the owner made); then which pictures differ from it. */
+function backup(b, current, legacy) {
+    let orig = null;
+    try { orig = readOriginal(b); b.note = 'đã có bản gốc'; } catch (e) { orig = null; }
+    if (!orig) {
+        let from = RES(b); orig = current; b.note = 'bản gốc lấy từ gói hiện tại';
+        if (legacy) { try { orig = new W.Bundle(fs.readFileSync(legacy), b.ids); from = legacy; b.note = 'bản gốc do chủ xe sao lưu tay'; } catch (e) { orig = current; } }
+        try {
+            mkdirp(path.dirname(b.bk));
+            fs.writeFileSync(b.bk + '.tmp', fs.readFileSync(from));
+            fs.renameSync(b.bk + '.tmp', b.bk);
+            log('backup ' + b.id + ': ' + b.note + ' (' + from + ')');
+        } catch (e) { b.error = 'không sao lưu được: ' + e.message; log('backup ' + b.id + ' failed: ' + e.message); return false; }
+    }
+    b.changed = {};
+    current.entries.forEach((e) => { if (!orig.byKey[e.key] || Buffer.compare(current.blob(e.key), orig.blob(e.key)) !== 0) b.changed[e.key] = true; });
     return true;
 }
-
-function parsesWithCurrentIds(file) {
-    try { return new W.Bundle(fs.readFileSync(file), S.ids); } catch (e) { return null; }
-}
-
-/** The original bundle, copied once; S.backup is the parsed copy. */
-function ensureBackup() {
-    if (!S.compatible) return;
-    let b = parsesWithCurrentIds(BK());
-    if (b) { S.backup = b; S.backupNote = 'đã có bản gốc'; return; }
-    const legacy = path.join(CFG.legacy, 'wbitmaps.res.orig');
-    let from = legacy, note = 'bản gốc do chủ xe sao lưu tay';
-    b = parsesWithCurrentIds(legacy);
-    if (!b) { from = RES(); note = 'bản gốc lấy từ gói hiện tại'; b = S.bundle; }
-    try {
-        mkdirp(path.dirname(BK()));
-        const tmp = BK() + '.tmp';
-        fs.writeFileSync(tmp, fs.readFileSync(from));
-        fs.renameSync(tmp, BK());
-        S.backup = b; S.backupNote = note;
-        log('backup: ' + note + ' (' + from + ')');
-    } catch (e) { S.backup = null; S.error = 'không sao lưu được: ' + e.message; S.compatible = false; log('backup failed: ' + e.message); }
-}
-
-const changed = (n) => !!(S.backup && Buffer.compare(S.bundle.blob(key(n)), S.backup.blob(key(n))) !== 0);
-
-function topDown(n) { return W.flipRows(S.bundle.rgba(key(n)), W.SIZE, W.SIZE); }
-
-function makeThumb(n) {
-    const full = topDown(n);
-    S.thumbs[n] = { png: W.png(W.shrink(full, W.SIZE, W.SIZE, THUMB), THUMB, THUMB), changed: changed(n) };
-    try { writeAtomic(path.join(CFG.run, 't' + two(n) + '.rgba'), W.shrink(full, W.SIZE, W.SIZE, SMALL)); } catch (e) { /* no RAM folder (tests) */ }
-}
-function makeThumbs() { for (let n = 1; n <= SLOTS; n++) makeThumb(n); S.rev++; }
 
 function writeAtomic(file, data) {
     mkdirp(path.dirname(file));
@@ -126,67 +142,153 @@ function writeAtomic(file, data) {
     fs.renameSync(tmp, file);
 }
 
-/* ---------------- writing the bundle ---------------- */
+function thumb(n, topDown, size) {
+    S.thumbs[n] = W.png(W.shrink(topDown, size, size, THUMB), THUMB, THUMB);
+    if (n <= SLOTS) { try { writeAtomic(path.join(CFG.run, 't' + two(n) + '.rgba'), W.shrink(topDown, size, size, SMALL)); } catch (e) { /* no RAM folder (tests) */ } }
+}
+/** A slot's picture as the car has it now: from its first target (the largest the page shows well). */
+function thumbFrom(slot, parsed) {
+    const t = slot.targets[0];
+    thumb(slot.n, W.flipRows(parsed.rgba(t.key), t.w, t.h), t.w);
+}
+
+/** Looks at every bundle and makes the list of pictures that can be set. False if the profile pictures cannot. */
+function load() {
+    S.bundles = {}; S.slots = {}; S.thumbs = {}; S.compatible = false; S.error = ''; S.smallIcons = false; S.backupNote = '';
+    const keys = []; for (let n = 1; n <= SLOTS; n++) keys.push(key(n));
+    const big = bundle('avatar', CFG.dir || path.join(CFG.root, AVATAR_REL), 'wbitmaps.res.orig');
+    const parsed = check(big, keys.map((k) => ({ key: k, w: W.SIZE, h: W.SIZE })));
+    if (!parsed) { S.error = big.error; return false; }
+    if (!backup(big, parsed, path.join(CFG.legacy, 'wbitmaps.res.orig'))) { S.error = big.error; return false; }
+    big.usable = true; S.backupNote = big.note;
+    // the two icon bundles: optional, the picker works without them
+    const icons = [['avatar-regular', 'icons/Class_regular/MyVehicle_Avatar', 84, 72, [1, 1, 82, 70]], ['avatar-status', 'icons/Class_status/MyVehicle_Avatar', 72, 72, [9, 9, 54, 54]]].map((d) => {
+        const b = bundle(d[0], path.join(CFG.root, d[1]), d[0] + '.res.orig');
+        const p = check(b, keys.map((k) => ({ key: k, w: d[2], h: d[3] })));
+        b.usable = !!(p && backup(b, p));
+        if (!b.usable && !b.missing) log(b.id + ' not usable: ' + b.error);
+        return { b, w: d[2], h: d[3], box: d[4] };
+    });
+    S.smallIcons = icons.every((i) => i.b.usable);
+    for (let n = 1; n <= SLOTS; n++) {
+        const targets = [{ b: big, key: key(n), w: W.SIZE, h: W.SIZE }];
+        icons.forEach((i) => { if (i.b.usable) targets.push({ b: i.b, key: key(n), w: i.w, h: i.h, box: i.box }); });
+        S.slots[n] = { n, label: 'Hình số ' + n, where: '', size: W.SIZE, targets };
+        thumbFrom(S.slots[n], parsed);
+    }
+    // the placeholder pictures: each only if its bundle is on this car and is what is expected
+    MORE.forEach((d, i) => {
+        const b = bundle(d[0], path.join(CFG.root, REPL_REL + d[0]), d[0] + '.res.orig');
+        const want = [];
+        SIZES4.slice().reverse().forEach((sz) => COLOURS.forEach((c) => want.push({ key: sz + '_' + c, w: sz, h: sz })));
+        const p = check(b, want);
+        b.usable = !!(p && p.entries.length === want.length && backup(b, p));
+        if (!b.usable) { if (!b.missing) log(b.id + ' not usable: ' + (b.error || 'other pictures than expected')); return; }
+        const n = MORE0 + i;
+        S.slots[n] = { n, label: d[1], where: d[2], size: 1305, targets: want.map((w) => ({ b, key: w.key, w: w.w, h: w.h })) };
+        thumbFrom(S.slots[n], p);
+    });
+    S.compatible = true; S.rev++;
+    return true;
+}
+
+const slotChanged = (slot) => slot.targets.some((t) => !!t.b.changed[t.key]);
+const anyChanged = () => Object.keys(S.bundles).some((id) => Object.keys(S.bundles[id].changed).length > 0);
+
+/* ---------------- writing the bundles ---------------- */
 function run(cmd, args) {
     return new Promise((resolve, reject) => cp.execFile(cmd, args, { timeout: 20000 }, (e, so, se) => (e ? reject(new Error(cmd + ' ' + args.join(' ') + ': ' + (String(se).trim() || e.message))) : resolve(so))));
 }
 
-/** Puts `buf` in place of the bundle: checks it first, remounts only for the copy, one rename. */
-async function commit(buf) {
-    const check = new W.Bundle(buf, S.ids);                         // throws if it is not a bundle of this layout
-    for (let n = 1; n <= SLOTS; n++) check.rgba(key(n));            // every picture decodes
-    const st = fs.statSync(RES());
+/** Runs `fn` with the partition writable; read-only again whatever happens. */
+async function writable(fn) {
     if (CFG.mount) await run('mount', ['-o', 'remount,rw', CFG.mount]);
-    const tmp = RES() + '.new';
+    try { return await fn(); } finally {
+        if (CFG.mount) { try { await run('mount', ['-o', 'remount,ro', CFG.mount]); } catch (e) { log('remount ro failed: ' + e.message); } }
+    }
+}
+
+/** Puts `buf` in place of a bundle: checks it first, a new file next to the old one, one rename. Inside writable(). */
+function commit(b, buf) {
+    const parsed = new W.Bundle(buf, b.ids);                        // throws if it is not a bundle of this layout
+    parsed.entries.forEach((e) => parsed.rgba(e.key));              // every picture decodes
+    const st = fs.statSync(RES(b));
+    const tmp = RES(b) + '.new';
     try {
         const fd = fs.openSync(tmp, 'w', 0o644);
         try { fs.writeSync(fd, buf, 0, buf.length, 0); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
         try { fs.chownSync(tmp, st.uid, st.gid); } catch (e) { /* not root (tests) */ }
         fs.chmodSync(tmp, st.mode & 0o7777);
         if (fs.statSync(tmp).size !== buf.length) throw new Error('the copy has the wrong size');
-        fs.renameSync(tmp, RES());
-        try { const d = fs.openSync(CFG.dir, 'r'); try { fs.fsyncSync(d); } finally { fs.closeSync(d); } } catch (e) { /* a folder cannot be synced everywhere */ }
+        fs.renameSync(tmp, RES(b));
+        try { const d = fs.openSync(b.dir, 'r'); try { fs.fsyncSync(d); } finally { fs.closeSync(d); } } catch (e) { /* a folder cannot be synced everywhere */ }
     } catch (e) {
         try { fs.unlinkSync(tmp); } catch (e2) { /* nothing to remove */ }
         throw e;
-    } finally {
-        if (CFG.mount) { try { await run('mount', ['-o', 'remount,ro', CFG.mount]); } catch (e) { log('remount ro failed: ' + e.message); } }
     }
-    S.bundle = check;
     S.needsRestart = true;
+    return parsed;
+}
+
+/** The slot's targets, bundle by bundle: [{ b, targets }]. */
+function byBundle(slot) {
+    const out = [];
+    slot.targets.forEach((t) => { let g = out.filter((x) => x.b === t.b)[0]; if (!g) { g = { b: t.b, targets: [] }; out.push(g); } g.targets.push(t); });
+    return out;
 }
 
 async function setPicture(n, topDownRgba) {
     return exclusive(async () => {
         if (!S.compatible) throw new Error(S.error || 'gói ảnh không dùng được');
-        if (!(n >= 1 && n <= SLOTS)) throw bad('số hình không đúng');
-        if (topDownRgba.length !== W.RAW) throw bad('ảnh không đúng cỡ ' + W.SIZE + 'x' + W.SIZE);
+        const slot = S.slots[n];
+        if (!slot) throw bad('số hình không đúng');
+        if (topDownRgba.length !== slot.size * slot.size * 4) throw bad('ảnh không đúng cỡ ' + slot.size + 'x' + slot.size);
         S.busy = true; writeStatus();
         try {
             const rgba = Buffer.from(topDownRgba);
             for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;   // opaque: a transparent corner would show the screen behind
-            await commit(S.bundle.build({ [key(n)]: W.flipRows(rgba, W.SIZE, W.SIZE) }));
-            makeThumb(n); S.rev++;
-            log('picture ' + n + ' replaced');
-            say('go', 'Đã đổi hình số ' + n + '. Khởi động lại màn hình xe để thấy.');
+            // every new file first (nothing is written if one cannot be made), then all of them in one writable moment
+            const files = byBundle(slot).map((g) => {
+                const cur = readBundle(g.b), replace = {}, made = {};
+                g.targets.forEach((t) => {
+                    const id = t.w + 'x' + t.h;                      // the two colours of a size get the same picture: made once
+                    if (!made[id]) made[id] = { blob: cur.encode(t.key, W.flipRows(W.place(rgba, slot.size, t.w, t.h, t.box), t.w, t.h)) };
+                    replace[t.key] = made[id];
+                });
+                return { g, buf: cur.build(replace) };
+            });
+            await writable(async () => files.forEach((f) => { commit(f.g.b, f.buf); f.g.targets.forEach((t) => { f.g.b.changed[t.key] = true; }); }));
+            thumb(n, rgba, slot.size); S.rev++;
+            log('picture ' + n + ' replaced (' + files.map((f) => f.g.b.id).join(', ') + ')');
+            say('go', 'Đã đổi ' + (n <= SLOTS ? 'hình số ' + n : 'hình "' + slot.label + '"') + '. Khởi động lại màn hình xe để thấy.');
         } finally { S.busy = false; writeStatus(); }
     });
 }
 
-async function restore(which) {          // a number, or 'all'
+async function restore(which) {          // a slot's number, or 'all'
     return exclusive(async () => {
-        if (!S.backup) throw bad('chưa có bản gốc để khôi phục');
+        if (!S.compatible) throw bad('chưa có bản gốc để khôi phục');
+        const slot = which === 'all' ? null : S.slots[which];
+        if (which !== 'all' && !slot) throw bad('số hình không đúng');
         S.busy = true; writeStatus();
         try {
-            if (which === 'all') await commit(fs.readFileSync(BK()));
-            else {
-                if (!(which >= 1 && which <= SLOTS)) throw bad('số hình không đúng');
-                await commit(S.bundle.build({ [key(which)]: S.backup.blob(key(which)) }));
+            if (!slot) {
+                const todo = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => b.usable && Object.keys(b.changed).length);
+                const files = todo.map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
+                await writable(async () => files.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; }));
+                Object.keys(S.slots).forEach((k) => { const s = S.slots[k]; if (todo.indexOf(s.targets[0].b) >= 0) thumbFrom(s, readOriginal(s.targets[0].b)); });
+            } else {
+                const files = byBundle(slot).map((g) => {
+                    const orig = readOriginal(g.b), replace = {};
+                    g.targets.forEach((t) => { replace[t.key] = { blob: orig.blob(t.key) }; });
+                    return { g, buf: readBundle(g.b).build(replace), orig };
+                });
+                await writable(async () => files.forEach((f) => { commit(f.g.b, f.buf); f.g.targets.forEach((t) => { delete f.g.b.changed[t.key]; }); }));
+                thumbFrom(slot, files[0].orig);
             }
-            S.bundle = new W.Bundle(fs.readFileSync(RES()), S.ids);
-            if (which === 'all') makeThumbs(); else { makeThumb(which); S.rev++; }
+            S.rev++;
             log('restored ' + which);
-            say('go', which === 'all' ? 'Đã khôi phục tất cả hình gốc. Khởi động lại màn hình xe để thấy.' : 'Đã khôi phục hình số ' + which + '. Khởi động lại màn hình xe để thấy.');
+            say('go', (!slot ? 'Đã khôi phục tất cả hình gốc.' : which <= SLOTS ? 'Đã khôi phục hình số ' + which + '.' : 'Đã khôi phục hình "' + slot.label + '".') + ' Khởi động lại màn hình xe để thấy.');
         } finally { S.busy = false; writeStatus(); }
     });
 }
@@ -205,6 +307,11 @@ function addresses() {
 }
 
 /* ---------------- status for the app ---------------- */
+function slotList(from, to) {
+    return Object.keys(S.slots).map(Number).filter((n) => n >= from && n <= to).sort((x, y) => x - y)
+        .map((n) => ({ n, changed: slotChanged(S.slots[n]), label: S.slots[n].label, where: S.slots[n].where, size: S.slots[n].size }));
+}
+
 function writeStatus() {
     const ips = addresses();
     const st = {
@@ -212,9 +319,10 @@ function writeStatus() {
         compatible: S.compatible, error: S.error, busy: S.busy,
         port: S.port, pin: S.pin, ips, url: ips.length && S.port ? 'http://' + ips[0] + ':' + S.port + '/?pin=' + S.pin : '',
         message: S.message, messageKind: S.messageKind, needsRestart: S.needsRestart,
-        backup: S.backup ? S.backupNote : '', slots: [],
+        backup: S.compatible ? S.backupNote : '', smallIcons: S.smallIcons, anyChanged: S.compatible && anyChanged(),
+        slots: S.compatible ? slotList(1, SLOTS).map((s) => ({ n: s.n, changed: s.changed })) : [],
+        more: S.compatible ? slotList(MORE0, 999).map((s) => ({ n: s.n, changed: s.changed, label: s.label })) : [],
     };
-    if (S.compatible) for (let n = 1; n <= SLOTS; n++) st.slots.push({ n, changed: !!(S.thumbs[n] && S.thumbs[n].changed) });
     try { writeAtomic(path.join(CFG.run, 'status.json'), JSON.stringify(st)); } catch (e) { /* no RAM folder (tests) */ }
     return st;
 }
@@ -275,19 +383,21 @@ async function handle(req, res) {
     if (req.method === 'GET' && p === '/api/state') {
         const st = writeStatus();
         return json(res, 200, { ok: true, version: VERSION, compatible: st.compatible, error: st.error, busy: st.busy, message: st.message,
-            messageKind: st.messageKind, needsRestart: st.needsRestart, rev: S.rev, size: W.SIZE, backup: !!S.backup, slots: st.slots });
+            messageKind: st.messageKind, needsRestart: st.needsRestart, rev: S.rev, size: W.SIZE, backup: st.compatible, smallIcons: st.smallIcons,
+            anyChanged: st.anyChanged, slots: slotList(1, SLOTS), more: slotList(MORE0, 999) });
     }
     let m = /^\/api\/thumb\/(\d+)$/.exec(p);
     if (req.method === 'GET' && m) {
         const t = S.thumbs[Number(m[1])];
         if (!t) { res.writeHead(404); return res.end(); }
-        res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': t.png.length, 'Cache-Control': 'no-store' });
-        return res.end(t.png);
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': t.length, 'Cache-Control': 'no-store' });
+        return res.end(t);
     }
     m = /^\/api\/picture\/(\d+)$/.exec(p);
     if (req.method === 'POST' && m) {
+        const slot = S.slots[Number(m[1])];
         let b;
-        try { b = await body(req, W.RAW + 1); } catch (e) { return json(res, 413, { ok: false, error: 'Ảnh quá lớn.' }); }
+        try { b = await body(req, (slot ? slot.size * slot.size * 4 : W.RAW) + 1); } catch (e) { return json(res, 413, { ok: false, error: 'Ảnh quá lớn.' }); }
         try { await setPicture(Number(m[1]), b); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
     }
     m = /^\/api\/restore\/(all|\d+)$/.exec(p);
@@ -332,9 +442,9 @@ function pollCommands() {
 function start() {
     S.pin = newPin();
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
-    if (load()) { ensureBackup(); if (S.compatible) makeThumbs(); }
+    try { load(); } catch (e) { S.compatible = false; S.error = 'lỗi khi đọc gói ảnh: ' + e.message; }
     if (!S.compatible) log('not usable: ' + S.error);
-    else say('dim', 'Sẵn sàng.');
+    else { log('pictures: ' + Object.keys(S.slots).length + ', small icons ' + (S.smallIcons ? 'yes' : 'no')); say('dim', 'Sẵn sàng.'); }
     const server = http.createServer((req, res) => handle(req, res).catch((e) => { log('request failed: ' + e.message); try { json(res, 500, { ok: false, error: e.message }); } catch (e2) { /* gone */ } }));
     let port = CFG.port;
     server.on('error', (e) => { if (e.code === 'EADDRINUSE' && port < CFG.port + 9) { port++; server.listen(port, '0.0.0.0'); } else { log('server: ' + e.message); setTimeout(() => process.exit(1), 100); } });
@@ -351,4 +461,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, load, ensureBackup, makeThumbs, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, MORE, MORE0, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

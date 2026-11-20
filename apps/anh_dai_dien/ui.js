@@ -7,6 +7,7 @@
  * and the buttons.
  *
  * v = { state: 'ok' | 'down' | 'bad', url, host, pin, slots: [{ n, changed }], thumbs: { n: RGBA 96x96 },
+ *       more: [{ n, label, changed }] (the placeholder pictures: named, not drawn),
  *       message, messageKind ('go' | 'warn' | 'crit' | 'dim'), needsRestart, busy, error, backup, anyChanged, version }
  * act = { restoreAll, newPin }
  * Node 8.
@@ -31,8 +32,8 @@ function steps(cv, G, t, x, y) {
     const acc = t.accent2 || '#81c4ff';
     const rows = [
         ['1', 'Quét mã QR bằng điện thoại', 'điện thoại và xe cùng Wi-Fi hoặc điểm phát sóng'],
-        ['2', 'Chọn số, chọn ảnh, kéo để cắt vuông', 'rồi bấm "Dùng ảnh này"'],
-        ['3', 'Khởi động lại màn hình xe', 'để danh sách chọn ảnh dùng hình mới'],
+        ['2', 'Chọn hình, chọn ảnh, kéo để cắt vuông', 'rồi bấm "Dùng ảnh này"'],
+        ['3', 'Khởi động lại màn hình xe', 'để xe dùng hình mới'],
     ];
     rows.forEach((r, i) => {
         const yy = y + i * 40;
@@ -46,7 +47,7 @@ function steps(cv, G, t, x, y) {
 
 function strip(cv, G, t, v, x, y, tile, gap) {
     const go = t.go || '#2fd27a';
-    cv.text('HÌNH HIỆN TRÊN XE', x, y - 12, 14, t.dim, { literal: true, font: 'bold', spacing: 1.5 });
+    cv.text('ẢNH ĐẠI DIỆN TRÊN XE', x, y - 12, 14, t.dim, { literal: true, font: 'bold', spacing: 1.5 });
     (v.slots || []).forEach((s, i) => {
         const tx = x + i * (tile + gap), im = v.thumbs && v.thumbs[s.n];
         if (im) pic(cv, s.n, im, tx, y, tile, tile);
@@ -54,6 +55,21 @@ function strip(cv, G, t, v, x, y, tile, gap) {
         cv.strokeRoundRect(tx, y, tile, tile, 4, s.changed ? 3 : 1.5, s.changed ? go : G.withAlpha('#ffffff', 0.28));
         cv.roundRect(tx + 4, y + 4, 22, 20, 6, G.withAlpha('#000000', 0.62));
         cv.text(String(s.n), tx + 15, y + 20, 14, '#ffffff', { literal: true, align: 'center', font: 'bold' });
+    });
+}
+
+/** The placeholder pictures by name: a green one is the owner's, a grey one the car's. */
+function chips(cv, G, t, v, x, y) {
+    const go = t.go || '#2fd27a';
+    const label = 'HÌNH MẶC ĐỊNH';
+    cv.text(label, x, y + 5, 14, t.dim, { literal: true, font: 'bold', spacing: 1.5 });
+    let cx = x + cv.textWidth(label, 14, { literal: true, font: 'bold', spacing: 1.5 }) + 18;
+    (v.more || []).forEach((m) => {
+        const w = cv.textWidth(m.label, 15, { literal: true, font: 'label' }) + 24;
+        if (cx + w > W - 64) return;
+        cv.strokeRoundRect(cx, y - 14, w, 28, 14, m.changed ? 2 : 1.2, m.changed ? go : G.withAlpha('#ffffff', 0.25));
+        cv.text(m.label, cx + w / 2, y + 5, 15, m.changed ? go : t.dim, { literal: true, align: 'center', font: 'label' });
+        cx += w + 8;
     });
 }
 
@@ -96,6 +112,7 @@ function draw(cv, G, t, v, act) {
         const tile = 56, gap = 8;
         strip(cv, G, t, v, rx, G.TOP + 288, tile, gap);
     }
+    if (v.more && v.more.length) chips(cv, G, t, v, rx, G.TOP + 372);
 
     // the last message and the buttons
     const by = bottom - 54;

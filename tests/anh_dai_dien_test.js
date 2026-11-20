@@ -1,9 +1,11 @@
 'use strict';
 /**
  * Tests of Ảnh đại diện: the bundle reader/writer (tools/anh-dai-dien/wbm.js) on a bundle made here in the
- * layout of the car's wbitmaps.res, the service end to end over HTTP (PIN, upload, restore, backup, the app's
+ * layout of the car's wbitmaps.res files (the profile pictures, their icons, a placeholder cover), the service end
+ * to end over HTTP (PIN, upload, restore, backup, the app's
  * commands, a bundle it does not know), and the car screen's drawing.
- *   node tests/anh_dai_dien_test.js          (with AVATAR_REAL_RES + AVATAR_REAL_IDS: also the car's real bundle)
+ *   node tests/anh_dai_dien_test.js          (with AVATAR_REAL_RES + AVATAR_REAL_IDS: also the car's real bundle;
+ *                                             with AVATAR_REAL_TREE: every bundle in a folder copied from a car)
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -18,40 +20,48 @@ const W = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'wbm.js'));
 let n = 0;
 const ok = (name) => { n++; console.log('ok ' + n + ' - ' + name); };
 
-/* ---------- a bundle like the car's, made here ---------- */
+/* ---------- bundles like the car's, made here ---------- */
 const KEYS = []; for (let i = 0; i <= 20; i++) KEYS.push('S' + (i < 10 ? '0' : '') + i);
-function picture(seed) {                      // 570x570 RGBA: smooth, with edges, so LZ4 finds matches and literals
-    const b = Buffer.alloc(W.RAW);
-    for (let y = 0; y < W.SIZE; y++) for (let x = 0; x < W.SIZE; x++) {
-        const p = (y * W.SIZE + x) * 4, edge = ((x >> 5) + (y >> 6) + seed) & 3;
-        b[p] = (x * 255 / W.SIZE + seed * 9) & 255; b[p + 1] = (y * 255 / W.SIZE) & 255; b[p + 2] = edge * 60 + (seed * 7 & 31); b[p + 3] = 255;
+function picture(seed, w, h) {                // RGBA: smooth, with edges, so LZ4 finds matches and literals
+    w = w || W.SIZE; h = h || w;
+    const b = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const p = (y * w + x) * 4, edge = ((x >> 5) + (y >> 6) + seed) & 3;
+        b[p] = (x * 255 / w + seed * 9) & 255; b[p + 1] = (y * 255 / h) & 255; b[p + 2] = edge * 60 + (seed * 7 & 31); b[p + 3] = 255;
     }
     return b;
 }
-function makeBundle() {
+/** A bundle of the pictures `pics` ([{ name, w, h }]), in the order given. */
+function makeBundle(pics) {
+    pics = pics || KEYS.map((k) => ({ name: 'MyVehicle_Avatar_Icon_V001_' + k + '.png', w: W.SIZE, h: W.SIZE }));
+    const n = pics.length;
     const head = Buffer.from('[RamsesVersion:19.0.14]\n[GitHash:test]\n', 'latin1');
     const idsLines = [], tabA = [], tabB = [], blobs = [];
-    KEYS.forEach((k, i) => {
-        const content = crypto.randomBytes(16), idHex = crypto.randomBytes(16).toString('hex');
+    pics.forEach((pc, i) => {
+        const content = crypto.randomBytes(16), idHex = crypto.randomBytes(16).toString('hex'), raw = pc.w * pc.h * 4;
         const idb = Buffer.concat([Buffer.from(idHex.slice(0, 16), 'hex').reverse(), Buffer.from(idHex.slice(16), 'hex').reverse()]);
-        idsLines.push('0x' + idHex + ' MyVehicle_Avatar_Icon_V001_' + k + '.png');
-        const tail = Buffer.alloc(20); tail.writeUInt32LE(570, 0); tail.writeUInt32LE(570, 4); tail.writeUInt32LE(5, 8); tail.writeUInt32LE(i + 1, 12);
-        tabA.push(Buffer.concat([content, idb, tail]));
-        const z = W.lz4Compress(picture(i));
-        const h = Buffer.alloc(45); h.writeUInt32LE(3, 0); h.writeUInt32LE(1, 8); h.writeUInt32LE(z.length, 12); h.writeUInt32LE(W.RAW, 16);
-        h.writeInt32LE(-1, 20); h.writeUInt32LE(570, 24); h.writeUInt32LE(570, 28); h.writeUInt32LE(9, 32); h.writeUInt32LE(1, 36); h.writeUInt32LE(W.RAW, 40);
-        blobs.push(Buffer.concat([h, z])); tabB.push(content);
+        idsLines.push('0x' + idHex + ' ' + pc.name);
+        const pre = Buffer.alloc(8); pre.writeUInt32LE(i + 1, 0);
+        const tail = Buffer.alloc(12); tail.writeUInt32LE(pc.w, 0); tail.writeUInt32LE(pc.h, 4); tail.writeUInt32LE(5, 8);
+        tabA.push(Buffer.concat([pre, content, idb, tail]));
+        const z = W.lz4Compress(picture(i, pc.w, pc.h));
+        const h = Buffer.alloc(45); h.writeUInt32LE(3, 0); h.writeUInt32LE(1, 8); h.writeUInt32LE(z.length, 12); h.writeUInt32LE(raw, 16);
+        h.writeInt32LE(-1, 20); h.writeUInt32LE(pc.w, 24); h.writeUInt32LE(pc.h, 28); h.writeUInt32LE(9, 32); h.writeUInt32LE(1, 36); h.writeUInt32LE(raw, 40);
+        blobs.push(Buffer.concat([h, z])); tabB.push({ content, raw });
     });
-    const pre = Buffer.concat([head, Buffer.alloc(16)]);
-    const tableLen = 4 + 52 * 21 + 4 + 36 * 21;
-    let off = pre.length + tableLen;
-    const rowsB = tabB.map((c, i) => {
-        const r = Buffer.alloc(36); r.writeUInt32LE(3, 0); c.copy(r, 4); r.writeUInt32LE(W.RAW, 20); r.writeUInt32LE(blobs[i].length - 45, 24);
+    const offA = head.length + 16, offB = offA + 16 + 52 * n;
+    const pre = Buffer.alloc(16); pre.writeUInt32LE(offA, 0); pre.writeUInt32LE(offB, 8);
+    const hA = Buffer.alloc(16); hA.writeUInt32LE(n, 0); hA.writeUInt32LE(1, 4); hA.writeUInt32LE(55, 8); hA.writeUInt32LE(n, 12);
+    let off = offB + 4 + 36 * n;
+    const rowsB = tabB.map((t, i) => {
+        const r = Buffer.alloc(36); r.writeUInt32LE(3, 0); t.content.copy(r, 4); r.writeUInt32LE(t.raw, 20); r.writeUInt32LE(blobs[i].length - 45, 24);
         r.writeUInt32LE(off, 28); r.writeUInt32LE(blobs[i].length, 32); off += blobs[i].length; return r;
     });
-    const c1 = Buffer.alloc(4); c1.writeUInt32LE(21, 0);
-    return { data: Buffer.concat([pre, c1, Buffer.concat(tabA), c1, Buffer.concat(rowsB), Buffer.concat(blobs)]), ids: idsLines.join('\n') + '\n' };
+    const c1 = Buffer.alloc(4); c1.writeUInt32LE(n, 0);
+    return { data: Buffer.concat([head, pre, hA, Buffer.concat(tabA), c1, Buffer.concat(rowsB), Buffer.concat(blobs)]), ids: idsLines.join('\n') + '\n' };
 }
+const iconPics = (w, h) => KEYS.map((k) => ({ name: 'MyVehicle_Avatar_Icon_V001_' + k + '.png', w, h }));
+const fourSizes = () => { const out = []; [1008, 1305, 570, 735].forEach((sz) => ['blue', 'red'].forEach((c) => out.push({ name: sz + '_' + c + '.png', w: sz, h: sz }))); return out; };
 
 /* ---------- wbm ---------- */
 const mk = makeBundle();
@@ -75,7 +85,6 @@ const mk = makeBundle();
     ok('putting a picture\'s own blob back restores the original file');
     assert.throws(() => new W.Bundle(Buffer.concat([mk.data, Buffer.from([1])]), mk.ids), /data after the last picture/);
     assert.throws(() => new W.Bundle(mk.data.slice(0, mk.data.length - 10), mk.ids));
-    assert.throws(() => new W.Bundle(mk.data, mk.ids.split('\n').slice(0, 5).join('\n')), /only 5 pictures/);
     ok('a bundle of another layout is refused');
     const img = Buffer.alloc(4 * 4 * 4); for (let i = 0; i < img.length; i++) img[i] = i;
     const f = W.flipRows(img, 4, 4);
@@ -83,25 +92,57 @@ const mk = makeBundle();
     assert.strictEqual(Buffer.compare(W.flipRows(f, 4, 4), img), 0);
     const s = W.shrink(Buffer.alloc(8 * 8 * 4, 200), 8, 8, 2);
     assert.strictEqual(s.length, 16); assert.strictEqual(s[0], 200);
+    const ramp = Buffer.alloc(10 * 1 * 4); for (let x = 0; x < 10; x++) ramp.fill(x * 10, x * 4, x * 4 + 4);
+    const r4 = W.resize(ramp, 10, 1, 4, 1);                   // 2.5 old pixels each: 0,10,(20) -> 8; (20),30,40 -> 32; ...
+    assert.deepStrictEqual([r4[0], r4[4], r4[8], r4[12]], [8, 32, 58, 82]);
+    assert.strictEqual(Buffer.compare(W.resize(ramp, 10, 1, 10, 1), ramp), 0);
+    const sq = picture(4, 100), pl = W.place(sq, 100, 84, 72, [1, 1, 82, 70]);
+    assert.strictEqual(pl.length, 84 * 72 * 4);
+    assert.strictEqual(pl[3], 0); assert.strictEqual(pl[(1 * 84 + 1) * 4 + 3], 255); assert.strictEqual(pl[(70 * 84 + 82) * 4 + 3], 255); assert.strictEqual(pl[(71 * 84 + 83) * 4 + 3], 0);
+    const mid = (36 * 84 + 42) * 4, src = (50 * 100 + 50) * 4;       // the middle stays the middle
+    assert.ok(Math.abs(pl[mid] - sq[src]) < 12 && Math.abs(pl[mid + 1] - sq[src + 1]) < 12);
     const p = W.png(Buffer.alloc(3 * 2 * 4, 255), 3, 2);
     assert.strictEqual(p.slice(1, 4).toString(), 'PNG'); assert.strictEqual(p.readUInt32BE(16), 3); assert.strictEqual(p.readUInt32BE(20), 2);
     assert.strictEqual(W.crc32(Buffer.from('123456789')), 0xcbf43926);
-    ok('flip, shrink, PNG and CRC');
+    ok('flip, resize, fitting into a frame, PNG and CRC');
     if (process.env.AVATAR_REAL_RES) {
         const real = W.selfTest(fs.readFileSync(process.env.AVATAR_REAL_RES), fs.readFileSync(process.env.AVATAR_REAL_IDS, 'utf8'));
         assert.strictEqual(real.entries.length, 21);
         ok('the car\'s real bundle parses and rebuilds byte for byte');
     }
+    if (process.env.AVATAR_REAL_TREE) {       // a folder of bundles copied from a car: every one this takes rebuilds byte for byte
+        let seen = 0;
+        const walk = (d) => fs.readdirSync(d).forEach((f) => {
+            const p = path.join(d, f);
+            if (fs.statSync(p).isDirectory()) return walk(p);
+            if (f !== 'wbitmaps.res') return;
+            let b = null;
+            try { b = new W.Bundle(fs.readFileSync(p), fs.readFileSync(p + '.ids', 'utf8')); } catch (e) { return; }
+            W.selfTest(b.data, fs.readFileSync(p + '.ids', 'utf8')); seen++;
+        });
+        walk(process.env.AVATAR_REAL_TREE);
+        assert.ok(seen > 0);
+        ok(seen + ' real bundles of other pictures parse and rebuild byte for byte');
+    }
 }
 
 /* ---------- the service ---------- */
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-'));
-const dir = path.join(tmp, 'bundle'), state = path.join(tmp, 'state'), run = path.join(tmp, 'run'), legacy = path.join(tmp, 'legacy'), oap = path.join(tmp, 'oap');
-[dir, legacy].forEach((d) => fs.mkdirSync(d));
-fs.writeFileSync(path.join(dir, 'wbitmaps.res'), mk.data);
-fs.writeFileSync(path.join(dir, 'wbitmaps.res.ids'), mk.ids);
-Object.assign(process.env, { AVATAR_DIR: dir, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
+const root = path.join(tmp, 'assetDB'), state = path.join(tmp, 'state'), run = path.join(tmp, 'run'), legacy = path.join(tmp, 'legacy'), oap = path.join(tmp, 'oap');
+const mkdirs = (d) => { if (!fs.existsSync(d)) { mkdirs(path.dirname(d)); fs.mkdirSync(d); } };
+const put = (rel, b) => { const d = path.join(root, rel); mkdirs(d); fs.writeFileSync(path.join(d, 'wbitmaps.res'), b.data); fs.writeFileSync(path.join(d, 'wbitmaps.res.ids'), b.ids); return d; };
+const AV = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
+const REPL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
+const REG = 'icons/Class_regular/MyVehicle_Avatar', STA = 'icons/Class_status/MyVehicle_Avatar';
+const mkReg = makeBundle(iconPics(84, 72)), mkSta = makeBundle(iconPics(72, 72)), mkBt = makeBundle(fourSizes());
+const mkOdd = makeBundle(fourSizes().slice(0, 6));                 // a placeholder bundle with pictures missing: not offered
+const dir = put(AV, mk); put(REG, mkReg); put(STA, mkSta);
+put(REPL + 'replacement_media_wireless_bluetooth', mkBt); put(REPL + 'replacement_media_plug_usb', mkOdd);
+mkdirs(legacy);
+Object.assign(process.env, { AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
 const svc = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'anh-dai-dien.js'));
+const fileOf = (rel) => fs.readFileSync(path.join(root, rel, 'wbitmaps.res'));
+const BT = svc.MORE0, USB = svc.MORE0 + 1;
 
 function call(method, p, body) {
     return new Promise((resolve, reject) => {
@@ -116,62 +157,95 @@ function call(method, p, body) {
     });
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
 
 (async () => {
     const server = svc.start();
     await sleep(300);
     const pin = svc.S.pin, q = '?pin=' + pin;
-    assert.ok(svc.S.compatible, svc.S.error); assert.ok(svc.S.port > 0);
+    assert.ok(svc.S.compatible, svc.S.error); assert.ok(svc.S.port > 0); assert.ok(svc.S.smallIcons);
     assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(state, 'backup', 'wbitmaps.res.orig')), mk.data), 0);
+    assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(state, 'backup', 'avatar-status.res.orig')), mkSta.data), 0);
+    assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(state, 'backup', 'replacement_media_wireless_bluetooth.res.orig')), mkBt.data), 0);
     const st0 = JSON.parse(fs.readFileSync(path.join(run, 'status.json'), 'utf8'));
     assert.strictEqual(st0.url, 'http://192.168.7.9:' + svc.S.port + '/?pin=' + pin);
-    assert.strictEqual(st0.slots.length, 15); assert.ok(!st0.slots.some((s) => s.changed));
+    assert.strictEqual(st0.slots.length, 15); assert.ok(!st0.slots.some((s) => s.changed)); assert.strictEqual(st0.anyChanged, false);
+    assert.deepStrictEqual(st0.more, [{ n: BT, changed: false, label: 'Nhạc Bluetooth' }]);     // the USB bundle is not what is expected, the others are not on this car
     assert.strictEqual(fs.statSync(path.join(run, 't01.rgba')).size, 96 * 96 * 4);
-    ok('starts, takes the original as the backup, tells the app the address, the PIN and 15 thumbnails');
+    assert.ok(!fs.existsSync(path.join(state, 'backup', 'replacement_media_plug_usb.res.orig')));
+    ok('starts, keeps every bundle\'s original, tells the app the address, the PIN, 15 pictures and the placeholders this car has');
 
     let r = await call('GET', '/');
     assert.strictEqual(r.code, 200); assert.ok(/<title>/.test(r.body.toString()));
     r = await call('GET', '/api/state'); assert.strictEqual(r.code, 401);
     r = await call('GET', '/api/state?pin=' + (pin === '1234' ? '4321' : '1234')); assert.strictEqual(r.code, 401);
     r = await call('GET', '/api/state' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.json.slots.length, 15);
+    assert.strictEqual(r.json.slots[0].size, 570); assert.strictEqual(r.json.more[0].size, 1305); assert.ok(r.json.more[0].where);
     r = await call('GET', '/api/thumb/4' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.type, 'image/png'); assert.strictEqual(r.body.readUInt32BE(16), 256);
+    r = await call('GET', '/api/thumb/' + BT + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.readUInt32BE(16), 256);
     r = await call('GET', '/api/thumb/16' + q); assert.strictEqual(r.code, 404);
     ok('the page is open; the API needs the PIN; thumbnails are PNG');
 
     const up = picture(50);        // top-down, as the phone sends
     r = await call('POST', '/api/picture/3' + q, up); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
-    let now = new W.Bundle(fs.readFileSync(path.join(dir, 'wbitmaps.res')), mk.ids);
-    assert.strictEqual(Buffer.compare(now.rgba('S03'), W.flipRows(up, W.SIZE, W.SIZE)), 0);
+    let now = new W.Bundle(fileOf(AV), mk.ids);
+    assert.strictEqual(Buffer.compare(now.rgba('S03'), flip(up)), 0);
     assert.strictEqual(Buffer.compare(now.blob('S04'), new W.Bundle(mk.data, mk.ids).blob('S04')), 0);
     assert.ok(!fs.existsSync(path.join(dir, 'wbitmaps.res.new')));
+    // the two icons of the same picture: the photo inside the frame the car's own icons have, nothing else touched
+    const reg = new W.Bundle(fileOf(REG), mkReg.ids), sta = new W.Bundle(fileOf(STA), mkSta.ids);
+    assert.strictEqual(Buffer.compare(reg.rgba('S03'), W.flipRows(W.place(up, 570, 84, 72, [1, 1, 82, 70]), 84, 72)), 0);
+    assert.strictEqual(Buffer.compare(sta.rgba('S03'), W.flipRows(W.place(up, 570, 72, 72, [9, 9, 54, 54]), 72, 72)), 0);
+    const staTop = W.flipRows(sta.rgba('S03'), 72, 72);
+    assert.strictEqual(staTop[3], 0); assert.strictEqual(staTop[(9 * 72 + 9) * 4 + 3], 255); assert.strictEqual(staTop[(63 * 72 + 63) * 4 + 3], 0);
+    assert.strictEqual(Buffer.compare(reg.blob('S04'), new W.Bundle(mkReg.data, mkReg.ids).blob('S04')), 0);
+    assert.strictEqual(Buffer.compare(fileOf(REPL + 'replacement_media_wireless_bluetooth'), mkBt.data), 0);
     r = await call('GET', '/api/state' + q);
-    assert.deepStrictEqual(r.json.slots.filter((s) => s.changed).map((s) => s.n), [3]); assert.ok(r.json.needsRestart);
-    ok('a picture goes in (flipped to the file\'s row order), nothing else moves, no temp file is left');
+    assert.deepStrictEqual(r.json.slots.filter((s) => s.changed).map((s) => s.n), [3]); assert.ok(r.json.needsRestart); assert.ok(r.json.anyChanged);
+    ok('a profile picture goes into the picker\'s bundle and both icon bundles, nothing else moves, no temp file is left');
 
     r = await call('POST', '/api/picture/16' + q, up); assert.strictEqual(r.code, 400);
     r = await call('POST', '/api/picture/0' + q, up); assert.strictEqual(r.code, 400);
+    r = await call('POST', '/api/picture/' + USB + q, up); assert.strictEqual(r.code, 400);
     r = await call('POST', '/api/picture/3' + q, up.slice(0, 1000)); assert.strictEqual(r.code, 400);
+    r = await call('POST', '/api/picture/' + BT + q, up); assert.strictEqual(r.code, 400);            // a placeholder wants 1305x1305
     r = await call('POST', '/api/picture/3' + q, Buffer.concat([up, Buffer.alloc(8)])); assert.strictEqual(r.code, 413);
-    assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(dir, 'wbitmaps.res')).slice(0, 100), now.data.slice(0, 100)), 0);
-    ok('wrong slot, wrong size and oversized uploads are refused without touching the file');
+    assert.strictEqual(Buffer.compare(fileOf(AV), now.data), 0);
+    ok('wrong slot, wrong size and oversized uploads are refused without touching the files');
 
     // two at once are done one after the other
     const two = await Promise.all([call('POST', '/api/picture/5' + q, picture(61)), call('POST', '/api/picture/6' + q, picture(62))]);
     assert.ok(two.every((x) => x.code === 200));
-    now = new W.Bundle(fs.readFileSync(path.join(dir, 'wbitmaps.res')), mk.ids);
-    assert.strictEqual(Buffer.compare(now.rgba('S05'), W.flipRows(picture(61), W.SIZE, W.SIZE)), 0);
-    assert.strictEqual(Buffer.compare(now.rgba('S06'), W.flipRows(picture(62), W.SIZE, W.SIZE)), 0);
-    assert.strictEqual(Buffer.compare(now.rgba('S03'), W.flipRows(up, W.SIZE, W.SIZE)), 0);
+    now = new W.Bundle(fileOf(AV), mk.ids);
+    assert.strictEqual(Buffer.compare(now.rgba('S05'), flip(picture(61))), 0);
+    assert.strictEqual(Buffer.compare(now.rgba('S06'), flip(picture(62))), 0);
+    assert.strictEqual(Buffer.compare(now.rgba('S03'), flip(up)), 0);
     ok('two uploads at once both land');
 
+    // a placeholder: one photo into the four sizes, both colours
+    const cover = picture(77, 1305);
+    r = await call('POST', '/api/picture/' + BT + q, cover); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
+    const bt = new W.Bundle(fileOf(REPL + 'replacement_media_wireless_bluetooth'), mkBt.ids);
+    assert.strictEqual(Buffer.compare(bt.rgba('1305_blue'), flip(cover, 1305)), 0);
+    assert.strictEqual(Buffer.compare(bt.rgba('1305_red'), flip(cover, 1305)), 0);
+    [570, 735, 1008].forEach((sz) => ['blue', 'red'].forEach((c) => assert.strictEqual(Buffer.compare(bt.rgba(sz + '_' + c), flip(W.resize(cover, 1305, 1305, sz, sz), sz)), 0, sz + c)));
+    r = await call('GET', '/api/state' + q); assert.ok(r.json.more[0].changed);
+    ok('a placeholder picture goes into all four sizes and both colours of its bundle');
+
     r = await call('POST', '/api/restore/3' + q); assert.strictEqual(r.code, 200);
-    now = new W.Bundle(fs.readFileSync(path.join(dir, 'wbitmaps.res')), mk.ids);
+    now = new W.Bundle(fileOf(AV), mk.ids);
     assert.strictEqual(Buffer.compare(now.blob('S03'), new W.Bundle(mk.data, mk.ids).blob('S03')), 0);
-    assert.strictEqual(Buffer.compare(now.rgba('S05'), W.flipRows(picture(61), W.SIZE, W.SIZE)), 0);
+    assert.strictEqual(Buffer.compare(now.rgba('S05'), flip(picture(61))), 0);
+    assert.strictEqual(Buffer.compare(new W.Bundle(fileOf(STA), mkSta.ids).blob('S03'), new W.Bundle(mkSta.data, mkSta.ids).blob('S03')), 0);
+    r = await call('GET', '/api/state' + q); assert.deepStrictEqual(r.json.slots.filter((s) => s.changed).map((s) => s.n), [5, 6]);
+    r = await call('POST', '/api/restore/' + BT + q); assert.strictEqual(r.code, 200);
+    assert.strictEqual(Buffer.compare(fileOf(REPL + 'replacement_media_wireless_bluetooth'), mkBt.data), 0);
+    await call('POST', '/api/picture/' + BT + q, cover);
     r = await call('POST', '/api/restore/all' + q); assert.strictEqual(r.code, 200);
-    assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(dir, 'wbitmaps.res')), mk.data), 0);
-    r = await call('GET', '/api/state' + q); assert.ok(!r.json.slots.some((s) => s.changed));
-    ok('restoring one picture, then all, brings back the original file byte for byte');
+    assert.strictEqual(Buffer.compare(fileOf(AV), mk.data), 0); assert.strictEqual(Buffer.compare(fileOf(REG), mkReg.data), 0);
+    assert.strictEqual(Buffer.compare(fileOf(STA), mkSta.data), 0); assert.strictEqual(Buffer.compare(fileOf(REPL + 'replacement_media_wireless_bluetooth'), mkBt.data), 0);
+    r = await call('GET', '/api/state' + q); assert.ok(!r.json.slots.some((s) => s.changed) && !r.json.more.some((s) => s.changed) && !r.json.anyChanged);
+    ok('restoring one picture, then all, brings back every original file byte for byte');
 
     // the app's commands: only what was written after the start counts
     const app = path.join(oap, 'oap_77'); fs.mkdirSync(path.join(app, 'source', 'javascript', 'kit'), { recursive: true }); fs.mkdirSync(path.join(app, 'data'));
@@ -184,37 +258,39 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     svc.pollCommands(); assert.notStrictEqual(svc.S.pin, pin0); assert.ok(/^\d{4}$/.test(svc.S.pin));
     fs.writeFileSync(path.join(app, 'data', 'command.json'), JSON.stringify({ id: 7, cmd: 'restore_all' }));
     svc.pollCommands(); await sleep(400);
-    assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(dir, 'wbitmaps.res')), mk.data), 0);
+    assert.strictEqual(Buffer.compare(fileOf(AV), mk.data), 0); assert.strictEqual(Buffer.compare(fileOf(REG), mkReg.data), 0);
     ok('the app\'s commands: an old one is ignored, a new PIN, restore all');
 
     // five wrong PINs lock the address
-    const bad = svc.S.pin === '1111' ? '2222' : '1111';
-    for (let i = 0; i < 5; i++) await call('GET', '/api/state?pin=' + bad);
+    const wrong = svc.S.pin === '1111' ? '2222' : '1111';
+    for (let i = 0; i < 5; i++) await call('GET', '/api/state?pin=' + wrong);
     r = await call('GET', '/api/state?pin=' + svc.S.pin); assert.strictEqual(r.code, 429);
     ok('five wrong PINs lock the address for a minute');
 
-    // a legacy hand-made backup is the original when there is none yet; a bundle of another layout is not touched
     server.close();
     ok('the server stops');
 
+    // a profile bundle of another layout is reported and never written
     const odd = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-odd-'));
     fs.writeFileSync(path.join(odd, 'wbitmaps.res'), Buffer.concat([mk.data, Buffer.from('x')])); fs.writeFileSync(path.join(odd, 'wbitmaps.res.ids'), mk.ids);
-    svc.CFG.dir = odd; svc.CFG.state = path.join(odd, 'st');
+    Object.assign(svc.CFG, { dir: odd, state: path.join(odd, 'st'), root: path.join(odd, 'none') });
     assert.strictEqual(svc.load(), false); assert.ok(/cấu trúc lạ/.test(svc.S.error)); assert.strictEqual(svc.S.compatible, false);
     await assert.rejects(() => svc.setPicture(1, picture(1)), /cấu trúc lạ|không dùng được/);
     assert.strictEqual(fs.readFileSync(path.join(odd, 'wbitmaps.res')).length, mk.data.length + 1);
     ok('a bundle of another layout is reported and never written');
 
+    // the car as it is today: the picker's bundle changed by hand, the owner's own copy of the original beside it, no icon bundles
     const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-leg-')), leg2 = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-leg2-'));
-    const mod = makeBundle();       // "the test bundle on the car now" and the owner's own copy of the original
+    const mod = makeBundle();
     const orig = new W.Bundle(mod.data, mod.ids);
-    const current = orig.build({ S01: picture(3) });
-    fs.writeFileSync(path.join(dir2, 'wbitmaps.res'), current); fs.writeFileSync(path.join(dir2, 'wbitmaps.res.ids'), mod.ids);
+    fs.writeFileSync(path.join(dir2, 'wbitmaps.res'), orig.build({ S01: picture(3) })); fs.writeFileSync(path.join(dir2, 'wbitmaps.res.ids'), mod.ids);
     fs.writeFileSync(path.join(leg2, 'wbitmaps.res.orig'), mod.data);
     Object.assign(svc.CFG, { dir: dir2, state: path.join(dir2, 'st'), legacy: leg2 });
-    assert.ok(svc.load()); svc.ensureBackup(); svc.makeThumbs();
+    assert.ok(svc.load()); assert.strictEqual(svc.S.smallIcons, false);
     assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(dir2, 'st', 'backup', 'wbitmaps.res.orig')), mod.data), 0);
     assert.ok(/tay/.test(svc.S.backupNote));
+    const st2 = svc.writeStatus(); assert.deepStrictEqual(st2.slots.filter((s) => s.changed).map((s) => s.n), [1]); assert.deepStrictEqual(st2.more, []);
+    await svc.setPicture(2, picture(8));                     // without the icon bundles the picker's picture still changes
     await svc.restore('all');
     assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(dir2, 'wbitmaps.res')), mod.data), 0);
     ok('the owner\'s hand-made backup is the original, even when the bundle now on the car is changed');
@@ -230,7 +306,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const theme = themes.theme(themes.ids ? (Array.isArray(themes.ids) ? themes.ids[0] : themes.ids()[0]) : undefined);
     const thumbs = {}; for (let i = 1; i <= 15; i++) thumbs[i] = Buffer.alloc(UI.SMALL * UI.SMALL * 4, 40 + i * 10);
     const slots = Array.from({ length: 15 }, (_, i) => ({ n: i + 1, changed: i === 2 }));
-    const base = { state: 'ok', url: 'http://192.168.7.9:8137/?pin=4821', host: '192.168.7.9:8137', pin: '4821', slots, thumbs, anyChanged: true };
+    const more = [{ n: 21, label: 'Nhạc Bluetooth', changed: true }, { n: 22, label: 'Nhạc USB', changed: false }];
+    const base = { state: 'ok', url: 'http://192.168.7.9:8137/?pin=4821', host: '192.168.7.9:8137', pin: '4821', slots, more, thumbs, anyChanged: true };
     const draws = [base, Object.assign({}, base, { busy: true }), Object.assign({}, base, { url: '' }), { state: 'down', slots: [], thumbs: {} }, { state: 'bad', error: 'x', slots: [], thumbs: {} }];
     draws.forEach((v) => {
         const rec = new Recorder(UI.W, UI.H, { textScale: 1 }); rec.own = true;
