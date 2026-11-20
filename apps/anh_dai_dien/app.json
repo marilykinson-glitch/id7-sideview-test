@@ -2,7 +2,7 @@
   "id": "anh_dai_dien",
   "title": "MGU Studio",
   "description": "Đặt ảnh của bạn lên màn hình xe: hình chiếc xe trong menu Xe của tôi và ở màn hình chính, màn hình khởi động có chuyển động, ảnh đại diện của hồ sơ người lái, cùng ảnh bìa mặc định khi phát nhạc và ảnh người gọi. Quét mã QR, chọn ảnh trên điện thoại, rồi bấm Khởi động lại ngay trên màn hình xe. Xe không cần Connected Drive. Cần trợ thủ anh-dai-dien (tự cài kèm); hình gốc được sao lưu và khôi phục được.",
-  "version": "0.7.5",
+  "version": "0.8.0",
   "vendor": "custom",
   "loggingId": "OAAD",
   "signals": {},
@@ -15,10 +15,6 @@
         [
           "BTN_REBOOT",
           "Khởi động lại"
-        ],
-        [
-          "BTN_PIN",
-          "Mã PIN mới"
         ],
         [
           "BTN_RESTORE",

@@ -48,7 +48,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.7.5';
+const VERSION = '0.8.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -415,9 +415,12 @@ function carThumb(rgba) {
             const pic = fs.readFileSync(carPhoto());
             if (pic.length === CAR3D.PW * CAR3D.PH * 4) return thumb(CAR, pic, CAR3D.PW, CAR3D.PH);
         }
-        if (S.hero) {                                                // the car's own look: its 2D picture, painted white
-            const t = S.hero.targets[0], mk = S.hero.targets.filter((x) => x.b === t.b && x.zero && x.pair === t.key)[0];
-            const src = S.carChanged || flatChanged() ? readOriginal(t.b) : S.hero.parsed;
+        // the car's own look: the 2D picture of the model the central screen has open (any other model's would be another car)
+        const open = openVehicles().filter((o) => o.by === 'HmiMain3D').map((o) => o.dir);
+        const mine = S.hero ? S.hero.targets.filter((x) => !x.zero && open.indexOf(x.b.dir) >= 0).sort((x, y) => y.w - x.w) : [];
+        if (mine.length) {
+            const t = mine[0], mk = S.hero.targets.filter((x) => x.b === t.b && x.zero && x.pair === t.key)[0];
+            const src = readOriginal(t.b);
             const pic = painted(src.rgba(t.key), mk ? src.rgba(mk.key) : Buffer.alloc(t.w * t.h * 4));
             return thumb(CAR, W.fit(W.flipRows(pic, t.w, t.h), t.w, t.h, slot.w >> 2, slot.h >> 2), slot.w >> 2, slot.h >> 2);
         }
@@ -431,7 +434,13 @@ function dropShaders(names) {
     return n;
 }
 
-async function setCar(slot, rgba) {
+/** Where the car's picture goes: 'both', 'tile' (the 2D pictures: the main menu's tile) or 'menu' (the 3D model: the My Vehicle menus). */
+const carWhereFile = () => path.join(CFG.state, 'car-where');
+function carWhere() { try { const w = fs.readFileSync(carWhereFile(), 'utf8').trim(); return /^(both|tile|menu)$/.test(w) ? w : 'both'; } catch (e) { return 'both'; } }
+
+async function setCar(slot, rgba, where) {
+    where = /^(tile|menu)$/.test(where) ? where : 'both';
+    const in3d = where !== 'tile', in2d = where !== 'menu';
     slot.models.forEach((m) => CAR_FILES.forEach((f) => {             // the originals first, each copied once
         const bk = carBackup(m, f);
         if (fs.existsSync(bk)) return;                                // (a model without a copy was never changed: its files are the originals)
@@ -440,7 +449,13 @@ async function setCar(slot, rgba) {
     }));
     const jobs = [], photo = W.fit(rgba, slot.w, slot.h, CAR3D.PW, CAR3D.PH);
     let drop = [];
-    slot.models.forEach((m) => {
+    const back = (m) => {                                             // a model's originals back (and its kept shaders gone)
+        if (!CAR_FILES.every((f) => fs.existsSync(carBackup(m, f)))) return;
+        CAR_FILES.forEach((f) => jobs.push({ file: path.join(m.dir, f), buf: fs.readFileSync(carBackup(m, f)) }));
+        try { drop = drop.concat(CAR3D.cacheNames(new Res(fs.readFileSync(carBackup(m, 'effects.res')), fs.readFileSync(path.join(m.dir, 'effects.res.ids'), 'utf8')))); } catch (e) { /* nothing to remove */ }
+    };
+    if (!in3d && S.carChanged) slot.models.forEach(back);             // the picture only outside: the 3D model as it was
+    if (in3d) slot.models.forEach((m) => {
         const ids = (f) => fs.readFileSync(path.join(m.dir, f + '.ids'), 'utf8');
         const eff = new Res(fs.readFileSync(carBackup(m, 'effects.res')), ids('effects.res')), bmp = new Res(fs.readFileSync(carBackup(m, 'bitmaps.res')), ids('bitmaps.res'));
         const mk = carMarks(m);
@@ -453,12 +468,9 @@ async function setCar(slot, rgba) {
         jobs.push({ file: path.join(m.dir, 'effects.res'), buf: effects }, { file: path.join(m.dir, 'bitmaps.res'), buf: bitmaps });
         drop = drop.concat(CAR3D.cacheNames(eff));
     });
-    (slot.old || []).forEach((m) => {                                 // what an earlier version changed and this one does not: the originals back
-        CAR_FILES.forEach((f) => jobs.push({ file: path.join(m.dir, f), buf: fs.readFileSync(carBackup(m, f)) }));
-        try { drop = drop.concat(CAR3D.cacheNames(new Res(fs.readFileSync(carBackup(m, 'effects.res')), fs.readFileSync(path.join(m.dir, 'effects.res.ids'), 'utf8')))); } catch (e) { /* nothing to remove */ }
-    });
+    (slot.old || []).forEach(back);                                   // what an earlier version changed and this one does not
     // the 2D pictures: every trim's picture the photo, every paint mask empty
-    const flat = byBundle(slot).map((g) => {
+    const flat = !in2d ? [] : byBundle(slot).map((g) => {
         const cur = readBundle(g.b), replace = {}, made = {};
         g.targets.forEach((t) => {
             const id = t.w + 'x' + t.h + (t.zero ? 'z' : '');
@@ -467,17 +479,21 @@ async function setCar(slot, rgba) {
         });
         return { g, buf: cur.build(replace) };
     });
+    // the picture only inside: the 2D pictures as they were
+    const flatBack = in2d ? [] : Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => /^car-/.test(b.id) && b.usable && Object.keys(b.changed).length).map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
     await writable(async () => {
-        if (jobs.length) fs.writeFileSync(carMark(), String(Date.now()));
+        if (in3d && jobs.length) fs.writeFileSync(carMark(), String(Date.now()));
         jobs.forEach((j) => putFile(j.file, j.buf));
         flat.forEach((f) => { commit(f.g.b, f.buf); f.g.targets.forEach((t) => { f.g.b.changed[t.key] = true; }); });
+        flatBack.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; });
     });
     const gone = dropShaders(drop);
-    try { fs.writeFileSync(carPhoto(), photo); } catch (e) { /* the look on the phone page only */ }
-    if (jobs.length) S.carChanged = true;
+    try { fs.writeFileSync(carPhoto(), photo); fs.writeFileSync(carWhereFile(), where); } catch (e) { /* the look on the phone page only */ }
+    if (in3d && jobs.length) S.carChanged = true;
+    if (!in3d) { S.carChanged = false; try { fs.unlinkSync(carMark()); } catch (e) { /* none */ } }
     S.needsRestart = true;
     carThumb(rgba);
-    return slot.models.map((m) => m.model).concat(flat.length ? ['2D'] : []).join(', ') + (drop.length ? ', compiled shaders removed: ' + gone : '');
+    return where + ': ' + (in3d ? slot.models.map((m) => m.model) : []).concat(flat.length ? ['2D'] : []).join(', ') + (drop.length ? ', compiled shaders removed: ' + gone : '');
 }
 
 async function restoreCar() {
@@ -499,6 +515,7 @@ async function restoreCar() {
     dropShaders(drop);
     try { fs.unlinkSync(carMark()); } catch (e) { /* gone */ }
     try { fs.unlinkSync(carPhoto()); } catch (e) { /* gone */ }
+    try { fs.unlinkSync(carWhereFile()); } catch (e) { /* gone */ }
     S.carChanged = false; S.needsRestart = true;
     carThumb();
 }
@@ -532,7 +549,8 @@ function loadStart() {
 }
 function startThumb() {
     const slot = S.slots[START];
-    const best = slot.files.filter((f) => f.kind === 'png').sort((x, y) => y.w - x.w)[0];
+    // the picture of this screen's shape (the others are other displays'), else the widest
+    const best = slot.files.filter((f) => f.kind === 'png').sort((x, y) => ((y.w === START_W && y.h === START_H) - (x.w === START_W && x.h === START_H)) || (y.w - x.w))[0];
     try { const p = BOOT.pngDecode(fs.readFileSync(best.file)); thumb(START, p.rgba, p.w, p.h); } catch (e) { thumb(START, Buffer.alloc(64 * 24 * 4, 0), 64, 24); }
 }
 
@@ -584,7 +602,7 @@ function byBundle(slot) {
     return out;
 }
 
-async function setPicture(n, topDownRgba) {
+async function setPicture(n, topDownRgba, opt) {
     return exclusive(async () => {
         if (!S.compatible) throw new Error(S.error || 'gói ảnh không dùng được');
         const slot = S.slots[n];
@@ -603,7 +621,7 @@ async function setPicture(n, topDownRgba) {
             }
             if (slot.alpha) rgba = feather(rgba, slot.w, slot.h);     // the car's picture keeps its transparency (a cut-out car)
             if (slot.models) {
-                const which = await setCar(slot, rgba);
+                const which = await setCar(slot, rgba, opt && opt.where);
                 S.rev++;
                 log('the car replaced by a picture (' + which + ')');
                 say('go', 'Đã đổi hình chiếc xe. Khởi động lại màn hình xe để thấy.');
@@ -752,7 +770,7 @@ function writeStatus() {
         compatible: S.compatible, error: S.error, busy: S.busy,
         port: S.port, pin: S.pin, ips, ipIndex: ips.length ? S.ipIndex % ips.length : 0,
         url: ips.length && S.port ? 'http://' + ips[S.ipIndex % ips.length] + ':' + S.port + '/?pin=' + S.pin : '',
-        message: S.message, messageKind: S.messageKind, needsRestart: S.needsRestart,
+        message: S.message, messageKind: S.messageKind, needsRestart: S.needsRestart, carWhere: carWhere(),
         backup: S.compatible ? S.backupNote : '', smallIcons: S.smallIcons, anyChanged: S.compatible && anyChanged(),
         slots: S.compatible ? slotList(1, SLOTS).map((s) => ({ n: s.n, changed: s.changed })) : [],
         more: S.compatible ? slotList(CAR, CAR).concat(slotList(START, START), slotList(MORE0, CAR - 1)).map((s) => ({ n: s.n, changed: s.changed, label: s.n === CAR ? 'Hình xe' : s.n === START ? 'Khởi động' : s.label })) : [],
@@ -817,7 +835,7 @@ async function handle(req, res) {
     if (req.method === 'GET' && p === '/api/state') {
         const st = writeStatus();
         return json(res, 200, { ok: true, version: VERSION, compatible: st.compatible, error: st.error, busy: st.busy, message: st.message,
-            messageKind: st.messageKind, needsRestart: st.needsRestart, rev: S.rev, size: W.SIZE, backup: st.compatible, smallIcons: st.smallIcons,
+            messageKind: st.messageKind, needsRestart: st.needsRestart, carWhere: st.carWhere, rev: S.rev, size: W.SIZE, backup: st.compatible, smallIcons: st.smallIcons,
             anyChanged: st.anyChanged, slots: slotList(1, SLOTS), more: slotList(MORE0, CAR - 1), car: slotList(CAR, CAR), start: slotList(START, START) });
     }
     let m = /^\/api\/thumb\/(\d+)$/.exec(p);
@@ -832,7 +850,7 @@ async function handle(req, res) {
         const slot = S.slots[Number(m[1])];
         let b;
         try { b = await body(req, (slot ? slot.w * slot.h * 4 : W.RAW) + 1); } catch (e) { return json(res, 413, { ok: false, error: 'Ảnh quá lớn.' }); }
-        try { await setPicture(Number(m[1]), b); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
+        try { await setPicture(Number(m[1]), b, { where: q.where }); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
     }
     m = /^\/api\/restore\/(all|\d+)$/.exec(p);
     if (req.method === 'POST' && m) {

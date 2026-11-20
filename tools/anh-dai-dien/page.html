@@ -17,6 +17,7 @@ h1{margin:0;font-size:28px;letter-spacing:.2px}
 .sub{color:var(--dim);margin:6px 0 0;font-size:15px}
 .banner{display:none;margin:14px 0 0;padding:13px 15px;border-radius:14px;background:rgba(255,176,32,.12);border:1px solid rgba(255,176,32,.45);color:#ffd27a;font-size:14.5px}
 .banner.show{display:block}.banner b{color:#fff}
+.seg{display:flex;gap:6px;margin:10px 0 12px}.seg button{flex:1;padding:10px 6px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.04);color:#c9d3e6;font-size:13.5px;font-weight:600}.seg button.on{background:rgba(129,196,255,.18);border-color:#81c4ff;color:#fff}
 .err{display:none;margin:14px 0 0;padding:13px 15px;border-radius:14px;background:rgba(255,90,95,.12);border:1px solid rgba(255,90,95,.5);color:#ffb3b5;font-size:14.5px}.err.show{display:block}
 .hint{color:var(--dim);font-size:14px;margin:18px 2px 10px}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
@@ -76,7 +77,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
   <header>
     <div class="stripes"><i></i><i></i><i></i></div>
     <h1>MGU Studio</h1>
-    <p class="sub">Tuỳ biến hình ảnh iDrive: chiếc xe, màn hình khởi động, ảnh đại diện và các hình mặc định.</p>
+    <p class="sub">Tuỳ biến hình ảnh MGU ID7: chiếc xe, màn hình khởi động, ảnh đại diện và các hình khác.</p>
   </header>
 
   <section id="pinBox" class="pin hide">
@@ -88,10 +89,12 @@ input[type=range]{flex:1;accent-color:var(--acc)}
 
   <section id="main" class="hide">
     <div class="err" id="err"></div>
-    <div class="banner" id="restart"><b>Khởi động lại màn hình xe để thấy hình mới.</b> Giữ nút nguồn/âm lượng khoảng 30 giây, hoặc khóa xe và chờ xe ngủ.</div>
+    <div class="banner" id="restart"><b>Khởi động lại màn hình xe để thấy hình mới.</b> Bấm nút bên dưới, hoặc nút Khởi động lại trong MGU Studio trên màn hình xe.<br><button class="btn" id="rebootNow" style="margin-top:10px">Khởi động lại ngay</button></div>
     <div id="carBox" class="hide">
       <div class="sec">Hình chiếc xe</div>
-      <p class="hint">Thay chiếc xe trong menu Xe của tôi và ở ô xe ngoài màn hình chính bằng ảnh xe của bạn. Mô hình 3D được ẩn đi, ảnh đứng đúng chỗ chiếc xe. Ảnh nền trong suốt (PNG đã tách nền) cho kết quả đẹp nhất.</p>
+      <p class="hint">Thay hình chiếc xe bằng ảnh của bạn. Chọn chỗ muốn đổi rồi chạm vào khung ảnh. Ảnh nền trong suốt (PNG đã tách nền) cho kết quả đẹp nhất.</p>
+      <div class="seg" id="where"><button data-w="both">Cả hai chỗ</button><button data-w="tile">Chỉ ô màn hình chính</button><button data-w="menu">Chỉ menu Xe của tôi</button></div>
+      <p class="hint" id="whereHint"></p>
       <div class="grid one" id="car"></div>
     </div>
     <div id="startBox" class="hide">
@@ -145,7 +148,10 @@ input[type=range]{flex:1;accent-color:var(--acc)}
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var SW = 570, SH = 570, pin = '', rev = 0, cur = null, state = null;
+  var SW = 570, SH = 570, pin = '', rev = 0, cur = null, state = null, where = '', whereSet = false;
+  var WHERE = { both: 'Đổi cả ô xe ở màn hình chính lẫn chiếc xe 3D trong menu Xe của tôi.', tile: 'Chỉ đổi ô xe ở màn hình chính. Chiếc xe 3D trong menu Xe của tôi giữ nguyên, vẫn xoay và chuyển cảnh như gốc.', menu: 'Chỉ đổi chiếc xe trong menu Xe của tôi: mô hình 3D được ẩn, ảnh đứng yên đúng chỗ đó (không xoay theo chuyển cảnh). Ô xe ở màn hình chính giữ nguyên.' };
+  function setWhere(w) { where = WHERE[w] ? w : 'both'; var bs = $('where').getElementsByTagName('button'); for (var i = 0; i < bs.length; i++) bs[i].className = bs[i].getAttribute('data-w') === where ? 'on' : ''; $('whereHint').textContent = WHERE[where]; }
+  (function () { var bs = $('where').getElementsByTagName('button'); for (var i = 0; i < bs.length; i++) bs[i].onclick = function () { whereSet = true; setWhere(this.getAttribute('data-w')); }; })();
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function name(s) { return s.n <= 15 ? 'hình số ' + s.n : s.alpha ? 'hình chiếc xe' : s.w !== s.h ? 'màn hình khởi động' : 'hình “' + s.label + '”'; }
 
@@ -175,6 +181,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     state = j; rev = j.rev;
     $('err').className = 'err' + (j.compatible ? '' : ' show'); $('err').textContent = j.compatible ? '' : 'Xe này có gói ảnh mà app chưa biết cách đổi: ' + j.error;
     $('restart').className = 'banner' + (j.needsRestart ? ' show' : '');
+    if (!whereSet) setWhere(j.carWhere || 'both');
     var g = $('grid'); g.innerHTML = '';
     (j.slots || []).forEach(function (s) {
       var b = document.createElement('button'); b.className = 'tile';
@@ -303,9 +310,9 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     x.drawImage(img, ox, oy, img.width * k, img.height * k);
     var data = x.getImageData(0, 0, SW, SH).data;
     busy(true, 'Đang gửi ảnh lên xe…');
-    api('/api/picture/' + cur.n, { method: 'POST', body: data.buffer, headers: { 'Content-Type': 'application/octet-stream' } }).then(function (j) {
+    api('/api/picture/' + cur.n + (cur.alpha ? '?where=' + where : ''), { method: 'POST', body: data.buffer, headers: { 'Content-Type': 'application/octet-stream' } }).then(function (j) {
       busy(false);
-      if (j.ok) { closeSheet(); toast('Đã đổi ' + name(cur) + '. Khởi động lại màn hình xe để thấy.', 'go'); refresh(); }
+      if (j.ok) { closeSheet(); toast('Đã đổi ' + name(cur) + '. Bấm Khởi động lại để thấy.', 'go'); refresh(); }
       else toast(j.error || 'Không đổi được', 'crit');
     }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
   };
@@ -329,12 +336,13 @@ input[type=range]{flex:1;accent-color:var(--acc)}
 
   $('diag').onclick = function (e) { e.preventDefault(); location.href = '/api/diag?pin=' + encodeURIComponent(pin); };
   var armedR = 0;
-  $('rebootBtn').onclick = function () {
-    var b = this;
-    if (!armedR || Date.now() - armedR > 4000) { armedR = Date.now(); b.textContent = 'Chạm lần nữa để khởi động lại'; setTimeout(function () { if (Date.now() - armedR >= 3900) { b.textContent = 'Khởi động lại màn hình xe'; armedR = 0; } }, 4000); return; }
-    armedR = 0; b.textContent = 'Khởi động lại màn hình xe';
+  function rebootTap(b, label) {
+    if (!armedR || Date.now() - armedR > 4000) { armedR = Date.now(); b.textContent = 'Chạm lần nữa để khởi động lại'; setTimeout(function () { if (Date.now() - armedR >= 3900) { b.textContent = label; armedR = 0; } }, 4000); return; }
+    armedR = 0; b.textContent = label;
     api('/api/reboot', { method: 'POST' }).then(function (j) { toast(j.ok ? 'Xe đang khởi động lại. Chờ khoảng một phút rồi mở lại trang này.' : (j.error || 'Không khởi động lại được'), j.ok ? 'go' : 'crit'); }).catch(function () { toast('Mất kết nối với xe.', 'crit'); });
-  };
+  }
+  $('rebootBtn').onclick = function () { rebootTap(this, 'Khởi động lại màn hình xe'); };
+  $('rebootNow').onclick = function () { rebootTap(this, 'Khởi động lại ngay'); };
 
   var saved = ''; try { saved = sessionStorage.getItem('pin') || ''; } catch (e) {}
   var first = qs() || saved;

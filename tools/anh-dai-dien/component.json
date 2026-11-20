@@ -1,7 +1,7 @@
 {
   "id": "anh-dai-dien",
   "kind": "tool",
-  "version": "0.7.5",
+  "version": "0.8.0",
   "title": "Trợ thủ MGU Studio",
   "description": "Mở một trang web cho điện thoại (cùng mạng với xe, có mã PIN) để chọn ảnh và đặt lên màn hình xe (hình chiếc xe, màn hình khởi động, ảnh đại diện của profile, hình mặc định); ghi vào gói ảnh của đầu xe (phân vùng chỉ đọc, được mở ghi trong giây lát), sao lưu bản gốc trước khi đổi và khôi phục khi cần. Sau khi cài hoặc cập nhật, và sau khi đổi ảnh, cần khởi động lại màn hình.",
   "license": "GPL-3.0-or-later",

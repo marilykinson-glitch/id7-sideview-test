@@ -401,6 +401,17 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('POST', '/api/picture/' + svc.CAR + q, picture(32, CW, CH)); assert.strictEqual(r.code, 200);
     fx = new Res(car3dFile('effects.res'), mkFx.ids);
     assert.strictEqual(fx.shaders('M_CAR_MGRO_GROUND').vertex.split('vec4(2., 2.').length, 2); assert.strictEqual(fx.shaders('M_CAR_MCP1_CARPAINT1').vertex.split('pc_m =').length, 2);
+    // only the main menu's tile: the 2D pictures the photo, the 3D model as it was; only the menus: the other way round
+    r = await call('POST', '/api/picture/' + svc.CAR + q + '&where=tile', cut); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
+    assert.strictEqual(Buffer.compare(car3dFile('effects.res'), mkFx.data), 0); assert.strictEqual(Buffer.compare(car3dFile('bitmaps.res'), mkTx.data), 0);
+    assert.notStrictEqual(Buffer.compare(carFile('vehicle2D_big'), mkBig.data), 0);
+    r = await call('GET', '/api/state' + q); assert.ok(r.json.car[0].changed); assert.strictEqual(r.json.carWhere, 'tile');
+    r = await call('POST', '/api/picture/' + svc.CAR + q + '&where=menu', cut); assert.strictEqual(r.code, 200);
+    assert.notStrictEqual(Buffer.compare(car3dFile('effects.res'), mkFx.data), 0);
+    assert.strictEqual(Buffer.compare(carFile('vehicle2D_big'), mkBig.data), 0); assert.strictEqual(Buffer.compare(carFile('vehicle2D_small'), mkSmall.data), 0);
+    r = await call('GET', '/api/state' + q); assert.ok(r.json.car[0].changed); assert.strictEqual(r.json.carWhere, 'menu');
+    r = await call('POST', '/api/picture/' + svc.CAR + q, picture(32, CW, CH)); assert.strictEqual(r.code, 200);
+    r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.carWhere, 'both');
     fillCache();
     r = await call('POST', '/api/restore/' + svc.CAR + q); assert.strictEqual(r.code, 200);
     assert.strictEqual(Buffer.compare(car3dFile('effects.res'), mkFx.data), 0); assert.strictEqual(Buffer.compare(car3dFile('bitmaps.res'), mkTx.data), 0);
@@ -620,9 +631,16 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     const rec = new Recorder(UI.W, UI.H, { textScale: 1 }); rec.own = true;
     const said = [], text0 = rec.text; rec.text = function (str) { said.push(String(str)); return text0.apply(this, arguments); };
     UI.draw(rec, G, theme, base, {});
-    assert.ok(rec.targets.some((t) => t.key === 'adRestore') && rec.targets.some((t) => t.key === 'adPin') && rec.targets.some((t) => t.key === 'adReboot') && !rec.targets.some((t) => t.key === 'adIp'));
+    assert.ok(rec.targets.some((t) => t.key === 'adRestore') && !rec.targets.some((t) => t.key === 'adPin') && rec.targets.some((t) => t.key === 'adReboot') && !rec.targets.some((t) => t.key === 'adIp'));
     const words = said.join('|');
     ['Hình chiếc xe', 'Màn hình khởi động', 'Ảnh đại diện', 'Ảnh của bạn', 'Hình gốc', 'Đã đổi 1/15', 'Khác', 'Đã đổi 1/2'].forEach((w) => assert.ok(words.indexOf(w) >= 0, w));
+    {   // a button pressed once asks for the second press, and the app's note stands in the message line
+        const r2 = new Recorder(UI.W, UI.H, { textScale: 1 }); r2.own = true; const said2 = [], t0 = r2.text; r2.text = function (str) { said2.push(String(str)); return t0.apply(this, arguments); };
+        UI.draw(r2, G, theme, Object.assign({}, base, { armed: 'reboot', note: 'Bấm Khởi động lại lần nữa để xác nhận.', noteKind: 'warn', carWhere: 'tile' }), {});
+        const all = said2.join('|');
+        assert.ok(all.indexOf('BẤM LẦN NỮA') >= 0 && all.indexOf('KHÔI PHỤC TẤT CẢ') >= 0 && all.indexOf('KHỞI ĐỘNG LẠI') < 0, all);
+        assert.ok(all.indexOf('Bấm Khởi động lại lần nữa để xác nhận.') >= 0 && all.indexOf('Chỉ ô xe ở màn hình chính') >= 0);
+    }
     const none = new Recorder(UI.W, UI.H, { textScale: 1 }); none.own = true; UI.draw(none, G, theme, Object.assign({}, base, { anyChanged: false }), {});
     assert.ok(!none.targets.some((t) => t.key === 'adRestore'));
     ok('the car screen: three cards and the rest in one line, a restart button, "restore all" only when something changed');

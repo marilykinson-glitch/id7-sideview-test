@@ -9,8 +9,10 @@
  * v = { state: 'ok' | 'down' | 'bad', url, host, pin, slots: [{ n, changed }] (the profile pictures),
  *       thumbs: { 41, 51: RGBA 48 wide; 1..15: RGBA 24 x 24 } (small pictures of what is in use; any may be missing),
  *       more: [{ n, label, changed }] (41 the car, 51 the start-up screen, the others the placeholder pictures),
- *       message, messageKind ('go' | 'warn' | 'crit' | 'dim'), needsRestart, busy, error, backup, anyChanged, version }
- * act = { restoreAll, newPin, reboot }
+ *       message, messageKind ('go' | 'warn' | 'crit' | 'dim'), needsRestart, busy, error, backup, anyChanged, version,
+ *       carWhere ('both' | 'tile' | 'menu': where the car's picture is), armed ('reboot' | 'restore': the button pressed
+ *       once, waiting for the second press), note, noteKind (what the app says about a press, before the tool answers) }
+ * act = { restoreAll, reboot }
  * Node 8.
  */
 const QR = require('./kit/qr');
@@ -64,7 +66,7 @@ function card(cv, G, t, x, y, w, h, title, sub, mine, state, pics) {
     const py = y + 54, ph = 72;
     let px = x + 22;
     (pics || []).forEach((p) => {
-        const cell = Math.max(1, Math.floor(Math.min(MINI * CELL / p.w, ph / p.h)));
+        const cell = p.cell || Math.max(1, Math.floor(Math.min(MINI * CELL / p.w, ph / p.h)));
         mosaic(cv, G, p.rgba, p.w, p.h, px, py + Math.floor((ph - p.h * cell) / 2), cell);
         cv.strokeRoundRect(px - 1, py + Math.floor((ph - p.h * cell) / 2) - 1, p.w * cell + 2, p.h * cell + 2, 2, 1, G.withAlpha('#ffffff', 0.22));
         px += p.w * cell + 8;
@@ -120,8 +122,9 @@ function draw(cv, G, t, v, act) {
         const gap = 20, cw = (rw - 2 * gap) / 3, cy = G.TOP + 134, ch = 166, th = v.thumbs || {};
         const whose = (m) => (!m ? 'Chưa hỗ trợ' : m.changed ? 'Ảnh của bạn' : 'Hình gốc');
         const one = (n) => (th[n] ? [{ rgba: th[n], w: MINI, h: Math.max(1, Math.min(24, Math.floor(th[n].length / 4 / MINI))) }] : []);
-        const faces = slots.filter((x) => x.changed && th[x.n]).slice(0, 2).map((x) => ({ rgba: th[x.n], w: 24, h: 24 }));
-        card(cv, G, t, rx, cy, cw, ch, 'Hình chiếc xe', 'Menu Xe của tôi, ô xe ở màn hình chính', !!(car && car.changed), whose(car), one(CAR));
+        const faces = slots.filter((x) => x.changed && th[x.n]).concat(slots.filter((x) => !x.changed && th[x.n])).slice(0, 3).map((x) => ({ rgba: th[x.n], w: 24, h: 24, cell: 2 }));
+        const carSub = !(car && car.changed) ? 'Menu Xe của tôi, ô xe ở màn hình chính' : v.carWhere === 'tile' ? 'Chỉ ô xe ở màn hình chính' : v.carWhere === 'menu' ? 'Chỉ trong menu Xe của tôi' : 'Menu Xe của tôi và ô xe màn hình chính';
+        card(cv, G, t, rx, cy, cw, ch, 'Hình chiếc xe', carSub, !!(car && car.changed), whose(car), one(CAR));
         card(cv, G, t, rx + cw + gap, cy, cw, ch, 'Màn hình khởi động', 'Lúc chào và lúc tạm biệt', !!(start && start.changed), whose(start), one(START));
         card(cv, G, t, rx + 2 * (cw + gap), cy, cw, ch, 'Ảnh đại diện', slots.length + ' hình của hồ sơ người lái', mine > 0, mine ? 'Đã đổi ' + mine + '/' + slots.length : 'Hình gốc', faces);
         if (rest.length) {
@@ -135,15 +138,18 @@ function draw(cv, G, t, v, act) {
         }
     }
 
-    // the last message and the buttons
-    const by = bottom - 54;
+    // the last message and the two buttons; a button pressed once is filled and asks for the second press
+    const by = bottom - 54, bw = 290, gap2 = 16;
     let msg = v.message, kind = v.messageKind;
     if (v.needsRestart) { msg = 'Có thay đổi: bấm Khởi động lại để thấy.'; kind = 'warn'; }
-    if (msg && v.state === 'ok') cv.text(fit(cv, msg, 18, { literal: true, font: 'label' }, rw - 3 * 14 - 230 - 190 - 250), rx, by + 35, 18, kindColor(t, kind), { literal: true, font: 'label' });
-    const bx = W - 64 - 250;
-    G.button(cv, t, bx, by, 250, 54, 'Khôi phục tất cả', act.restoreAll || nop, { key: 'adRestore', color: v.anyChanged ? red : undefined, busy: !v.anyChanged, confirm: true });
-    G.button(cv, t, bx - 14 - 190, by, 190, 54, 'Mã PIN mới', act.newPin || nop, { key: 'adPin' });
-    G.button(cv, t, bx - 14 - 190 - 14 - 230, by, 230, 54, 'Khởi động lại', act.reboot || nop, { key: 'adReboot', color: v.needsRestart ? acc : undefined, confirm: true });
+    if (v.note) { msg = v.note; kind = v.noteKind; }
+    if (msg && (v.state === 'ok' || v.note)) cv.text(fit(cv, msg, 19, { literal: true, font: 'label' }, rw - 2 * bw - gap2 - 24), rx, by + 35, 19, kindColor(t, kind), { literal: true, font: 'label' });
+    const bx = W - 64 - bw;
+    const ask = 'Bấm lần nữa';
+    G.button(cv, t, bx, by, bw, 54, v.armed === 'restore' ? ask : 'Khôi phục tất cả', act.restoreAll || nop,
+        { key: 'adRestore', color: v.armed === 'restore' || v.anyChanged ? red : undefined, primary: v.armed === 'restore', busy: !v.anyChanged });
+    G.button(cv, t, bx - gap2 - bw, by, bw, 54, v.armed === 'reboot' ? ask : 'Khởi động lại', act.reboot || nop,
+        { key: 'adReboot', color: v.armed === 'reboot' ? red : v.needsRestart ? acc : undefined, primary: v.armed === 'reboot' || !!v.needsRestart });
     return cv;
 }
 

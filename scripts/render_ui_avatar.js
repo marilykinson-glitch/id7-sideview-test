@@ -22,14 +22,16 @@ const W = require(path.join(__dirname, '..', 'tools', 'anh-dai-dien', 'wbm.js'))
 const BOOT = require(path.join(__dirname, '..', 'tools', 'anh-dai-dien', 'boot.js'));
 const small = (file, w, h) => { try { const p = BOOT.pngDecode(fs.readFileSync(file)); return W.resize(p.rgba, p.w, p.h, w, h); } catch (e) { return null; } };
 const thumbs = {};
-if (process.argv[3]) { thumbs[41] = small(process.argv[3], 48, 24); thumbs[51] = small(process.argv[4], 48, 18); thumbs[2] = small(process.argv[5], 24, 24); thumbs[7] = small(process.argv[6], 24, 24); }
+if (process.argv[3]) { thumbs[41] = small(process.argv[3], 48, 24); thumbs[51] = small(process.argv[4], 48, 18); thumbs[2] = small(process.argv[5], 24, 24); thumbs[7] = small(process.argv[6], 24, 24); thumbs[1] = small(process.argv[5], 24, 24); thumbs[3] = small(process.argv[6], 24, 24); }
 Object.keys(thumbs).forEach((k) => { if (!thumbs[k]) delete thumbs[k]; });
 const slots = (changed) => Array.from({ length: 15 }, (_, i) => ({ n: i + 1, changed: changed.indexOf(i + 1) >= 0 }));
 const more = (changed) => [[41, 'Hình xe'], [51, 'Khởi động'], [21, 'Nhạc Bluetooth'], [22, 'Nhạc USB'], [23, 'Nhạc'], [24, 'Radio FM'], [25, 'Radio AM'], [26, 'Radio'], [27, 'Người gọi']].map((d) => ({ n: d[0], label: d[1], changed: changed.indexOf(d[0]) >= 0 }));
-const base = { state: 'ok', more: more([]), url: 'http://192.168.43.15:8137/?pin=4821', host: '192.168.43.15:8137', pin: '4821', slots: slots([]), thumbs, version: 'Bản 0.7.5', message: 'Sẵn sàng.', messageKind: 'dim', anyChanged: false };
+const base = { state: 'ok', more: more([]), url: 'http://192.168.43.15:8137/?pin=4821', host: '192.168.43.15:8137', pin: '4821', slots: slots([]), thumbs, version: 'Bản 0.8.0', message: 'Sẵn sàng.', messageKind: 'dim', anyChanged: false };
 const states = {
     '1-san-sang': base,
     '2-da-doi': Object.assign({}, base, { slots: slots([2, 7]), more: more([41, 51, 21]), anyChanged: true, needsRestart: true, message: 'Đã đổi hình số 7. Khởi động lại màn hình xe để thấy.', messageKind: 'go' }),
+    '7-bam-lan-nua': Object.assign({}, base, { slots: slots([2, 7]), more: more([41, 51]), anyChanged: true, needsRestart: true, carWhere: 'tile', armed: 'reboot', note: 'Bấm Khởi động lại lần nữa để xác nhận.', noteKind: 'warn' }),
+    '8-da-nhan-lenh': Object.assign({}, base, { slots: slots([2, 7]), more: more([41, 51]), anyChanged: true, needsRestart: true, carWhere: 'tile', note: 'Đã nhận lệnh: màn hình xe đang khởi động lại…', noteKind: 'go' }),
     '3-dang-ghi': Object.assign({}, base, { busy: true, slots: slots([3]), anyChanged: true }),
     '4-chua-co-mang': Object.assign({}, base, { url: '', host: '', pin: '4821' }),
     '5-tro-thu-chua-chay': { state: 'down', slots: [], version: 'Bản 0.7.2' },
