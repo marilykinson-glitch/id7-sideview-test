@@ -348,6 +348,11 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     let fx = new Res(car3dFile('effects.res'), mkFx.ids), tx = new Res(car3dFile('bitmaps.res'), mkTx.ids);
     assert.ok(/gl_Position = vec4\(2\., 2\., 2\., 1\.\);\n\}$/.test(fx.shaders('M_CAR_MGRO_GROUND').vertex) && /vec4\(2\., 2\./.test(fx.shaders('M_CAR_MWRM_WHEELRIM').vertex));
     assert.strictEqual(fx.shaders('M_CAR_MGRO_GROUND').fragment, FS);
+    {   // a changed effect has a new hash (its low half), an untouched one keeps its own: the head unit's compiled shaders are kept by it
+        const fx0 = new Res(mkFx.data, mkFx.ids), h = (r, k) => r.byName[k].hash;
+        ['M_CAR_MCP1_CARPAINT1', 'M_CAR_MGRO_GROUND', 'M_CAR_MWRM_WHEELRIM'].forEach((k) => { assert.ok(!h(fx, k).equals(h(fx0, k)), k); assert.ok(h(fx, k).slice(8).equals(h(fx0, k).slice(8)), k); });
+        ['M_CAR_Quad_RL0', 'M_HMI_SAFEAREA'].forEach((k) => assert.ok(h(fx, k).equals(h(fx0, k)), k));
+    }
     assert.strictEqual(fx.shaders('M_CAR_Quad_RL0').vertex, QUAD); assert.strictEqual(fx.shaders('M_HMI_SAFEAREA').vertex, VS);
     const body = fx.shaders('M_CAR_MCP1_CARPAINT1');
     // where and how large: the middle of the ground, 40 % of the picture's height above the floor, as long as 95.3 % of the body

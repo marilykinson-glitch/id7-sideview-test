@@ -48,7 +48,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.7.3';
+const VERSION = '0.7.4';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -899,6 +899,18 @@ function diagFiles() {
             add(model + ': ' + subs.map((sub) => { let n = ''; try { n = fs.readdirSync(path.join(CFG.vehicles, model, sub)).map((f) => f + ' ' + fs.statSync(path.join(CFG.vehicles, model, sub, f)).size).join(', '); } catch (e) { n = '-'; } return sub + ' [' + n + ']'; }).join('  '));
         });
     } catch (e) { add('vehicles: ' + e.message); }
+    add(''); add('== every file the central screen has open');
+    try {
+        fs.readdirSync(CFG.proc).filter((d) => /^\d+$/.test(d)).forEach((pid) => {
+            let comm = ''; try { comm = fs.readFileSync(path.join(CFG.proc, pid, 'comm'), 'utf8').trim(); } catch (e) { return; }
+            if (comm !== 'HmiMain3D') return;
+            const seen2 = {};
+            fs.readdirSync(path.join(CFG.proc, pid, 'fd')).forEach((fd) => { try { const to = fs.readlinkSync(path.join(CFG.proc, pid, 'fd', fd)); if (to[0] === '/' && !/^\/(dev|proc|sys|run\/dlt)/.test(to)) seen2[to] = 1; } catch (e) { /* closed */ } });
+            Object.keys(seen2).sort().forEach((f) => add(f));
+        });
+    } catch (e) { add('open files: ' + e.message); }
+    add(''); add('== compiled shaders, newest first');
+    try { fs.readdirSync(CFG.shaders).map((f) => { const st = fs.statSync(path.join(CFG.shaders, f)); return { f, t: st.mtime, n: st.size }; }).sort((x, y) => y.t - x.t).slice(0, 120).forEach((x) => add(x.t.toISOString() + ' ' + x.n + ' ' + x.f)); } catch (e) { add('shaders: ' + e.message); }
     add(''); add('== compiled shaders kept: ' + (() => { try { return fs.readdirSync(CFG.shaders).length; } catch (e) { return e.message; } })());
     add(''); add('== log'); LOGS.forEach((l) => add(l));
     open.filter((o) => o.by === 'HmiMain3D').forEach((o) => {             // the central screen's only: the cluster keeps every model open

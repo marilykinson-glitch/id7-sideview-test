@@ -16,8 +16,8 @@
  *
  * The compositing quads (M_CAR_Quad_*) and the safe-area effect are left as they are. The shaders are changed by
  * adding lines at the end of main(), with what was there still used, so that no uniform or attribute disappears.
- * The head unit keeps compiled shaders by the effect's id (/var/opt/target/shader-cache): they must be removed
- * after effects.res changes, or the old ones are used.
+ * The head unit keeps compiled shaders by the effect's hash (/var/opt/target/shader-cache), so every changed effect
+ * gets a new hash (res.rehash): removing the kept ones is not enough, the HMI can write them back when it stops.
  * Node 8: no dependencies.
  */
 const BODY = 'M_CAR_MCP1_CARPAINT1', TEXTURE = 'TEX_MCP1_CARPAINT1_bitmap';
@@ -175,6 +175,7 @@ function patchEffects(effects, box, at) {
         const s = effects.shaders(name);
         if (name === BODY) replace[name] = effects.effectBlob(name, billboard(s.vertex, box, at), photo(s.fragment));
         else if (/gl_Position/.test(s.vertex)) replace[name] = effects.effectBlob(name, hide(s.vertex), s.fragment);
+        if (replace[name]) replace[name].hash = effects.rehash(name, replace[name].blob);      // not the original's compiled shader
     });
     return effects.build(replace);
 }

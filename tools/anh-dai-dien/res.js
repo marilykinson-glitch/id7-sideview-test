@@ -16,6 +16,7 @@
  *
  * The .ids file maps a resource's name to its id hash. Node 8: no dependencies.
  */
+const crypto = require('crypto');
 const W = require('./wbm');
 
 function idBytes(hex) {
@@ -52,7 +53,7 @@ class Res {
             const at = data.indexOf(idBytes(m[1]));
             if (at < offA + 16 || at >= offB) return;
             const hash = data.slice(at - 16, at), row = this.rows.filter((r) => r.hash.equals(hash))[0];
-            if (row) this.byName[m[2]] = row;
+            if (row) { row.a = at - 16; this.byName[m[2]] = row; }                 // a: where the first table has this resource's hash
         });
     }
 
@@ -65,7 +66,18 @@ class Res {
         return r.comp ? W.lz4Decompress(b, r.dec) : b;
     }
 
-    /** A new file with the resources in `replace` ({ name: { blob, dec, comp } }) swapped in. */
+    /**
+     * A resource's hash with its low half replaced by what `blob` gives: another name for changed content. The head
+     * unit keeps compiled shaders by this hash, so a changed effect must not keep the original's. The second table
+     * is in the order of the hashes read as numbers from their last byte down: the high half stays, so the order does.
+     */
+    rehash(name, blob) {
+        const h = Buffer.from(this.byName[name].hash);
+        crypto.createHash('md5').update(blob).digest().copy(h, 0, 0, 8);
+        return h;
+    }
+
+    /** A new file with the resources in `replace` ({ name: { blob, dec, comp, hash (optional: a new one) } }) swapped in. */
     build(replace) {
         replace = replace || {};
         const byToc = {};
@@ -76,9 +88,14 @@ class Res {
             const x = byToc[r.toc];
             const blob = x ? x.blob : this.data.slice(r.off, r.off + r.size);
             if (x) { head.writeUInt32LE(x.dec, r.toc + 20); head.writeUInt32LE(x.comp, r.toc + 24); }
+            if (x && x.hash) { x.hash.copy(head, r.toc + 4); x.hash.copy(head, r.a); }
             head.writeUInt32LE(pos, r.toc + 28); head.writeUInt32LE(blob.length, r.toc + 32);
             parts.push(blob); pos += blob.length;
         });
+        // the second table must still be in the order of its hashes
+        const key = (i) => Buffer.from(head.slice(this.rows[i].toc + 4, this.rows[i].toc + 20)).reverse().toString('hex');
+        const was = (i) => Buffer.from(this.rows[i].hash).reverse().toString('hex');
+        for (let i = 1; i < this.rows.length; i++) if ((key(i - 1) < key(i)) !== (was(i - 1) < was(i))) throw new Error('a new hash would change the table\'s order');
         return Buffer.concat([head].concat(parts));
     }
 
