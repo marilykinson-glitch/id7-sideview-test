@@ -17,6 +17,7 @@
  *   the app     -> <its folder>/data/command.json       { id, cmd: 'restore_all' | 'new_pin' | 'next_ip' }
  *   this        -> /run/anh-dai-dien/status.json        what the app shows: address, PIN, pictures, messages
  *                  /run/anh-dai-dien/t01.rgba..t15.rgba the fifteen profile pictures at 96x96 for the app (top-down RGBA)
+ *                  /run/anh-dai-dien/t41.rgba, t51.rgba the car and the start-up screen, 48 pixels wide, for the app
  *
  * The bundles sit on a read-only partition: a write remounts it read-write for a moment, writes a new file next
  * to the old one, flips it in with one rename and mounts it read-only again. Each bundle's original is copied to
@@ -47,7 +48,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.7.0';
+const VERSION = '0.7.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -72,7 +73,7 @@ const CFG = {
     scanMs: Number(env('AVATAR_SCAN_MS', 5000)),        // how often the app is looked for while it is missing
 };
 const APP = /^anh_dai_dien\d*$/;
-const SLOTS = 15, THUMB = 256, SMALL = 96, MORE0 = 21, CAR = 41, CAR_W = 1920, START = 51, START_W = 1920, START_H = 720;
+const SLOTS = 15, THUMB = 256, SMALL = 96, MINI = 48, MORE0 = 21, CAR = 41, CAR_W = 1920, START = 51, START_W = 1920, START_H = 720;
 const key = (n) => 'S' + (n < 10 ? '0' : '') + n;
 const two = (n) => (n < 10 ? '0' : '') + n;
 const mkdirp = (d) => { if (fs.existsSync(d)) return; mkdirp(path.dirname(d)); try { fs.mkdirSync(d); } catch (e) { if (e.code !== 'EEXIST') throw e; } };
@@ -169,6 +170,8 @@ function thumb(n, topDown, w, h) {
     const tw = h >= w ? THUMB : Math.round(THUMB * w / h);
     S.thumbs[n] = W.png(W.resize(topDown, w, h, tw, h >= w ? Math.round(THUMB * h / w) : THUMB), tw, h >= w ? Math.round(THUMB * h / w) : THUMB);
     if (n <= SLOTS) { try { writeAtomic(path.join(CFG.run, 't' + two(n) + '.rgba'), W.shrink(topDown, w, h, SMALL)); } catch (e) { /* no RAM folder (tests) */ } }
+    // the car and the start-up screen for the app's cards: MINI pixels wide, as many rows as the shape gives
+    if (n === CAR || n === START) { try { writeAtomic(path.join(CFG.run, 't' + n + '.rgba'), W.resize(topDown, w, h, MINI, Math.max(1, Math.round(MINI * h / w)))); } catch (e) { /* no RAM folder (tests) */ } }
 }
 
 /* The car's picture is stored with its colours multiplied by its transparency, and painted by the head unit:

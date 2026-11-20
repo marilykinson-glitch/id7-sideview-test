@@ -7,6 +7,7 @@
  * whether the owner's picture or the car's own is in use; the tool's last message and the buttons.
  *
  * v = { state: 'ok' | 'down' | 'bad', url, host, pin, slots: [{ n, changed }] (the profile pictures),
+ *       thumbs: { 41, 51: RGBA 48 wide; 1..15: RGBA 24 x 24 } (small pictures of what is in use; any may be missing),
  *       more: [{ n, label, changed }] (41 the car, 51 the start-up screen, the others the placeholder pictures),
  *       message, messageKind ('go' | 'warn' | 'crit' | 'dim'), needsRestart, busy, error, backup, anyChanged, version }
  * act = { restoreAll, newPin, reboot }
@@ -25,16 +26,53 @@ function fit(cv, str, size, o, max) {
 }
 
 const CAR = 41, START = 51;
+const MINI = 48, CELL = 3;             // a small picture: 48 pixels wide, each drawn as a 3 x 3 square
 
-/** One thing that can be changed: its name, what it is, and whose picture is in use now. */
-function card(cv, G, t, x, y, w, h, title, sub, mine, state) {
+/**
+ * A small picture (RGBA, w x h, top-down) drawn as coloured rectangles: the Store's renderer takes no pixel images.
+ * Colours are rounded to 16 steps a channel and equal neighbours in a row become one rectangle; transparent and
+ * black parts are the dark ground under it.
+ */
+function mosaic(cv, G, rgba, w, h, x, y, cell) {
+    cv.fillRect(x, y, w * cell, h * cell, '#07080b');
+    if (!rgba || rgba.length < w * h * 4) return;
+    const hex = (v) => (v < 16 ? '0' : '') + v.toString(16);
+    for (let r = 0; r < h; r++) {
+        let from = 0, last = -1;
+        for (let c = 0; c <= w; c++) {
+            let q = -1;
+            if (c < w) {
+                const i = (r * w + c) * 4, a = rgba[i + 3] / 255;
+                q = (((rgba[i] * a) >> 4) << 8) | (((rgba[i + 1] * a) >> 4) << 4) | ((rgba[i + 2] * a) >> 4);
+            }
+            if (q === last) continue;
+            if (last > 0) cv.fillRect(x + from * cell, y + r * cell, (c - from) * cell, cell, '#' + hex(((last >> 8) & 15) * 17) + hex(((last >> 4) & 15) * 17) + hex((last & 15) * 17));
+            from = c; last = q;
+        }
+    }
+}
+
+/**
+ * One thing that can be changed: its name, a small picture of what is in use now (pics: [{ rgba, w, h }]), whose it
+ * is, and where it shows.
+ */
+function card(cv, G, t, x, y, w, h, title, sub, mine, state, pics) {
     const go = t.go || '#2fd27a';
     cv.roundRect(x, y, w, h, 14, G.withAlpha('#ffffff', mine ? 0.07 : 0.04));
     cv.strokeRoundRect(x, y, w, h, 14, mine ? 2 : 1.2, mine ? G.withAlpha(go, 0.9) : G.withAlpha('#ffffff', 0.2));
-    cv.text(title, x + 22, y + 40, 24, t.text, { literal: true, font: 'bold' });
-    cv.text(sub, x + 22, y + 68, 16, t.dim, { literal: true, font: 'label' });
-    cv.circle(x + 29, y + h - 27, 6, mine ? go : G.withAlpha('#ffffff', 0.35));
-    cv.text(state, x + 46, y + h - 20, 18, mine ? go : t.dim, { literal: true, font: 'label' });
+    cv.text(title, x + 22, y + 38, 24, t.text, { literal: true, font: 'bold' });
+    const py = y + 54, ph = 72;
+    let px = x + 22;
+    (pics || []).forEach((p) => {
+        const cell = Math.max(1, Math.floor(Math.min(MINI * CELL / p.w, ph / p.h)));
+        mosaic(cv, G, p.rgba, p.w, p.h, px, py + Math.floor((ph - p.h * cell) / 2), cell);
+        cv.strokeRoundRect(px - 1, py + Math.floor((ph - p.h * cell) / 2) - 1, p.w * cell + 2, p.h * cell + 2, 2, 1, G.withAlpha('#ffffff', 0.22));
+        px += p.w * cell + 8;
+    });
+    const tx = Math.max(px + 6, x + 22);
+    cv.circle(tx + 7, py + 30, 6, mine ? go : G.withAlpha('#ffffff', 0.35));
+    cv.text(fit(cv, state, 18, { literal: true, font: 'label' }, x + w - 16 - (tx + 22)), tx + 22, py + 37, 18, mine ? go : t.dim, { literal: true, font: 'label' });
+    cv.text(fit(cv, sub, 15, { literal: true, font: 'label' }, w - 44), x + 22, y + h - 16, 15, t.dim, { literal: true, font: 'label' });
 }
 
 function draw(cv, G, t, v, act) {
@@ -77,13 +115,15 @@ function draw(cv, G, t, v, act) {
         const more = v.more || [], car = more.filter((m) => m.n === CAR)[0], start = more.filter((m) => m.n === START)[0];
         const rest = more.filter((m) => m.n !== CAR && m.n !== START), restMine = rest.filter((m) => m.changed).length;
         const slots = v.slots || [], mine = slots.filter((x) => x.changed).length;
-        const gap = 20, cw = (rw - 2 * gap) / 3, cy = G.TOP + 140, ch = 128;
-        const whose = (m) => (!m ? 'Xe này chưa hỗ trợ' : m.changed ? 'Đang dùng ảnh của bạn' : 'Hình gốc của xe');
-        card(cv, G, t, rx, cy, cw, ch, 'Hình chiếc xe', 'Menu Xe của tôi, ô xe màn hình chính', !!(car && car.changed), whose(car));
-        card(cv, G, t, rx + cw + gap, cy, cw, ch, 'Màn hình khởi động', 'Lúc chào và lúc tạm biệt', !!(start && start.changed), whose(start));
-        card(cv, G, t, rx + 2 * (cw + gap), cy, cw, ch, 'Ảnh đại diện', slots.length + ' hình của hồ sơ người lái', mine > 0, mine ? 'Đã đổi ' + mine + '/' + slots.length + ' hình' : 'Hình gốc của xe');
+        const gap = 20, cw = (rw - 2 * gap) / 3, cy = G.TOP + 134, ch = 166, th = v.thumbs || {};
+        const whose = (m) => (!m ? 'Chưa hỗ trợ' : m.changed ? 'Ảnh của bạn' : 'Hình gốc');
+        const one = (n) => (th[n] ? [{ rgba: th[n], w: MINI, h: Math.max(1, Math.min(24, Math.floor(th[n].length / 4 / MINI))) }] : []);
+        const faces = slots.filter((x) => x.changed && th[x.n]).slice(0, 2).map((x) => ({ rgba: th[x.n], w: 24, h: 24 }));
+        card(cv, G, t, rx, cy, cw, ch, 'Hình chiếc xe', 'Menu Xe của tôi, ô xe ở màn hình chính', !!(car && car.changed), whose(car), one(CAR));
+        card(cv, G, t, rx + cw + gap, cy, cw, ch, 'Màn hình khởi động', 'Lúc chào và lúc tạm biệt', !!(start && start.changed), whose(start), one(START));
+        card(cv, G, t, rx + 2 * (cw + gap), cy, cw, ch, 'Ảnh đại diện', slots.length + ' hình của hồ sơ người lái', mine > 0, mine ? 'Đã đổi ' + mine + '/' + slots.length : 'Hình gốc', faces);
         if (rest.length) {
-            const oy = cy + ch + 14, go = t.go || '#2fd27a';
+            const oy = cy + ch + 12, go = t.go || '#2fd27a';
             cv.roundRect(rx, oy, rw, 46, 12, G.withAlpha('#ffffff', 0.04));
             cv.strokeRoundRect(rx, oy, rw, 46, 12, 1.2, G.withAlpha('#ffffff', 0.16));
             cv.text('Khác', rx + 22, oy + 30, 19, t.text, { literal: true, font: 'bold' });
@@ -105,4 +145,4 @@ function draw(cv, G, t, v, act) {
     return cv;
 }
 
-module.exports = { draw, W, H };
+module.exports = { draw, W, H, MINI };
