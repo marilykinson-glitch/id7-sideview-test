@@ -1,8 +1,8 @@
 {
   "id": "anh_dai_dien",
-  "title": "Ảnh đại diện",
-  "description": "Đổi ảnh đại diện của profile trên xe bằng ảnh của bạn: quét mã QR, chọn ảnh trên điện thoại, cắt vuông. Xe không cần Connected Drive. Cần trợ thủ anh-dai-dien (tự cài kèm); hình gốc được sao lưu và khôi phục được.",
-  "version": "0.2.0",
+  "title": "Dấu Ấn",
+  "description": "Đặt ảnh của bạn lên màn hình xe: ảnh đại diện của profile, ảnh bìa mặc định khi phát nhạc, ảnh người gọi. Quét mã QR, chọn ảnh trên điện thoại, cắt vuông. Xe không cần Connected Drive. Cần trợ thủ anh-dai-dien (tự cài kèm); hình gốc được sao lưu và khôi phục được.",
+  "version": "0.2.1",
   "vendor": "custom",
   "loggingId": "OAAD",
   "signals": {},
@@ -10,7 +10,7 @@
     {
       "name": "MAIN",
       "kind": "canvas",
-      "title": "Ảnh đại diện",
+      "title": "Dấu Ấn",
       "buttons": [
         [
           "BTN_PIN",

@@ -6,14 +6,14 @@ Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. H
 
 > **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
 
-## Ảnh đại diện 0.2.0 (app thứ hai trong nguồn này)
+## Dấu Ấn 0.2.1 (app thứ hai trong nguồn này; tên cũ: Ảnh đại diện)
 
 Xe không có Connected Drive thì không đổi được ảnh đại diện của profile, và danh sách hình có sẵn chỉ có 15 hình. App này cho đặt ảnh của chính mình lên xe, gửi từ điện thoại:
 
 - **Ảnh đại diện:** 15 hình trong danh sách chọn ảnh của profile. Mỗi hình được ghi vào cả ba gói của xe: hình to 570x570 (chỗ chọn ảnh) và hai bộ biểu tượng nhỏ 84x72, 72x72 (danh sách, thanh trạng thái).
 - **Hình mặc định (mới trong 0.2.0):** hình xe hiện khi không có ảnh bìa hay ảnh người gọi: nhạc Bluetooth, nhạc USB, nhạc, radio FM/AM, radio, người gọi không có ảnh. Một ảnh được ghi vào cả 4 cỡ và 2 màu (xanh, đỏ) của gói. Xe không có gói nào, hoặc gói khác cấu trúc, thì mục đó không hiện.
 
-**Dùng:** cài **Ảnh đại diện** từ MGU Store (cùng nguồn `marilykinson-glitch/id7-sideview-test`, nhánh `main`; Store cài luôn **Trợ thủ Ảnh đại diện**), khởi động lại màn hình một lần. Mở app trên xe: màn hình hiện mã QR và mã PIN. Quét QR bằng điện thoại (điện thoại và xe cùng Wi-Fi hoặc điểm phát sóng), chạm một hình, chọn ảnh, kéo và phóng to để cắt vuông, bấm **Dùng ảnh này**. Khởi động lại màn hình xe để xe dùng hình mới. Số hình là thứ tự trong danh sách chọn ảnh trên xe.
+**Dùng:** cài **Dấu Ấn** từ MGU Store (cùng nguồn `marilykinson-glitch/id7-sideview-test`, nhánh `main`; Store cài luôn **Trợ thủ Dấu Ấn**), khởi động lại màn hình một lần. Mở app trên xe: màn hình hiện mã QR và mã PIN. Quét QR bằng điện thoại (điện thoại và xe cùng Wi-Fi hoặc điểm phát sóng), chạm một hình, chọn ảnh, kéo và phóng to để cắt vuông, bấm **Dùng ảnh này**. Khởi động lại màn hình xe để xe dùng hình mới. Số hình là thứ tự trong danh sách chọn ảnh trên xe.
 
 **Khôi phục:** trên trang điện thoại có nút khôi phục từng hình và tất cả; trên xe có nút **Khôi phục tất cả**. Bản gốc của từng gói được sao lưu một lần ở `/var/opt/anh-dai-dien/backup/` trước khi đổi gì (với gói ảnh đại diện, nếu đã có bản `/var/opt/avatar_backup/wbitmaps.res.orig` tự sao lưu thì lấy bản đó làm bản gốc).
 
