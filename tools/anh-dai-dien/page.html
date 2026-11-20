@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a0e14">
-<title>ID Studio · BMW</title>
+<title>MGU Studio · BMW</title>
 <style>
 :root{--bg:#0a0e14;--card:#131a24;--line:#243042;--text:#eef3fa;--dim:#8a99ad;--acc:#2b87ff;--acc2:#81c4ff;--go:#2fd27a;--warn:#ffb020;--crit:#ff5a5f}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -75,7 +75,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
 <div class="wrap">
   <header>
     <div class="stripes"><i></i><i></i><i></i></div>
-    <h1>ID Studio</h1>
+    <h1>MGU Studio</h1>
     <p class="sub">Tuỳ biến hình ảnh iDrive: chiếc xe, màn hình khởi động, ảnh đại diện và các hình mặc định.</p>
   </header>
 
@@ -103,11 +103,12 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     <p class="hint">Chạm vào một hình để thay bằng ảnh của bạn. Số hình là thứ tự trong danh sách chọn ảnh trên xe.</p>
     <div class="grid" id="grid"></div>
     <div id="moreBox" class="hide">
-      <div class="sec">Hình mặc định</div>
+      <div class="sec">Khác</div>
       <p class="hint">Hình xe hiện khi không có ảnh bìa hay ảnh người gọi. Thay bằng ảnh bạn thích.</p>
       <div class="grid wide" id="more"></div>
     </div>
     <div class="foot">
+      <button class="btn" id="rebootBtn">Khởi động lại màn hình xe</button>
       <button class="btn danger" id="resetAll">Khôi phục tất cả hình gốc</button>
       <p>Hình gốc của xe được sao lưu trước khi đổi gì, nên khôi phục lại được bất cứ lúc nào.</p>
     </div>
@@ -323,6 +324,14 @@ input[type=range]{flex:1;accent-color:var(--acc)}
       busy(false);
       if (j.ok) { toast('Đã khôi phục tất cả hình gốc.', 'go'); refresh(); } else toast(j.error || 'Không khôi phục được', 'crit');
     }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
+  };
+
+  var armedR = 0;
+  $('rebootBtn').onclick = function () {
+    var b = this;
+    if (!armedR || Date.now() - armedR > 4000) { armedR = Date.now(); b.textContent = 'Chạm lần nữa để khởi động lại'; setTimeout(function () { if (Date.now() - armedR >= 3900) { b.textContent = 'Khởi động lại màn hình xe'; armedR = 0; } }, 4000); return; }
+    armedR = 0; b.textContent = 'Khởi động lại màn hình xe';
+    api('/api/reboot', { method: 'POST' }).then(function (j) { toast(j.ok ? 'Xe đang khởi động lại. Chờ khoảng một phút rồi mở lại trang này.' : (j.error || 'Không khởi động lại được'), j.ok ? 'go' : 'crit'); }).catch(function () { toast('Mất kết nối với xe.', 'crit'); });
   };
 
   var saved = ''; try { saved = sessionStorage.getItem('pin') || ''; } catch (e) {}

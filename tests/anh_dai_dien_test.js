@@ -237,7 +237,7 @@ const fillCache = () => cached.forEach((f) => fs.writeFileSync(path.join(shaderD
 mkdirs(path.join(vehicles, 'F40', 'vehicle')); fs.writeFileSync(path.join(vehicles, 'F40', 'vehicle', 'effects.res'), 'not one');      // a model this does not know: left alone
 const car3dFile = (name) => fs.readFileSync(path.join(car3dDir, name));
 const carFile = (sub) => fs.readFileSync(path.join(vehicles, 'G20', sub, 'bitmaps.res'));
-Object.assign(process.env, { AVATAR_NFT: path.join(tmp, 'no-nft'), AVATAR_FW_MS: '0', AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_SHADERS: shaderDir, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
+Object.assign(process.env, { AVATAR_NFT: path.join(tmp, 'no-nft'), AVATAR_FW_MS: '0', AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_SHADERS: shaderDir, AVATAR_REBOOT: 'echo again > ' + path.join(tmp, 'rebooted'), AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
 const svc = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'anh-dai-dien.js'));
 const fileOf = (rel) => fs.readFileSync(path.join(root, rel, 'wbitmaps.res'));
 const BT = svc.MORE0, USB = svc.MORE0 + 1;
@@ -438,7 +438,13 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     fs.writeFileSync(path.join(app, 'data', 'command.json'), JSON.stringify({ id: 7, cmd: 'restore_all' }));
     svc.pollCommands(); await sleep(400);
     assert.strictEqual(Buffer.compare(fileOf(AV), mk.data), 0); assert.strictEqual(Buffer.compare(fileOf(REG), mkReg.data), 0);
-    ok('the app\'s commands: an old one is ignored, a new PIN, restore all');
+    fs.writeFileSync(path.join(app, 'data', 'command.json'), JSON.stringify({ id: 71, cmd: 'reboot' }));
+    svc.pollCommands(); await sleep(1100);
+    assert.strictEqual(fs.readFileSync(path.join(tmp, 'rebooted'), 'utf8'), 'again\n'); assert.ok(/khởi động lại/.test(svc.S.message));
+    fs.unlinkSync(path.join(tmp, 'rebooted'));
+    r = await call('POST', '/api/reboot'); assert.strictEqual(r.code, 401);
+    r = await call('POST', '/api/reboot?pin=' + svc.S.pin); assert.strictEqual(r.code, 200); await sleep(1100); assert.ok(fs.existsSync(path.join(tmp, 'rebooted')));
+    ok('the app\'s commands: an old one is ignored, a new PIN, restore all, restart (from the page too, with the PIN)');
 
     // the address for the QR code: the default route's interface first; the app can ask for the next one
     {
@@ -543,21 +549,24 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     const { Recorder, play } = require(path.join(ROOT, 'kit', 'runtime', 'record.js'));
     const themes = require(path.join(ROOT, 'kit', 'runtime', 'themes.js'));
     const theme = themes.theme(themes.ids ? (Array.isArray(themes.ids) ? themes.ids[0] : themes.ids()[0]) : undefined);
-    const thumbs = {}; for (let i = 1; i <= 15; i++) thumbs[i] = Buffer.alloc(UI.SMALL * UI.SMALL * 4, 40 + i * 10);
     const slots = Array.from({ length: 15 }, (_, i) => ({ n: i + 1, changed: i === 2 }));
-    const more = [{ n: 21, label: 'Nhạc Bluetooth', changed: true }, { n: 22, label: 'Nhạc USB', changed: false }];
-    const base = { state: 'ok', ipCount: 2, ipIndex: 1, url: 'http://192.168.7.9:8137/?pin=4821', host: '192.168.7.9:8137', pin: '4821', slots, more, thumbs, anyChanged: true };
-    const draws = [base, Object.assign({}, base, { busy: true }), Object.assign({}, base, { url: '' }), { state: 'down', slots: [], thumbs: {} }, { state: 'bad', error: 'x', slots: [], thumbs: {} }];
+    const more = [{ n: 41, label: 'Hình xe', changed: true }, { n: 51, label: 'Khởi động', changed: false }, { n: 21, label: 'Nhạc Bluetooth', changed: true }, { n: 22, label: 'Nhạc USB', changed: false }];
+    const base = { state: 'ok', url: 'http://192.168.7.9:8137/?pin=4821', host: '192.168.7.9:8137', pin: '4821', slots, more, anyChanged: true };
+    const draws = [base, Object.assign({}, base, { busy: true }), Object.assign({}, base, { url: '' }), Object.assign({}, base, { more: [], needsRestart: true, message: 'x'.repeat(300) }), { state: 'down', slots: [] }, { state: 'bad', error: 'x', slots: [] }];
     draws.forEach((v) => {
         const rec = new Recorder(UI.W, UI.H, { textScale: 1 }); rec.own = true;
         UI.draw(rec, G, theme, v, {});
         const cv = new Canvas(UI.W, UI.H); play(rec.words(), cv);
     });
-    const rec = new Recorder(UI.W, UI.H, { textScale: 1 }); rec.own = true; UI.draw(rec, G, theme, base, {});
-    assert.ok(rec.targets.some((t) => t.key === 'adRestore') && rec.targets.some((t) => t.key === 'adPin') && rec.targets.some((t) => t.key === 'adIp'));
+    const rec = new Recorder(UI.W, UI.H, { textScale: 1 }); rec.own = true;
+    const said = [], text0 = rec.text; rec.text = function (str) { said.push(String(str)); return text0.apply(this, arguments); };
+    UI.draw(rec, G, theme, base, {});
+    assert.ok(rec.targets.some((t) => t.key === 'adRestore') && rec.targets.some((t) => t.key === 'adPin') && rec.targets.some((t) => t.key === 'adReboot') && !rec.targets.some((t) => t.key === 'adIp'));
+    const words = said.join('|');
+    ['Hình chiếc xe', 'Màn hình khởi động', 'Ảnh đại diện', 'Đang dùng ảnh của bạn', 'Đã đổi 1/15 hình', 'Khác', 'Đã đổi 1/2'].forEach((w) => assert.ok(words.indexOf(w) >= 0, w));
     const none = new Recorder(UI.W, UI.H, { textScale: 1 }); none.own = true; UI.draw(none, G, theme, Object.assign({}, base, { anyChanged: false }), {});
     assert.ok(!none.targets.some((t) => t.key === 'adRestore'));
-    ok('the car screen draws in every state; "restore all" is a button only when something changed');
+    ok('the car screen: three cards and the rest in one line, a restart button, "restore all" only when something changed');
 
     console.log('\nall ' + n + ' passed');
     process.exit(0);

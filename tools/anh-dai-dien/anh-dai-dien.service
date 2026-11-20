@@ -1,7 +1,7 @@
 # anh-dai-dien: the web page the owner's phone uses to put its own pictures in the profile picker
 # (tools/anh-dai-dien/anh-dai-dien.js; the bundle is written through wbm.js).
 [Unit]
-Description=ID Studio: own pictures on the head unit, from a phone (anh-dai-dien)
+Description=MGU Studio: own pictures on the head unit, from a phone (anh-dai-dien)
 RequiresMountsFor=/var/opt /mnt/dataro
 After=local-fs.target network.target
 StartLimitIntervalSec=0

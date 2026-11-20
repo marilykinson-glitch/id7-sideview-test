@@ -47,7 +47,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.6.1';
+const VERSION = '0.7.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -63,6 +63,7 @@ const CFG = {
     mount: process.env.AVATAR_MOUNT !== undefined ? process.env.AVATAR_MOUNT : '/mnt/dataro',   // '' = nothing to remount (tests)
     state: env('AVATAR_STATE', '/var/opt/anh-dai-dien'),
     shaders: env('AVATAR_SHADERS', '/var/opt/target/shader-cache'),
+    reboot: env('AVATAR_REBOOT', 'sync; reboot'),
     legacy: env('AVATAR_LEGACY', '/var/opt/avatar_backup'),
     run: env('AVATAR_RUN', '/run/anh-dai-dien'),
     oap: env('AVATAR_OAP', '/var/opt/public/oap'),
@@ -809,6 +810,7 @@ async function handle(req, res) {
     if (req.method === 'POST' && m) {
         try { await restore(m[1] === 'all' ? 'all' : Number(m[1])); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'restore'); }
     }
+    if (req.method === 'POST' && p === '/api/reboot') { reboot(); return json(res, 200, { ok: true, message: S.message }); }
     json(res, 404, { ok: false, error: 'không có' });
 }
 
@@ -830,6 +832,15 @@ function findApp(now) {
     return null;
 }
 
+/** Restarts the head unit (what shows new pictures), a moment after saying so. */
+function reboot() {
+    say('warn', 'Đang khởi động lại màn hình xe…'); writeStatus();
+    log('restart asked for');
+    if (!CFG.reboot) return;
+    const t = setTimeout(() => cp.execFile('/bin/sh', ['-c', CFG.reboot], { timeout: 20000 }, (e) => { if (e) { log('restart: ' + e.message); say('crit', 'Không khởi động lại được: ' + e.message); } }), 700);
+    if (t.unref) t.unref();
+}
+
 function pollCommands() {
     const app = findApp(Date.now());
     if (!app) return;
@@ -841,6 +852,7 @@ function pollCommands() {
     log('command ' + c.cmd);
     if (c.cmd === 'restore_all') restore('all').catch((e) => { log('restore failed: ' + e.message); say('crit', 'Lỗi: ' + e.message); });
     else if (c.cmd === 'new_pin') { S.pin = newPin(); say('dim', 'Đã đổi mã PIN.'); }
+    else if (c.cmd === 'reboot') reboot();
     else if (c.cmd === 'next_ip') { S.ipIndex++; fwLast = ''; fwCheck(); say('dim', 'Đã đổi sang địa chỉ khác của xe. Quét lại mã QR.'); }
 }
 
@@ -869,4 +881,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, reboot, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

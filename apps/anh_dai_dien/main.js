@@ -1,12 +1,12 @@
 'use strict';
 /**
- * Ảnh đại diện - the screen of the tool anh-dai-dien (tools/anh-dai-dien), which does the work: a web page
- * for the phone (pick a photo, crop it square), writing it into the head unit's picture bundles, the backup and
- * the restore. This app shows how to reach the page (a QR code and a PIN), the fifteen pictures as they are on
- * the car now, and has the two buttons: a new PIN, restore everything.
+ * MGU Studio - the screen of the tool anh-dai-dien (tools/anh-dai-dien), which does the work: a web page for the
+ * phone (pick a photo, crop it), writing it into the head unit's files, the backup and the restore. This app shows
+ * how to reach the page (a QR code and a PIN), what is changed now, and has the buttons: restart the head unit, a
+ * new PIN, restore everything.
  *
- *   the tool  -> /run/anh-dai-dien/status.json, t01.rgba .. t15.rgba   (RAM; read here)
- *   this app  -> <its folder>/data/command.json  { id, cmd: 'restore_all' | 'new_pin' | 'next_ip' }   (the tool reads it)
+ *   the tool  -> /run/anh-dai-dien/status.json   (RAM; read here)
+ *   this app  -> <its folder>/data/command.json  { id, cmd: 'restore_all' | 'new_pin' | 'reboot' }   (the tool reads it)
  *
  * Node 8.
  */
@@ -19,12 +19,11 @@ const UI = require('./ui');
 
 const RUN = process.env.ANH_RUN || '/run/anh-dai-dien';
 const STALE_MS = 6000;           // the tool writes every 1.5 s
-const SLOTS = 15;
 
 mgu.run({
     async start(ctx) {
         const { ui, log } = ctx;
-        let status = null, readAt = 0, thumbs = {}, thumbRev = -1, cmdId = Date.now(), lastKey = '', shown = false;
+        let status = null, readAt = 0, cmdId = Date.now(), lastKey = '', shown = false;
         const version = (ctx.spec && ctx.spec.version) ? 'Bản ' + ctx.spec.version : '';
 
         function readStatus(now) {
@@ -33,13 +32,6 @@ mgu.run({
             let s = null;
             try { s = JSON.parse(fs.readFileSync(path.join(RUN, 'status.json'), 'utf8')); } catch (e) { s = null; }
             status = s && typeof s.at === 'number' && Math.abs(now - s.at) < STALE_MS ? s : null;
-            if (status && status.rev !== thumbRev && status.compatible) {
-                const t = {};
-                for (let n = 1; n <= SLOTS; n++) {
-                    try { const b = fs.readFileSync(path.join(RUN, 't' + (n < 10 ? '0' : '') + n + '.rgba')); if (b.length === UI.SMALL * UI.SMALL * 4) t[n] = b; } catch (e) { /* not written yet */ }
-                }
-                thumbs = t; thumbRev = status.rev;
-            }
         }
 
         function send(cmd) {
@@ -51,16 +43,15 @@ mgu.run({
             } catch (e) { log.warn('command ' + cmd + ': ' + (e && e.message)); }
             readAt = 0;
         }
-        const acts = { restoreAll: () => { send('restore_all'); return repaint(); }, newPin: () => { send('new_pin'); return repaint(); }, nextIp: () => { send('next_ip'); return repaint(); } };
+        const acts = { restoreAll: () => { send('restore_all'); return repaint(); }, newPin: () => { send('new_pin'); return repaint(); }, reboot: () => { send('reboot'); return repaint(); } };
 
         function model() {
             readStatus(Date.now());
             const s = status;
             const hostOf = (u) => String(u || '').replace(/^http:\/\//, '').replace(/\/\?pin=\d+$/, '');
             return {
-                ipCount: s && s.ips ? s.ips.length : 0, ipIndex: s ? (s.ipIndex || 0) : 0,
                 state: !s ? 'down' : !s.compatible ? 'bad' : 'ok', error: s && s.error, url: s && s.url, host: s && hostOf(s.url), pin: s && s.pin,
-                slots: s && s.compatible ? s.slots : [], more: s && s.compatible ? (s.more || []) : [], thumbs, message: s && s.message, messageKind: s && s.messageKind,
+                slots: s && s.compatible ? s.slots : [], more: s && s.compatible ? (s.more || []) : [], message: s && s.message, messageKind: s && s.messageKind,
                 needsRestart: !!(s && s.needsRestart), busy: !!(s && s.busy), backup: s && s.backup,
                 anyChanged: !!(s && (s.anyChanged || (s.slots || []).some((x) => x.changed))), version,
             };
@@ -69,7 +60,7 @@ mgu.run({
         const render = async () => {
             const m = model();
             const vis = ui.isVisible('MAIN');
-            const key = JSON.stringify([m.state, m.error, m.url, m.pin, m.slots, m.more, thumbRev, m.message, m.messageKind, m.needsRestart, m.busy, m.anyChanged, vis]);
+            const key = JSON.stringify([m.state, m.error, m.url, m.pin, m.slots, m.more, m.message, m.messageKind, m.needsRestart, m.busy, m.anyChanged, vis]);
             if (key === lastKey && shown) return;
             lastKey = key; shown = true;
             const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);
@@ -78,10 +69,10 @@ mgu.run({
         };
         const loop = ctx.loop('MAIN', 2, render);
         function repaint() { lastKey = ''; return loop && loop.kick ? loop.kick() : render(); }
-        ['BTN_PIN', 'BTN_RESTORE', 'BTN_IP'].forEach((b) => { if (ctx.hideButton) ctx.hideButton(b); });
+        ['BTN_REBOOT', 'BTN_PIN', 'BTN_RESTORE'].forEach((b) => { if (ctx.hideButton) ctx.hideButton(b); });
         ui.onClick('BTN_PIN', acts.newPin);
         ui.onClick('BTN_RESTORE', acts.restoreAll);
-        ui.onClick('BTN_IP', acts.nextIp);
+        ui.onClick('BTN_REBOOT', acts.reboot);
         await render();
         log.info('anh_dai_dien ready');
     },
