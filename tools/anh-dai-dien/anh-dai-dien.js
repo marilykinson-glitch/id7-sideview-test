@@ -48,7 +48,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.7.2';
+const VERSION = '0.7.3';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -239,16 +239,19 @@ function loadCar() {
         const id = 'car-' + model + '-' + sub.slice(10);
         const b = bundle(id, dir, id + '.res.orig', 'bitmaps.res');
         const p = check(b, []);
+        // a mask is named after its picture: trimA / trimA_mask, or numbered one after it: trimA7 / trimA_mask8
+        const isMask = (k) => /_mask\d*_bitmap$/.test(k);
         const num = (k) => { const m = /(\d+)_bitmap$/.exec(k); return m ? Number(m[1]) : -1; };
+        const picOf = (mk, pics) => { const plain = mk.replace(/_mask(\d*)_bitmap$/, '_bitmap'); return pics.filter((x) => x.key === plain)[0] || pics.filter((x) => num(x.key) >= 0 && num(x.key) === num(mk) - 1 && x.key.replace(/\d+_bitmap$/, '') === mk.replace(/_mask\d+_bitmap$/, ''))[0]; };
         let okay = !!p;
         if (p) {
-            const masks = p.entries.filter((e) => /_mask\d+_bitmap$/.test(e.key)), pics = p.entries.filter((e) => !/_mask\d+_bitmap$/.test(e.key));
+            const masks = p.entries.filter((e) => isMask(e.key)), pics = p.entries.filter((e) => !isMask(e.key));
             const e0 = p.entries[0];
-            if (!pics.length || masks.length !== pics.length || p.entries.some((e) => e.w !== e0.w || e.h !== e0.h || num(e.key) < 0)) { okay = false; b.error = 'other pictures than a picture and a mask per trim'; }
+            if (!pics.length || masks.length !== pics.length || p.entries.some((e) => e.w !== e0.w || e.h !== e0.h) || masks.some((e) => !picOf(e.key, pics))) { okay = false; b.error = 'other pictures than a picture and a mask per trim'; }
             else if (backup(b, p)) {
-                pics.sort((x, y) => num(x.key) - num(y.key));
+                pics.sort((x, y) => (num(x.key) - num(y.key)) || (x.key < y.key ? -1 : 1));
                 pics.forEach((e) => targets.push({ b, key: e.key, w: e.w, h: e.h }));
-                masks.forEach((e) => { const pr = pics.filter((x) => num(x.key) === num(e.key) - 1)[0]; targets.push({ b, key: e.key, w: e.w, h: e.h, zero: true, pair: pr ? pr.key : '' }); });
+                masks.forEach((e) => { const pr = picOf(e.key, pics); targets.push({ b, key: e.key, w: e.w, h: e.h, zero: true, pair: pr ? pr.key : '' }); });
                 if (!first) first = p;
             } else okay = false;
         }
@@ -363,28 +366,30 @@ function loadCar3d() {
     let models = [];
     try { models = fs.readdirSync(CFG.vehicles).sort(); } catch (e) { models = []; }
     S.carChanged = fs.existsSync(carMark());
-    const found = [];
+    const found = [], old = [];              // old: changed by an earlier version of this, not a model this one changes: only put back
     models.forEach((model) => {
         const dir = path.join(CFG.vehicles, model, 'vehicle');
-        if (!CAR_NEEDS.every((f) => fs.existsSync(path.join(dir, f)))) return;
         const m = { model, dir };
+        const kept = () => { if (CAR_FILES.every((f) => fs.existsSync(carBackup(m, f)) && fs.existsSync(path.join(dir, f)))) old.push(m); };
+        if (!CAR_NEEDS.every((f) => fs.existsSync(path.join(dir, f)))) return kept();
         try {
             // what the model is, is read from its originals: the files on the car may be this tool's
             const from = S.carChanged && CAR_FILES.every((f) => fs.existsSync(carBackup(m, f))) ? path.dirname(carBackup(m, 'effects.res')) : dir;
             const eff = new Res(fs.readFileSync(path.join(from, 'effects.res')), fs.readFileSync(path.join(dir, 'effects.res.ids'), 'utf8'));
             const bmp = new Res(fs.readFileSync(path.join(from, 'bitmaps.res')), fs.readFileSync(path.join(dir, 'bitmaps.res.ids'), 'utf8'));
-            if (!CAR3D.check(eff, bmp)) { log('3D car ' + model + ' left alone: not the body effect and texture known'); return; }
-            if (!carMarks(m)) { log('3D car ' + model + ' left alone: no body mesh to carry the picture'); return; }
+            if (!CAR3D.check(eff, bmp)) { log('3D car ' + model + ' left alone: not the body effect and texture known'); return kept(); }
+            if (!carMarks(m)) { log('3D car ' + model + ' left alone: no body mesh to carry the picture'); return kept(); }
             found.push(m);
-        } catch (e) { log('3D car ' + model + ' left alone: ' + e.message); }
+        } catch (e) { log('3D car ' + model + ' left alone: ' + e.message); kept(); }
     });
     const flat = S.hero && S.hero.targets.length ? S.hero.targets : [];
-    if (!found.length && !flat.length) return;
+    if (old.length) log('3D cars changed by an earlier version, to put back: ' + old.map((m) => m.model).join(', '));
+    if (!found.length && !flat.length && !old.length) return;
     const where = found.length && flat.length ? 'ở ô xe ngoài màn hình chính và trong menu Xe của tôi' : found.length ? 'trong menu Xe của tôi (mô hình 3D)' : 'ở ô xe ngoài màn hình chính';
-    S.slots[CAR] = { n: CAR, label: 'Hình chiếc xe', where, w: CAR_W, h: Math.round(CAR_W * CAR3D.PH / CAR3D.PW), alpha: true, models: found, targets: flat };
+    S.slots[CAR] = { n: CAR, label: 'Hình chiếc xe', where, w: CAR_W, h: Math.round(CAR_W * CAR3D.PH / CAR3D.PW), alpha: true, models: found, old, targets: flat };
     carThumb();
 }
-/** Where the first vertices of the model's body are: what its shader knows the body by. */
+/** What the model's meshes say about the picture: { at, box } (car3d.marks). */
 function carMarks(m) {
     const data = fs.readFileSync(path.join(m.dir, 'meshes.res')), attrs = JSON.parse(fs.readFileSync(path.join(m.dir, 'meshes.res.attributes'), 'utf8'));
     return CAR3D.marks(attrs, (id) => new Res(data, id + ' X\n').payload('X'));
@@ -417,7 +422,7 @@ function dropShaders(names) {
 async function setCar(slot, rgba) {
     slot.models.forEach((m) => CAR_FILES.forEach((f) => {             // the originals first, each copied once
         const bk = carBackup(m, f);
-        if (fs.existsSync(bk) || S.carChanged) return;
+        if (fs.existsSync(bk)) return;                                // (a model without a copy was never changed: its files are the originals)
         mkdirp(path.dirname(bk));
         fs.writeFileSync(bk + '.tmp', fs.readFileSync(path.join(m.dir, f))); fs.renameSync(bk + '.tmp', bk);
     }));
@@ -426,16 +431,19 @@ async function setCar(slot, rgba) {
     slot.models.forEach((m) => {
         const ids = (f) => fs.readFileSync(path.join(m.dir, f + '.ids'), 'utf8');
         const eff = new Res(fs.readFileSync(carBackup(m, 'effects.res')), ids('effects.res')), bmp = new Res(fs.readFileSync(carBackup(m, 'bitmaps.res')), ids('bitmaps.res'));
-        const at = carMarks(m);
-        if (!CAR3D.check(eff, bmp) || !at) throw new Error('bản gốc của mô hình xe ' + m.model + ' không đúng');
-        // the picture stands where the car does (the floor is z -28.5 in the model's cm), 200 cm tall and twice as wide
-        const high = 200, effects = CAR3D.patchEffects(eff, { x: 150, y: 0, z: -28.5 + high / 2 - 20, w: high * CAR3D.PW / CAR3D.PH, h: high }, at);
+        const mk = carMarks(m);
+        if (!CAR3D.check(eff, bmp) || !mk) throw new Error('bản gốc của mô hình xe ' + m.model + ' không đúng');
+        const effects = CAR3D.patchEffects(eff, mk.box, mk.at);          // the picture stands where the car does, as long as its body
         const bitmaps = CAR3D.patchBitmaps(bmp, photo);
         const e2 = new Res(effects, ids('effects.res')), b2 = new Res(bitmaps, ids('bitmaps.res'));      // both read back
         Object.keys(e2.byName).forEach((n) => e2.shaders(n));
         if (Buffer.compare(b2.payload(CAR3D.TEXTURE), CAR3D.pack(photo)) !== 0 || Object.keys(e2.byName).length !== Object.keys(eff.byName).length) throw new Error('mô hình xe ghi ra không đọc lại được');
         jobs.push({ file: path.join(m.dir, 'effects.res'), buf: effects }, { file: path.join(m.dir, 'bitmaps.res'), buf: bitmaps });
         drop = drop.concat(CAR3D.cacheNames(eff));
+    });
+    (slot.old || []).forEach((m) => {                                 // what an earlier version changed and this one does not: the originals back
+        CAR_FILES.forEach((f) => jobs.push({ file: path.join(m.dir, f), buf: fs.readFileSync(carBackup(m, f)) }));
+        try { drop = drop.concat(CAR3D.cacheNames(new Res(fs.readFileSync(carBackup(m, 'effects.res')), fs.readFileSync(path.join(m.dir, 'effects.res.ids'), 'utf8')))); } catch (e) { /* nothing to remove */ }
     });
     // the 2D pictures: every trim's picture the photo, every paint mask empty
     const flat = byBundle(slot).map((g) => {
@@ -465,7 +473,8 @@ async function restoreCar() {
     if (!slot) return;
     const jobs = [], flat = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => /^car-/.test(b.id) && b.usable && Object.keys(b.changed).length);
     let drop = [];
-    if (S.carChanged) slot.models.forEach((m) => {
+    if (S.carChanged) slot.models.concat(slot.old || []).forEach((m) => {
+        if (!CAR_FILES.every((f) => fs.existsSync(carBackup(m, f)))) return;
         CAR_FILES.forEach((f) => jobs.push({ file: path.join(m.dir, f), buf: fs.readFileSync(carBackup(m, f)) }));
         try { drop = drop.concat(CAR3D.cacheNames(new Res(fs.readFileSync(carBackup(m, 'effects.res')), fs.readFileSync(path.join(m.dir, 'effects.res.ids'), 'utf8')))); } catch (e) { /* nothing to remove */ }
     });
@@ -892,7 +901,7 @@ function diagFiles() {
     } catch (e) { add('vehicles: ' + e.message); }
     add(''); add('== compiled shaders kept: ' + (() => { try { return fs.readdirSync(CFG.shaders).length; } catch (e) { return e.message; } })());
     add(''); add('== log'); LOGS.forEach((l) => add(l));
-    open.forEach((o) => {
+    open.filter((o) => o.by === 'HmiMain3D').forEach((o) => {             // the central screen's only: the cluster keeps every model open
         const rel = path.relative(CFG.vehicles, o.dir);
         try { fs.readdirSync(o.dir).forEach((f) => put('vehicles/' + rel + '/' + f, path.join(o.dir, f))); } catch (e) { /* gone */ }
         const model = rel.split(path.sep)[0];

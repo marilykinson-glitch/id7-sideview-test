@@ -9,8 +9,7 @@
  *
  * The body is used because it is always drawn, into the layer the car is seen through. Several meshes share its
  * shader (doors, lids), each with its own place and texture, so the picture is made by one mesh only: the largest,
- * known in the shader by where its first eight vertices are (two rectangles, one for each way a triangle may be
- * culled). Every other vertex is put outside the picture.
+ * known in the shader by where the corners of two of its triangles are (see marks(), billboard()).
  *
  * The paint's one own texture (TEX_MCP1_CARPAINT1, 1024 x 1024, one channel) carries the photo as brightness in
  * its upper half and, at half size below it, the two colour differences and the transparency (see pack()).
@@ -41,29 +40,58 @@ function beforeMain(src, lines) {
 const hide = (vertex) => atEnd(vertex, '\tgl_Position = vec4(2., 2., 2., 1.);\n');
 
 /**
- * The first eight vertices of the mesh that will carry the picture: `attributes` is meshes.res.attributes (parsed),
- * `payload(id)` gives an array's bytes. null if there is no such mesh.
+ * What the model's own meshes say about where the picture goes. `attributes` is meshes.res.attributes (parsed: the
+ * arrays of each mesh one after the other, its indexArray last), `payload(id)` gives an array's bytes. Returns
+ * { at, box } or null:
+ *   at    six places: the corners of two triangles of the body (the largest mesh painted MCP1) that share no place.
+ *         The shader knows the body by them. One triangle is drawn the other way round than the other, so that one
+ *         of them faces the camera whichever way the head unit culls.
+ *   box   { x, y, z, w, h }: the middle and the size of the picture in the model's units (cm), from the length of
+ *         the body and the floor under it (the ground mesh).
  */
 function marks(attributes, payload) {
-    let best = null;
-    attributes.forEach((a) => { if (a.name === 'a_Position' && /_MCP1_/.test(a.mesh) && (!best || Number(a.count) > Number(best.count))) best = a; });
-    if (!best || Number(best.count) < 8) return null;
-    const p = payload(best.id), out = [];
-    if (!p || p.length < 96) return null;
-    for (let i = 0; i < 8; i++) out.push([p.readFloatLE(i * 12), p.readFloatLE(i * 12 + 4), p.readFloatLE(i * 12 + 8)]);
-    for (let i = 0; i < 8; i++) for (let j = 0; j < i; j++) if (Math.hypot(out[i][0] - out[j][0], out[i][1] - out[j][1], out[i][2] - out[j][2]) < 0.1) return null;
-    return out;
+    const groups = [];
+    let cur = null;
+    attributes.forEach((a) => { if (!cur || cur.mesh !== a.mesh || cur.arr.indexArray) { cur = { mesh: a.mesh, arr: {} }; groups.push(cur); } cur.arr[a.name] = a; });
+    const whole = (g) => g.arr.a_Position && g.arr.indexArray && g.arr.indexArray.type === 'UInt16Array';
+    const body = groups.filter((g) => /_MCP1_/.test(g.mesh) && whole(g)).sort((x, y) => Number(y.arr.a_Position.count) - Number(x.arr.a_Position.count))[0];
+    if (!body) return null;
+    const pos = payload(body.arr.a_Position.id), idx = payload(body.arr.indexArray.id);
+    if (!pos || !idx) return null;
+    const n = Math.floor(pos.length / 12), P = (i) => [pos.readFloatLE(i * 12), pos.readFloatLE(i * 12 + 4), pos.readFloatLE(i * 12 + 8)];
+    const far = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) > 0.5;
+    const at = [];
+    for (let t = 0; t + 2 < idx.length / 2 && at.length < 6; t += 3) {
+        const v = [idx.readUInt16LE(t * 2), idx.readUInt16LE(t * 2 + 2), idx.readUInt16LE(t * 2 + 4)];
+        if (v.some((i) => i >= n)) continue;
+        const p = v.map(P);
+        if (!far(p[0], p[1]) || !far(p[1], p[2]) || !far(p[0], p[2]) || at.some((q) => p.some((r) => !far(q, r)))) continue;
+        at.push(p[0], p[1], p[2]);
+    }
+    if (at.length < 6) return null;
+    let x0 = Infinity, x1 = -Infinity;
+    for (let i = 0; i < n; i++) { const x = pos.readFloatLE(i * 12); if (x < x0) x0 = x; if (x > x1) x1 = x; }
+    let floor = -30, mid = (x0 + x1) / 2;
+    const ground = groups.filter((g) => /GROUND__?MGRO/.test(g.mesh) && g.arr.a_Position)[0];
+    if (ground) {
+        const gp = payload(ground.arr.a_Position.id);
+        if (gp && gp.length >= 12) { let g0 = Infinity, g1 = -Infinity; for (let i = 0; i + 12 <= gp.length; i += 12) { const x = gp.readFloatLE(i); if (x < g0) g0 = x; if (x > g1) g1 = x; } floor = gp.readFloatLE(8); mid = (g0 + g1) / 2; }
+    }
+    const w = 0.953 * (x1 - x0), h = w * PH / PW;
+    if (!(w > 50 && w < 2000)) return null;
+    return { at, box: { x: mid, y: 0, z: floor + h * 0.4, w, h } };
 }
 
 /**
- * The body's vertex shader as a picture facing the camera. `box`: { x, y, z } the middle of the car in the model's
- * units (cm), w and h the picture's size there; `at`: marks().
+ * The body's vertex shader as a picture facing the camera. `box`, `at`: marks(). The picture is the unit square of
+ * a triangle twice its size (corners 0,0 2,0 0,2: what lies outside is not drawn, see photo()); every vertex that
+ * is none of the six goes to the first corner, which leaves its triangles without area.
  */
 function billboard(vertex, box, at) {
     if (!/#version 300 es/.test(vertex) || !/\bu_MVPMatrix\b/.test(vertex) || !/\ba_Position\b/.test(vertex) || !/gl_Position/.test(vertex) || /\bpc_uv\b/.test(vertex)) throw new Error('the body shader is not the one known');
     const f = (v) => { const s = String(Math.round(v * 100) / 100); return s.indexOf('.') < 0 ? s + '.' : s; };
     const g = (v) => { const s = String(Math.round(v * 10000) / 10000); return s.indexOf('.') < 0 ? s + '.' : s; };
-    const corner = [0, 1, 2, 3, 1, 0, 3, 2];                       // vertices 0..3 one rectangle, 4..7 the same one the other way round
+    const corner = ['0., 0.', '2., 0.', '0., 2.', '0., 0.', '0., 2.', '2., 0.'];
     return atEnd(beforeMain(vertex, 'out mediump vec2 pc_uv;\n'), [
         '\tvec3 pc_m = vec3(' + f(box.x) + ', ' + f(box.y) + ', ' + f(box.z) + ');',
         '\tvec4 pc_c = u_MVPMatrix * vec4(pc_m, 1.);',
@@ -74,11 +102,10 @@ function billboard(vertex, box, at) {
         '\tvec2 pc_a = vec2(2.6667, 1.);',                         // the picture is 8 : 3: one unit across is fewer pixels than one up
         '\tfloat pc_s = max(max(length((pc_x.xy / pc_x.w - pc_n) * pc_a), length((pc_y.xy / pc_y.w - pc_n) * pc_a)), length((pc_z.xy / pc_z.w - pc_n) * pc_a));',
         '\tvec2 pc_h = vec2(' + f(box.w / 2) + ', ' + f(box.h / 2) + ') * pc_s / pc_a;',
-        '\tint pc_i = -1;',
-    ].concat(at.map((p, i) => '\tif (distance(a_Position, vec3(' + g(p[0]) + ', ' + g(p[1]) + ', ' + g(p[2]) + ')) < 0.03) pc_i = ' + corner[i] + ';'),
-    /\bu_CameraWorldPosition\b/.test(vertex) ? ['\tif (u_CameraWorldPosition.z < 0.) pc_i = -1;'] : [], [   // the pass that draws the floor's reflection looks from below: no second picture
-        '\tpc_uv = vec2((pc_i == 1 || pc_i == 2) ? 1. : 0., pc_i >= 2 ? 1. : 0.);',
-        '\tgl_Position = pc_i < 0 ? vec4(2., 2., 2., 1.) : vec4(pc_n + (pc_uv - vec2(0.5)) * 2. * pc_h, clamp(pc_c.z / pc_c.w, -0.99, 0.99), 1.);',
+        '\tpc_uv = vec2(0.);',
+    ].concat(at.map((p, i) => '\tif (distance(a_Position, vec3(' + g(p[0]) + ', ' + g(p[1]) + ', ' + g(p[2]) + ')) < 0.03) pc_uv = vec2(' + corner[i] + ');'), [
+        '\tgl_Position = vec4(pc_n + (pc_uv - vec2(0.5)) * 2. * pc_h, clamp(pc_c.z / pc_c.w, -0.99, 0.99), 1.);',
+    ], /\bu_CameraWorldPosition\b/.test(vertex) ? ['\tif (u_CameraWorldPosition.z < 0.) gl_Position = vec4(2., 2., 2., 1.);'] : [], [   // the pass that draws the floor's reflection looks from below: no second picture
         '',
     ]).join('\n'));
 }
@@ -93,6 +120,7 @@ function photo(fragment) {
     if (!/#version 300 es/.test(fragment) || !/\bFragData\b/.test(fragment) || !/\bDiffuseTex\b/.test(fragment) || !/\bu_fadeToBlack\b/.test(fragment) || /\bpc_uv\b/.test(fragment)) throw new Error('the body shader is not the one known');
     const t = 0.5 / SIDE, n = (v) => v.toFixed(6);
     return atEnd(beforeMain(fragment, 'in mediump vec2 pc_uv;\n'), [
+        '\tif (pc_uv.x < 0. || pc_uv.y < 0. || pc_uv.x > 1. || pc_uv.y > 1.) discard;',
         '\tvec2 pc_q = clamp(pc_uv, 0., 1.);',
         '\tfloat pc_l = texture(DiffuseTex, vec2(mix(' + n(t) + ', ' + n(1 - t) + ', pc_q.x), mix(' + n(0.5 + t) + ', ' + n(1 - t) + ', pc_q.y))).r;',
         '\tvec2 pc_p = vec2(mix(' + n(t) + ', ' + n(0.5 - t) + ', pc_q.x), mix(' + n(t) + ', ' + n(0.25 - t) + ', pc_q.y));',
@@ -139,7 +167,7 @@ function check(effects, bitmaps) {
     return { w: PW, h: PH };
 }
 
-/** The new effects.res: the car hidden, the body a picture. `box` and `at` as in billboard(). */
+/** The new effects.res: the car hidden, the body a picture. `box` and `at`: marks(). */
 function patchEffects(effects, box, at) {
     const replace = {};
     Object.keys(effects.byName).forEach((name) => {
