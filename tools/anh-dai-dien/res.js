@@ -89,10 +89,10 @@ class Res {
         if (r.type !== 3) throw new Error(name + ' is not a texture');
         return { w: b.readUInt32LE(r.off + 24), h: b.readUInt32LE(r.off + 28), mips: b.readUInt32LE(r.off + 36), rgba: r.dec === b.readUInt32LE(r.off + 24) * b.readUInt32LE(r.off + 28) * 4 && this.headerLength(name) === 45 };
     }
-    /** The replacement for a one-level RGBA texture: its header + the LZ4 block of `rgba` (rows from the bottom up). */
+    /** The replacement for a one-level texture: its header + the LZ4 block of `rgba`, its pixels (rows from the bottom up) in the texture's own format. */
     textureBlob(name, rgba) {
         const r = this.byName[name], t = this.texture(name);
-        if (!t.rgba || t.mips !== 1 || rgba.length !== r.dec) throw new Error(name + ' is not a plain RGBA picture of this size');
+        if (t.mips !== 1 || this.headerLength(name) !== 45 || rgba.length !== r.dec) throw new Error(name + ' is not a plain one-level picture of this size');
         const z = W.lz4Compress(rgba), hdr = Buffer.from(this.data.slice(r.off, r.off + 45));
         hdr.writeUInt32LE(1, 8); hdr.writeUInt32LE(z.length, 12);
         return { blob: Buffer.concat([hdr, z]), dec: r.dec, comp: z.length };

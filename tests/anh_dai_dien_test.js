@@ -207,17 +207,28 @@ function texture(name, w, h, bpp, seed) {
     hd.writeUInt32LE(w, 24); hd.writeUInt32LE(h, 28); hd.writeUInt32LE(bpp === 4 ? 9 : 1, 32); hd.writeUInt32LE(1, 36); hd.writeUInt32LE(raw.length, 40);
     return { name, type: 3, header: hd, payload: z, dec: raw.length, comp: z.length };
 }
-const VS = '#version 300 es\nin vec3 a_Position;\nin vec2 a_TextureCoordinate;\nuniform mat4 u_MVPMatrix;\nout mediump vec2 uv;\nvoid main(void) {\n\tuv = a_TextureCoordinate;\n\tgl_Position = u_MVPMatrix * vec4(a_Position, 1.);\n}';
-const FS = '#version 300 es\nout mediump vec4 FragData[ 2 ];\nprecision mediump float;\nuniform sampler2D tex0;\nuniform float u_Opacity;\nin mediump vec2 uv;\nvoid main(void) {\n\tFragData[0] = texture(tex0, uv) * u_Opacity;\n\tFragData[1] = vec4(0.);\n}';
+const VS = '#version 300 es\nin vec3 a_Position;\nin vec2 a_TextureCoordinate;\nuniform mat4 u_MVPMatrix;\nuniform vec3 u_CameraWorldPosition;\nout mediump vec2 uv;\nvoid main(void) {\n\tuv = a_TextureCoordinate + u_CameraWorldPosition.xy;\n\tgl_Position = u_MVPMatrix * vec4(a_Position, 1.);\n}';
+const FS = '#version 300 es\nout mediump vec4 FragData[ 2 ];\nprecision mediump float;\nuniform lowp sampler2D DiffuseTex;\nuniform lowp float u_fadeToBlack;\nin mediump vec2 uv;\nvoid main(void) {\n\tFragData[0] = texture(DiffuseTex, uv) * u_fadeToBlack;\n\tFragData[1] = vec4(0.);\n}';
 const QUAD = '#version 100\nattribute vec2 a_TextureCoordinate;\nvoid main(void) {\n\tgl_Position = vec4(sign(a_TextureCoordinate - vec2(0.5)), 0.0, 1.0);\n}';
 const mkFx = makeRes([effect('M_CAR_MCP1_CARPAINT1', VS, FS), effect('M_CAR_MGRO_GROUND', VS, FS), effect('M_CAR_Quad_RL0', QUAD, FS.replace('300 es', '100')), effect('M_CAR_MWRM_WHEELRIM', VS, FS), effect('M_HMI_SAFEAREA', VS, FS)]);
-const mkTx = makeRes([texture('TEX_MCP1_CARPAINT1_bitmap', 64, 64, 1, 0), texture('TEX_MGRO_GROUND_bitmap', 960, 304, 4, 9), texture('TEX_MLID_LIGHTDOOR_bitmap', 32, 32, 4, 2)]);
+const mkTx = makeRes([texture('TEX_MCP1_CARPAINT1_bitmap', 1024, 1024, 1, 0), texture('TEX_MGRO_GROUND_bitmap', 96, 32, 4, 9), texture('TEX_MLID_LIGHTDOOR_bitmap', 32, 32, 4, 2)]);
+// the meshes: arrays of numbers; the body (the largest mesh painted MCP1) is known by its first eight vertices
+function array(name, floats) { const p = Buffer.alloc(floats.length * 4); floats.forEach((v, i) => p.writeFloatLE(v, i * 4)); return { name, type: 1, header: crypto.randomBytes(32), payload: p, dec: p.length, comp: 0 }; }
+const bodyAt = []; for (let i = 0; i < 30; i++) bodyAt.push(200 + i * 1.5, i % 3, 100 + (i % 5));
+const mkMesh = makeRes([array('door', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]), array('body', bodyAt), array('wheel', [9, 9, 9, 8, 8, 8, 7, 7, 7])]);
+const meshId = (name) => mkMesh.ids.split('\n').filter((l) => l.split(' ')[1] === name)[0].split(' ')[0];
+const mkAttrs = JSON.stringify([{ mesh: 'meshes/AAL1DOOR__MCP1_1Shape.ctm', type: 'Vector3fArray', name: 'a_Position', count: '9', id: meshId('door') }, { mesh: 'meshes/BBBODY__MCP1_1Shape.ctm', type: 'Vector3fArray', name: 'a_Position', count: '10', id: meshId('body') },
+    { mesh: 'meshes/BBBODY__MCP1_1Shape.ctm', type: 'UInt16Array', name: 'indexArray', count: '99', id: meshId('wheel') }, { mesh: 'meshes/CCWHEEL__MWRM_1Shape.ctm', type: 'Vector3fArray', name: 'a_Position', count: '300', id: meshId('wheel') }]);
 const car3dDir = path.join(vehicles, 'G20', 'vehicle');
-[['effects.res', mkFx], ['bitmaps.res', mkTx]].forEach((d) => { fs.writeFileSync(path.join(car3dDir, d[0]), d[1].data); fs.writeFileSync(path.join(car3dDir, d[0] + '.ids'), d[1].ids); });
+[['effects.res', mkFx], ['bitmaps.res', mkTx], ['meshes.res', mkMesh]].forEach((d) => { fs.writeFileSync(path.join(car3dDir, d[0]), d[1].data); fs.writeFileSync(path.join(car3dDir, d[0] + '.ids'), d[1].ids); });
+fs.writeFileSync(path.join(car3dDir, 'meshes.res.attributes'), mkAttrs);
+const shaderDir = path.join(tmp, 'shader-cache'); mkdirs(shaderDir);
+const cached = CAR3D.cacheNames(new Res(mkFx.data, mkFx.ids)).concat(['00112233445566778899aabbccddeeff.bin']);
+const fillCache = () => cached.forEach((f) => fs.writeFileSync(path.join(shaderDir, f), 'compiled'));
 mkdirs(path.join(vehicles, 'F40', 'vehicle')); fs.writeFileSync(path.join(vehicles, 'F40', 'vehicle', 'effects.res'), 'not one');      // a model this does not know: left alone
 const car3dFile = (name) => fs.readFileSync(path.join(car3dDir, name));
 const carFile = (sub) => fs.readFileSync(path.join(vehicles, 'G20', sub, 'bitmaps.res'));
-Object.assign(process.env, { AVATAR_NFT: path.join(tmp, 'no-nft'), AVATAR_FW_MS: '0', AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
+Object.assign(process.env, { AVATAR_NFT: path.join(tmp, 'no-nft'), AVATAR_FW_MS: '0', AVATAR_BOOT: bootDir, AVATAR_VARIANT: path.join(tmp, 'variant.env'), AVATAR_VEHICLES: vehicles, AVATAR_SHADERS: shaderDir, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
 const svc = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'anh-dai-dien.js'));
 const fileOf = (rel) => fs.readFileSync(path.join(root, rel, 'wbitmaps.res'));
 const BT = svc.MORE0, USB = svc.MORE0 + 1;
@@ -259,7 +270,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('GET', '/api/state?pin=' + (pin === '1234' ? '4321' : '1234')); assert.strictEqual(r.code, 401);
     r = await call('GET', '/api/state' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.json.slots.length, 15);
     assert.strictEqual(r.json.slots[0].size, 570); assert.strictEqual(r.json.more[0].size, 1305); assert.ok(r.json.more[0].where);
-    assert.strictEqual(r.json.more.length, 1); assert.strictEqual(r.json.car.length, 1); assert.ok(r.json.car[0].alpha); assert.strictEqual(r.json.car[0].w, 1920); assert.strictEqual(r.json.car[0].h, 608);
+    assert.strictEqual(r.json.more.length, 1); assert.strictEqual(r.json.car.length, 1); assert.ok(r.json.car[0].alpha); assert.strictEqual(r.json.car[0].w, 1920); assert.strictEqual(r.json.car[0].h, 960);
     r = await call('GET', '/api/thumb/' + svc.CAR + q); assert.strictEqual(r.body.readUInt32BE(20), 256);
     r = await call('GET', '/api/thumb/4' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.type, 'image/png'); assert.strictEqual(r.body.readUInt32BE(16), 256);
     r = await call('GET', '/api/thumb/' + BT + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.readUInt32BE(16), 256);
@@ -312,33 +323,56 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('GET', '/api/state' + q); assert.ok(r.json.more[0].changed);
     ok('a placeholder picture goes into all four sizes and both colours of its bundle');
 
-    // the 3D car: its materials hidden, the ground a picture facing the camera with the photo as its texture
-    const CW = svc.CAR_W, CH = 608, cut = picture(31, CW, CH);
+    // the car: the 3D model's materials hidden and its body a picture facing the camera, the photo packed into the
+    // body's one-channel texture; the 2D pictures the photo too; the head unit's compiled shaders for the model removed
+    const CW = svc.CAR_W, CH = 960, cut = picture(31, CW, CH);
     for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) { const d = Math.hypot((x - CW / 2) / (CW / 2), (y - CH / 2) / (CH / 2)); cut[(y * CW + x) * 4 + 3] = d < 0.7 ? 255 : d < 0.9 ? 128 : 0; }
-    r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.car[0].h, 608);
+    r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.car[0].h, 960); assert.ok(/màn hình chính và trong menu/.test(r.json.car[0].where));
+    fillCache();
     r = await call('POST', '/api/picture/' + svc.CAR + q, cut); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
     let fx = new Res(car3dFile('effects.res'), mkFx.ids), tx = new Res(car3dFile('bitmaps.res'), mkTx.ids);
-    assert.ok(/gl_Position = vec4\(2\., 2\., 2\., 1\.\);\n\}$/.test(fx.shaders('M_CAR_MCP1_CARPAINT1').vertex) && /vec4\(2\., 2\./.test(fx.shaders('M_CAR_MWRM_WHEELRIM').vertex));
-    assert.strictEqual(fx.shaders('M_CAR_MCP1_CARPAINT1').fragment, FS);
+    assert.ok(/gl_Position = vec4\(2\., 2\., 2\., 1\.\);\n\}$/.test(fx.shaders('M_CAR_MGRO_GROUND').vertex) && /vec4\(2\., 2\./.test(fx.shaders('M_CAR_MWRM_WHEELRIM').vertex));
+    assert.strictEqual(fx.shaders('M_CAR_MGRO_GROUND').fragment, FS);
     assert.strictEqual(fx.shaders('M_CAR_Quad_RL0').vertex, QUAD); assert.strictEqual(fx.shaders('M_HMI_SAFEAREA').vertex, VS);
-    const gnd = fx.shaders('M_CAR_MGRO_GROUND');
-    assert.ok(gnd.vertex.indexOf(VS.slice(0, -1)) === 0 && /vec3 pc_m = vec3\(150\., 0\., 60\.\);/.test(gnd.vertex) && /vec2\(279\.47, 88\.5\)/.test(gnd.vertex) && /gl_Position = vec4\(pc_n \+/.test(gnd.vertex));
-    assert.ok(/FragData\[0\] = texture\(tex0, uv\) \* max\(u_Opacity, 1\.\);\n\tFragData\[1\] = vec4\(0\.\);\n\}$/.test(gnd.fragment));
-    assert.strictEqual(Buffer.compare(tx.payload('TEX_MGRO_GROUND_bitmap'), W.flipRows(svc.premultiply(W.fit(cut, CW, CH, 960, 304)), 960, 304)), 0);
+    const body = fx.shaders('M_CAR_MCP1_CARPAINT1');
+    assert.ok(/out mediump vec2 pc_uv;\nvoid main/.test(body.vertex) && /vec3 pc_m = vec3\(150\., 0\., 51\.5\);/.test(body.vertex) && /vec2\(200\., 100\.\)/.test(body.vertex) && /u_CameraWorldPosition\.z < 0\.\) pc_i = -1;/.test(body.vertex));
+    assert.strictEqual(body.vertex.split('distance(a_Position, vec3(').length, 9);                       // the body mesh's first eight vertices, not the door's or the wheel's
+    assert.ok(/vec3\(200\., 0\., 100\.\)\) < 0\.03\) pc_i = 0;/.test(body.vertex) && /vec3\(210\.5, 1\., 102\.\)\) < 0\.03\) pc_i = 2;/.test(body.vertex));
+    assert.ok(/in mediump vec2 pc_uv;\nvoid main/.test(body.fragment) && /discard;/.test(body.fragment) && /if \(u_fadeToBlack < 2\.\) FragData\[0\] = vec4\(pc_o, 1\.\);\n\}$/.test(body.fragment));
+    const photo = W.fit(svc.feather(cut, CW, CH), CW, CH, CAR3D.PW, CAR3D.PH), packed = tx.payload('TEX_MCP1_CARPAINT1_bitmap');
+    assert.strictEqual(Buffer.compare(packed, CAR3D.pack(photo)), 0);
+    {   // what the shader reads back is the photo: brightness in the upper half, colour differences and transparency below
+        const at = (x, y) => (y * CAR3D.PW + x) * 4, x = 512, y = 256, i = at(x, y);
+        const L = packed[(1023 - y) * 1024 + x], cb = packed[(255 - (y >> 1)) * 1024 + (x >> 1)] - 128, cr = packed[(255 - (y >> 1)) * 1024 + 512 + (x >> 1)] - 128, al = packed[(511 - (y >> 1)) * 1024 + (x >> 1)];
+        assert.ok(Math.abs(L + 1.402 * cr - photo[i]) < 40 && Math.abs(L - 0.344136 * cb - 0.714136 * cr - photo[i + 1]) < 40 && Math.abs(L + 1.772 * cb - photo[i + 2]) < 40);
+        assert.strictEqual(al, 255); assert.strictEqual(packed[511 * 1024], 0);                           // opaque in the middle, nothing in the corner
+    }
     const tx0 = new Res(mkTx.data, mkTx.ids);
-    ['TEX_MCP1_CARPAINT1_bitmap', 'TEX_MLID_LIGHTDOOR_bitmap'].forEach((k) => assert.strictEqual(Buffer.compare(tx.blob(k), tx0.blob(k)), 0, k));
+    ['TEX_MGRO_GROUND_bitmap', 'TEX_MLID_LIGHTDOOR_bitmap'].forEach((k) => assert.strictEqual(Buffer.compare(tx.blob(k), tx0.blob(k)), 0, k));
+    assert.strictEqual(Buffer.compare(car3dFile('meshes.res'), mkMesh.data), 0);
     assert.strictEqual(fs.readFileSync(path.join(vehicles, 'F40', 'vehicle', 'effects.res'), 'utf8'), 'not one');
+    assert.deepStrictEqual(fs.readdirSync(shaderDir), ['00112233445566778899aabbccddeeff.bin']);          // the model's compiled shaders are gone, others stay
+    {   // the 2D pictures: every trim the photo, every paint mask empty
+        const big = new W.Bundle(carFile('vehicle2D_big'), mkBig.ids), small = new W.Bundle(carFile('vehicle2D_small'), mkSmall.ids);
+        const want = W.flipRows(svc.premultiply(W.fit(svc.feather(cut, CW, CH), CW, CH, 672, 336)), 672, 336);
+        [7, 9].forEach((k) => assert.strictEqual(Buffer.compare(big.rgba('tex_vehicle_welcome_g05_trimA' + k + '_bitmap'), want), 0));
+        [8, 10].forEach((k) => assert.ok(big.rgba('tex_vehicle_welcome_g05_trimA_mask' + k + '_bitmap').every((v) => v === 0)));
+        assert.ok(small.rgba('tex_vehicle_welcome_g05_trimA_mask8_bitmap').every((v) => v === 0) && !small.rgba('tex_vehicle_welcome_g05_trimA7_bitmap').every((v) => v === 0));
+    }
     r = await call('GET', '/api/state' + q); assert.ok(r.json.car[0].changed && r.json.anyChanged);
+    r = await call('GET', '/api/thumb/' + svc.CAR + q); assert.strictEqual(r.code, 200);
     // a second photo starts from the originals again, not from the changed files
     r = await call('POST', '/api/picture/' + svc.CAR + q, picture(32, CW, CH)); assert.strictEqual(r.code, 200);
     fx = new Res(car3dFile('effects.res'), mkFx.ids);
-    assert.strictEqual(fx.shaders('M_CAR_MCP1_CARPAINT1').vertex.split('vec4(2., 2.').length, 2); assert.strictEqual(fx.shaders('M_CAR_MGRO_GROUND').vertex.split('pc_m =').length, 2);
-    const soft = W.flipRows(new Res(car3dFile('bitmaps.res'), mkTx.ids).payload('TEX_MGRO_GROUND_bitmap'), 960, 304);       // a plain photo: soft edges
-    assert.ok(soft[3] < 40); assert.strictEqual(soft[(152 * 960 + 480) * 4 + 3], 255);
+    assert.strictEqual(fx.shaders('M_CAR_MGRO_GROUND').vertex.split('vec4(2., 2.').length, 2); assert.strictEqual(fx.shaders('M_CAR_MCP1_CARPAINT1').vertex.split('pc_m =').length, 2);
+    fillCache();
     r = await call('POST', '/api/restore/' + svc.CAR + q); assert.strictEqual(r.code, 200);
     assert.strictEqual(Buffer.compare(car3dFile('effects.res'), mkFx.data), 0); assert.strictEqual(Buffer.compare(car3dFile('bitmaps.res'), mkTx.data), 0);
+    assert.strictEqual(Buffer.compare(carFile('vehicle2D_big'), mkBig.data), 0); assert.strictEqual(Buffer.compare(carFile('vehicle2D_small'), mkSmall.data), 0);
+    assert.deepStrictEqual(fs.readdirSync(shaderDir), ['00112233445566778899aabbccddeeff.bin']);
+    r = await call('GET', '/api/state' + q); assert.ok(!r.json.car[0].changed);
     await call('POST', '/api/picture/' + svc.CAR + q, cut);
-    ok('the 3D car: every material hidden, the ground a picture facing the camera, the photo its texture, restored byte for byte');
+    ok('the car: the 3D model hidden and its body a picture of the photo, the 2D pictures the photo, compiled shaders removed, all restored byte for byte');
 
     // the start-up screen: the picture and a still video at every size of this generation, the other generation untouched
     const sp = picture(41, 1920, 720);
@@ -473,20 +507,22 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(dir2, 'wbitmaps.res')), mod.data), 0);
     ok('the owner\'s hand-made backup is the original, even when the bundle now on the car is changed');
 
-    // what a version before 0.5.0 did to the cluster's car pictures is put back at the start
+    // a head unit with the 2D pictures only: the car's slot still sets those
     {
         const veh2 = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-2d-')), st2d = path.join(veh2, 'st');
         const put2 = (sub, b) => { const d = path.join(veh2, 'G20', sub); mkdirs(d); fs.writeFileSync(path.join(d, 'bitmaps.res'), b.data); fs.writeFileSync(path.join(d, 'bitmaps.res.ids'), b.ids); };
         put2('vehicle2D_big', mkBig); put2('vehicle2D_small', mkSmall);
         Object.assign(svc.CFG, { vehicles: veh2, state: st2d, boot: path.join(veh2, 'none') });
-        assert.ok(svc.load());                                   // the originals are copied
-        const bigNow = new W.Bundle(mkBig.data, mkBig.ids), k7 = 'tex_vehicle_welcome_g05_trimA7_bitmap';
-        fs.writeFileSync(path.join(veh2, 'G20', 'vehicle2D_big', 'bitmaps.res'), bigNow.build({ [k7]: picture(77, 672, 336) }));
-        assert.ok(svc.load()); assert.ok(svc.writeStatus().anyChanged);
-        await svc.restoreOld2d();
+        assert.ok(svc.load());
+        const slot = svc.S.slots[svc.CAR]; assert.ok(slot && slot.models.length === 0 && /^ở ô xe ngoài màn hình chính$/.test(slot.where));
+        await svc.setPicture(svc.CAR, picture(77, svc.CAR_W, 960));
+        assert.notStrictEqual(Buffer.compare(fs.readFileSync(path.join(veh2, 'G20', 'vehicle2D_big', 'bitmaps.res')), mkBig.data), 0);
+        assert.ok(svc.writeStatus().anyChanged); assert.ok(svc.load()); assert.ok(svc.writeStatus().anyChanged);      // and it stays after a restart
+        await svc.restore(svc.CAR);
         assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(veh2, 'G20', 'vehicle2D_big', 'bitmaps.res')), mkBig.data), 0);
-        assert.ok(!svc.writeStatus().anyChanged); assert.ok(!svc.S.slots[svc.CAR]);          // and no 3D model here: no car to set
-        ok('the cluster\'s car pictures changed by an earlier version are put back');
+        assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(veh2, 'G20', 'vehicle2D_small', 'bitmaps.res')), mkSmall.data), 0);
+        assert.ok(!svc.writeStatus().anyChanged);
+        ok('without a 3D model the car\'s slot sets the 2D pictures, and they stay');
     }
 
     /* ---------- the car screen ---------- */

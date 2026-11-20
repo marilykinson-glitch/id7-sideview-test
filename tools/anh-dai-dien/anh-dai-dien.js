@@ -4,8 +4,10 @@
  * originals back. The pictures live in bundles (wbitmaps.res, see wbm.js) under assetDB:
  *
  *   the fifteen profile pictures   three bundles: 570x570 (the picker), 84x72 and 72x72 icons (lists, the status bar)
- *   the car                        the 3D vehicle of the main menu's tile and the My Vehicle menu, made to show a photo:
- *                                  its materials hidden and the ground under it a picture facing the camera (car3d.js)
+ *   the car                        the 3D vehicle of the My Vehicle menus, made to show a photo: its materials hidden
+ *                                  and its body a picture facing the camera (car3d.js; the head unit's compiled shaders
+ *                                  for it are removed so that it compiles the new ones); and the 2D pictures of the
+ *                                  car, which the main menu's tile shows where it is not the 3D model
  *   the start-up screen            what animationplayer shows: eva_splash_*.png and the eva_hi_ / eva_bye_ videos
  *                                  (H.264), every variant and size, as one still picture (see boot.js)
  *   placeholder pictures           one bundle each, 4 sizes x 2 colours: what a media source shows without a cover
@@ -45,7 +47,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -60,6 +62,7 @@ const CFG = {
     dir: env('AVATAR_DIR', ''),                         // the profile pictures' bundle, if not under the root (tests)
     mount: process.env.AVATAR_MOUNT !== undefined ? process.env.AVATAR_MOUNT : '/mnt/dataro',   // '' = nothing to remount (tests)
     state: env('AVATAR_STATE', '/var/opt/anh-dai-dien'),
+    shaders: env('AVATAR_SHADERS', '/var/opt/target/shader-cache'),
     legacy: env('AVATAR_LEGACY', '/var/opt/avatar_backup'),
     run: env('AVATAR_RUN', '/run/anh-dai-dien'),
     oap: env('AVATAR_OAP', '/var/opt/public/oap'),
@@ -213,12 +216,12 @@ function thumbFrom(slot, parsed) {
 }
 
 /**
- * The 2D pictures of the vehicle (<vehicles>/<model>/vehicle2D_big and _small, a picture and a paint mask per trim) are
- * the instrument cluster's, not this screen's: versions before 0.5.0 changed them for nothing. They are only read here,
- * to put back what such a version changed (restoreOld2d) and for the look of the original car on the phone page.
+ * The 2D pictures of the vehicle (<vehicles>/<model>/vehicle2D_big and _small, a picture and a paint mask per trim):
+ * what the main menu's tile shows where it is not the 3D model. They are part of the car's slot (loadCar3d, setCar).
  */
 function loadCar() {
     let models = [];
+    S.hero = null;
     try { models = fs.readdirSync(CFG.vehicles).sort(); } catch (e) { return; }
     const targets = [];
     let first = null;
@@ -244,7 +247,7 @@ function loadCar() {
         b.usable = okay;
         if (!okay) log(id + ' not usable: ' + b.error);
     }));
-    S.hero = first ? { parsed: first, targets } : null;          // only for the look of the original car on the phone page
+    S.hero = first ? { parsed: first, targets } : null;
 }
 
 /** Looks at every bundle and makes the list of pictures that can be set. False if the profile pictures cannot. */
@@ -283,14 +286,14 @@ function load() {
         S.slots[n] = { n, label: d[1], where: d[2], w: 1305, h: 1305, targets: want.map((w) => ({ b, key: w.key, w: w.w, h: w.h })) };
         thumbFrom(S.slots[n], p);
     });
-    try { loadCar(); } catch (e) { log('cluster car pictures: ' + e.message); S.hero = null; }
+    try { loadCar(); } catch (e) { log('2D car pictures: ' + e.message); S.hero = null; }
     try { loadCar3d(); } catch (e) { log('3D car: ' + e.message); delete S.slots[CAR]; }
     try { loadStart(); } catch (e) { log('start-up screen: ' + e.message); delete S.slots[START]; }
     S.compatible = true; S.rev++;
     return true;
 }
 
-const slotChanged = (slot) => (slot.models ? S.carChanged : slot.files ? S.startChanged : slot.targets.some((t) => !!t.b.changed[t.key]));
+const slotChanged = (slot) => (slot.models ? S.carChanged || slot.targets.some((t) => !!t.b.changed[t.key]) : slot.files ? S.startChanged : slot.targets.some((t) => !!t.b.changed[t.key]));
 const anyChanged = () => S.startChanged || S.carChanged || Object.keys(S.bundles).some((id) => Object.keys(S.bundles[id].changed).length > 0);
 
 /* ---------------- writing the bundles ---------------- */
@@ -338,53 +341,69 @@ function commit(b, buf) {
     return parsed;
 }
 
-/* ---------------- the 3D car ---------------- */
+/* ---------------- the car's picture ---------------- */
+// Two places show the car: the 3D model (<vehicles>/<model>/vehicle, in the My Vehicle menus) and, where the tile of the
+// main menu is not 3D, the 2D pictures (vehicle2D_big and _small). One slot sets both.
 const carMark = () => path.join(CFG.state, 'car3d-changed');
+const carPhoto = () => path.join(CFG.state, 'car-photo.rgba');
 const carBackup = (m, name) => path.join(CFG.state, 'backup', 'car3d', m.model, name);
 const CAR_FILES = ['effects.res', 'bitmaps.res'];
-const carRes = (dir, name) => new Res(fs.readFileSync(path.join(dir, name)), fs.readFileSync(path.join(dir, name + '.ids'), 'utf8'));
+const CAR_NEEDS = CAR_FILES.concat(['effects.res.ids', 'bitmaps.res.ids', 'meshes.res', 'meshes.res.attributes']);
 
-/** The 3D vehicles this can change: <vehicles>/<model>/vehicle with the ground effect and texture known (car3d.js). */
+/** The 3D vehicles this can change: <vehicles>/<model>/vehicle with the body effect and texture known (car3d.js). */
 function loadCar3d() {
     let models = [];
-    try { models = fs.readdirSync(CFG.vehicles).sort(); } catch (e) { return; }
+    try { models = fs.readdirSync(CFG.vehicles).sort(); } catch (e) { models = []; }
     S.carChanged = fs.existsSync(carMark());
     const found = [];
     models.forEach((model) => {
         const dir = path.join(CFG.vehicles, model, 'vehicle');
-        if (!CAR_FILES.every((f) => fs.existsSync(path.join(dir, f)) && fs.existsSync(path.join(dir, f + '.ids')))) return;
+        if (!CAR_NEEDS.every((f) => fs.existsSync(path.join(dir, f)))) return;
         const m = { model, dir };
         try {
             // what the model is, is read from its originals: the files on the car may be this tool's
             const from = S.carChanged && CAR_FILES.every((f) => fs.existsSync(carBackup(m, f))) ? path.dirname(carBackup(m, 'effects.res')) : dir;
             const eff = new Res(fs.readFileSync(path.join(from, 'effects.res')), fs.readFileSync(path.join(dir, 'effects.res.ids'), 'utf8'));
             const bmp = new Res(fs.readFileSync(path.join(from, 'bitmaps.res')), fs.readFileSync(path.join(dir, 'bitmaps.res.ids'), 'utf8'));
-            const t = CAR3D.check(eff, bmp);
-            if (!t) { log('3D car ' + model + ' left alone: not the ground effect and texture known'); return; }
-            m.tw = t.w; m.th = t.h; found.push(m);
+            if (!CAR3D.check(eff, bmp)) { log('3D car ' + model + ' left alone: not the body effect and texture known'); return; }
+            if (!carMarks(m)) { log('3D car ' + model + ' left alone: no body mesh to carry the picture'); return; }
+            found.push(m);
         } catch (e) { log('3D car ' + model + ' left alone: ' + e.message); }
     });
-    if (!found.length) return;
-    const h = Math.round(CAR_W * found[0].th / found[0].tw);
-    S.slots[CAR] = { n: CAR, label: 'Hình chiếc xe', where: 'ở ô xe ngoài màn hình chính và trong menu Xe của tôi', w: CAR_W, h, alpha: true, models: found, targets: [] };
+    const flat = S.hero && S.hero.targets.length ? S.hero.targets : [];
+    if (!found.length && !flat.length) return;
+    const where = found.length && flat.length ? 'ở ô xe ngoài màn hình chính và trong menu Xe của tôi' : found.length ? 'trong menu Xe của tôi (mô hình 3D)' : 'ở ô xe ngoài màn hình chính';
+    S.slots[CAR] = { n: CAR, label: 'Hình chiếc xe', where, w: CAR_W, h: Math.round(CAR_W * CAR3D.PH / CAR3D.PW), alpha: true, models: found, targets: flat };
     carThumb();
 }
+/** Where the first vertices of the model's body are: what its shader knows the body by. */
+function carMarks(m) {
+    const data = fs.readFileSync(path.join(m.dir, 'meshes.res')), attrs = JSON.parse(fs.readFileSync(path.join(m.dir, 'meshes.res.attributes'), 'utf8'));
+    return CAR3D.marks(attrs, (id) => new Res(data, id + ' X\n').payload('X'));
+}
+const flatChanged = () => Object.keys(S.bundles).some((id) => /^car-/.test(id) && Object.keys(S.bundles[id].changed).length > 0);
 function carThumb(rgba) {
     const slot = S.slots[CAR];
     if (rgba) return thumb(CAR, rgba, slot.w, slot.h);
     try {
-        if (S.carChanged) {                                          // the photo, from the texture it was written to
-            const m = slot.models[0], r = carRes(m.dir, 'bitmaps.res'), pic = W.flipRows(r.payload(CAR3D.TEXTURE), m.tw, m.th);
-            for (let i = 0; i < pic.length; i += 4) { const a = pic[i + 3]; if (a && a < 255) { pic[i] = Math.min(255, pic[i] * 255 / a); pic[i + 1] = Math.min(255, pic[i + 1] * 255 / a); pic[i + 2] = Math.min(255, pic[i + 2] * 255 / a); } }
-            return thumb(CAR, pic, m.tw, m.th);
+        if (S.carChanged || flatChanged()) {                         // the photo, as it was sent
+            const pic = fs.readFileSync(carPhoto());
+            if (pic.length === CAR3D.PW * CAR3D.PH * 4) return thumb(CAR, pic, CAR3D.PW, CAR3D.PH);
         }
-        if (S.hero) {                                                // the car's own look: the cluster's picture of it, painted white
+        if (S.hero) {                                                // the car's own look: its 2D picture, painted white
             const t = S.hero.targets[0], mk = S.hero.targets.filter((x) => x.b === t.b && x.zero && x.pair === t.key)[0];
-            const pic = painted(S.hero.parsed.rgba(t.key), mk ? S.hero.parsed.rgba(mk.key) : Buffer.alloc(t.w * t.h * 4));
+            const src = S.carChanged || flatChanged() ? readOriginal(t.b) : S.hero.parsed;
+            const pic = painted(src.rgba(t.key), mk ? src.rgba(mk.key) : Buffer.alloc(t.w * t.h * 4));
             return thumb(CAR, W.fit(W.flipRows(pic, t.w, t.h), t.w, t.h, slot.w >> 2, slot.h >> 2), slot.w >> 2, slot.h >> 2);
         }
     } catch (e) { /* the empty picture below */ }
-    return thumb(CAR, Buffer.alloc(64 * 20 * 4), 64, 20);
+    return thumb(CAR, Buffer.alloc(64 * 32 * 4), 64, 32);
+}
+/** Removes the compiled shaders the head unit keeps for these effects, so that it compiles the ones in the file. */
+function dropShaders(names) {
+    let n = 0;
+    names.forEach((f) => { try { fs.unlinkSync(path.join(CFG.shaders, f)); n++; } catch (e) { /* not there */ } });
+    return n;
 }
 
 async function setCar(slot, rgba) {
@@ -394,51 +413,65 @@ async function setCar(slot, rgba) {
         mkdirp(path.dirname(bk));
         fs.writeFileSync(bk + '.tmp', fs.readFileSync(path.join(m.dir, f))); fs.renameSync(bk + '.tmp', bk);
     }));
-    const jobs = [];
+    const jobs = [], photo = W.fit(rgba, slot.w, slot.h, CAR3D.PW, CAR3D.PH);
+    let drop = [];
     slot.models.forEach((m) => {
         const ids = (f) => fs.readFileSync(path.join(m.dir, f + '.ids'), 'utf8');
         const eff = new Res(fs.readFileSync(carBackup(m, 'effects.res')), ids('effects.res')), bmp = new Res(fs.readFileSync(carBackup(m, 'bitmaps.res')), ids('bitmaps.res'));
-        if (!CAR3D.check(eff, bmp)) throw new Error('bản gốc của mô hình xe ' + m.model + ' không đúng');
-        // the picture stands on the floor (z -28.5 in the model's cm), 177 cm tall, as wide as the texture's shape makes it
-        const high = 177, effects = CAR3D.patchEffects(eff, { x: 150, y: 0, z: -28.5 + high / 2, w: high * m.tw / m.th, h: high });
-        const pic = W.flipRows(premultiply(W.fit(rgba, slot.w, slot.h, m.tw, m.th)), m.tw, m.th);
-        const bitmaps = bmp.build({ [CAR3D.TEXTURE]: bmp.textureBlob(CAR3D.TEXTURE, pic) });
+        const at = carMarks(m);
+        if (!CAR3D.check(eff, bmp) || !at) throw new Error('bản gốc của mô hình xe ' + m.model + ' không đúng');
+        // the picture stands where the car does (the floor is z -28.5 in the model's cm), 200 cm tall and twice as wide
+        const high = 200, effects = CAR3D.patchEffects(eff, { x: 150, y: 0, z: -28.5 + high / 2 - 20, w: high * CAR3D.PW / CAR3D.PH, h: high }, at);
+        const bitmaps = CAR3D.patchBitmaps(bmp, photo);
         const e2 = new Res(effects, ids('effects.res')), b2 = new Res(bitmaps, ids('bitmaps.res'));      // both read back
         Object.keys(e2.byName).forEach((n) => e2.shaders(n));
-        if (Buffer.compare(b2.payload(CAR3D.TEXTURE), pic) !== 0 || Object.keys(e2.byName).length !== Object.keys(eff.byName).length) throw new Error('mô hình xe ghi ra không đọc lại được');
+        if (Buffer.compare(b2.payload(CAR3D.TEXTURE), CAR3D.pack(photo)) !== 0 || Object.keys(e2.byName).length !== Object.keys(eff.byName).length) throw new Error('mô hình xe ghi ra không đọc lại được');
         jobs.push({ file: path.join(m.dir, 'effects.res'), buf: effects }, { file: path.join(m.dir, 'bitmaps.res'), buf: bitmaps });
+        drop = drop.concat(CAR3D.cacheNames(eff));
+    });
+    // the 2D pictures: every trim's picture the photo, every paint mask empty
+    const flat = byBundle(slot).map((g) => {
+        const cur = readBundle(g.b), replace = {}, made = {};
+        g.targets.forEach((t) => {
+            const id = t.w + 'x' + t.h + (t.zero ? 'z' : '');
+            if (!made[id]) made[id] = { blob: cur.encode(t.key, W.flipRows(t.zero ? Buffer.alloc(t.w * t.h * 4) : premultiply(W.fit(rgba, slot.w, slot.h, t.w, t.h)), t.w, t.h)) };
+            replace[t.key] = made[id];
+        });
+        return { g, buf: cur.build(replace) };
     });
     await writable(async () => {
-        fs.writeFileSync(carMark(), String(Date.now()));
+        if (jobs.length) fs.writeFileSync(carMark(), String(Date.now()));
         jobs.forEach((j) => putFile(j.file, j.buf));
+        flat.forEach((f) => { commit(f.g.b, f.buf); f.g.targets.forEach((t) => { f.g.b.changed[t.key] = true; }); });
     });
-    S.carChanged = true; S.needsRestart = true;
+    const gone = dropShaders(drop);
+    try { fs.writeFileSync(carPhoto(), photo); } catch (e) { /* the look on the phone page only */ }
+    if (jobs.length) S.carChanged = true;
+    S.needsRestart = true;
     carThumb(rgba);
-    return slot.models.map((m) => m.model).join(', ');
+    return slot.models.map((m) => m.model).concat(flat.length ? ['2D'] : []).join(', ') + (drop.length ? ', compiled shaders removed: ' + gone : '');
 }
 
 async function restoreCar() {
     const slot = S.slots[CAR];
-    if (!slot || !S.carChanged) return;
-    const jobs = [];
-    slot.models.forEach((m) => CAR_FILES.forEach((f) => jobs.push({ file: path.join(m.dir, f), buf: fs.readFileSync(carBackup(m, f)) })));
-    await writable(async () => jobs.forEach((j) => putFile(j.file, j.buf)));
+    if (!slot) return;
+    const jobs = [], flat = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => /^car-/.test(b.id) && b.usable && Object.keys(b.changed).length);
+    let drop = [];
+    if (S.carChanged) slot.models.forEach((m) => {
+        CAR_FILES.forEach((f) => jobs.push({ file: path.join(m.dir, f), buf: fs.readFileSync(carBackup(m, f)) }));
+        try { drop = drop.concat(CAR3D.cacheNames(new Res(fs.readFileSync(carBackup(m, 'effects.res')), fs.readFileSync(path.join(m.dir, 'effects.res.ids'), 'utf8')))); } catch (e) { /* nothing to remove */ }
+    });
+    if (!jobs.length && !flat.length) return;
+    const files = flat.map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
+    await writable(async () => {
+        jobs.forEach((j) => putFile(j.file, j.buf));
+        files.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; });
+    });
+    dropShaders(drop);
     try { fs.unlinkSync(carMark()); } catch (e) { /* gone */ }
+    try { fs.unlinkSync(carPhoto()); } catch (e) { /* gone */ }
     S.carChanged = false; S.needsRestart = true;
     carThumb();
-}
-
-/** Puts back the cluster's 2D pictures of the car, which versions before 0.5.0 changed for nothing. */
-function restoreOld2d() {
-    const todo = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => /^car-/.test(b.id) && b.usable && Object.keys(b.changed).length);
-    if (!todo.length) return Promise.resolve();
-    return exclusive(async () => {
-        const files = todo.map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
-        await writable(async () => files.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; }));
-        log('the cluster\'s car pictures put back (' + todo.map((b) => b.id).join(', ') + ')');
-        try { loadCar(); if (S.slots[CAR]) carThumb(); } catch (e) { /* the look of the original car only */ }
-        S.rev++; writeStatus();
-    }).catch((e) => log('putting back the cluster\'s car pictures: ' + e.message));
 }
 
 /* ---------------- the start-up screen ---------------- */
@@ -540,7 +573,7 @@ async function setPicture(n, topDownRgba) {
             if (slot.models) {
                 const which = await setCar(slot, rgba);
                 S.rev++;
-                log('3D car replaced by a picture (' + which + ')');
+                log('the car replaced by a picture (' + which + ')');
                 say('go', 'Đã đổi hình chiếc xe. Khởi động lại màn hình xe để thấy.');
                 return;
             }
@@ -814,7 +847,7 @@ function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     try { load(); } catch (e) { S.compatible = false; S.error = 'lỗi khi đọc gói ảnh: ' + e.message; }
     if (!S.compatible) log('not usable: ' + S.error);
-    else { log('pictures: ' + Object.keys(S.slots).length + ', small icons ' + (S.smallIcons ? 'yes' : 'no')); say('dim', 'Sẵn sàng.'); restoreOld2d(); }
+    else { log('pictures: ' + Object.keys(S.slots).length + ', small icons ' + (S.smallIcons ? 'yes' : 'no')); say('dim', 'Sẵn sàng.'); }
     const server = http.createServer((req, res) => handle(req, res).catch((e) => { log('request failed: ' + e.message); try { json(res, 500, { ok: false, error: e.message }); } catch (e2) { /* gone */ } }));
     let port = CFG.port;
     server.on('error', (e) => { if (e.code === 'EADDRINUSE' && port < CFG.port + 9) { port++; server.listen(port, '0.0.0.0'); } else { log('server: ' + e.message); setTimeout(() => process.exit(1), 100); } });
@@ -833,4 +866,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, addresses, fwEnsure, fwClose, restoreOld2d, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
