@@ -211,15 +211,18 @@ function resize(rgba, w, h, w2, h2) {
     return out;
 }
 
-/** A square picture fitted into a w x h one: it covers the box [x, y, bw, bh] (cut at the middle), the rest is transparent. */
-function place(rgba, size, w, h, box) {
+/** A picture fitted into a w x h one: it covers the box [x, y, bw, bh] (cut at the middle), the rest is transparent. */
+function fit(rgba, sw, sh, w, h, box) {
     const bx = box ? box[0] : 0, by = box ? box[1] : 0, bw = box ? box[2] : w, bh = box ? box[3] : h;
-    const m = Math.max(bw, bh), sq = resize(rgba, size, size, m, m);
+    const k = Math.max(bw / sw, bh / sh);
+    const mw = Math.max(bw, Math.round(sw * k)), mh = Math.max(bh, Math.round(sh * k));
+    const sc = resize(rgba, sw, sh, mw, mh);
     const out = Buffer.alloc(w * h * 4);
-    const cx = Math.floor((m - bw) / 2), cy = Math.floor((m - bh) / 2);
-    for (let y = 0; y < bh; y++) sq.copy(out, ((by + y) * w + bx) * 4, ((cy + y) * m + cx) * 4, ((cy + y) * m + cx + bw) * 4);
+    const cx = Math.floor((mw - bw) / 2), cy = Math.floor((mh - bh) / 2);
+    for (let y = 0; y < bh; y++) sc.copy(out, ((by + y) * w + bx) * 4, ((cy + y) * mw + cx) * 4, ((cy + y) * mw + cx + bw) * 4);
     return out;
 }
+const place = (rgba, size, w, h, box) => fit(rgba, size, size, w, h, box);
 
 /** Shrinks an RGBA picture to size x size. */
 function shrink(rgba, w, h, size) { return resize(rgba, w, h, size, size); }
@@ -241,4 +244,4 @@ function png(rgba, w, h) {
     return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 6 })), chunk('IEND', Buffer.alloc(0))]);
 }
 
-module.exports = { SIZE, RAW, HEAD, Bundle, selfTest, lz4Compress, lz4Decompress, flipRows, resize, place, shrink, png, crc32 };
+module.exports = { SIZE, RAW, HEAD, Bundle, selfTest, lz4Compress, lz4Decompress, flipRows, resize, fit, place, shrink, png, crc32 };

@@ -139,7 +139,14 @@ const mkOdd = makeBundle(fourSizes().slice(0, 6));                 // a placehol
 const dir = put(AV, mk); put(REG, mkReg); put(STA, mkSta);
 put(REPL + 'replacement_media_wireless_bluetooth', mkBt); put(REPL + 'replacement_media_plug_usb', mkOdd);
 mkdirs(legacy);
-Object.assign(process.env, { AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
+// the car's 2D pictures: per trim a picture and a paint mask (numbered one after the other), a big and a small bundle
+const carPics = (w, h) => [7, 9].map((k) => ({ name: 'tex_vehicle_welcome_g05_trimA' + k + '_bitmap', w, h })).concat([8, 10].map((k) => ({ name: 'tex_vehicle_welcome_g05_trimA_mask' + k + '_bitmap', w, h })));
+const mkBig = makeBundle(carPics(672, 336)), mkSmall = makeBundle(carPics(440, 222));
+const vehicles = path.join(tmp, 'vehicles');
+const putCar = (sub, b) => { const d = path.join(vehicles, 'G20', sub); mkdirs(d); fs.writeFileSync(path.join(d, 'bitmaps.res'), b.data); fs.writeFileSync(path.join(d, 'bitmaps.res.ids'), b.ids); };
+putCar('vehicle2D_big', mkBig); putCar('vehicle2D_small', mkSmall); mkdirs(path.join(vehicles, 'G20', 'vehicle'));
+const carFile = (sub) => fs.readFileSync(path.join(vehicles, 'G20', sub, 'bitmaps.res'));
+Object.assign(process.env, { AVATAR_VEHICLES: vehicles, AVATAR_ROOT: root, AVATAR_MOUNT: '', AVATAR_STATE: state, AVATAR_RUN: run, AVATAR_LEGACY: legacy, AVATAR_OAP: oap, AVATAR_PORT: '0', AVATAR_IPS: '192.168.7.9', AVATAR_SCAN_MS: '0' });
 const svc = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'anh-dai-dien.js'));
 const fileOf = (rel) => fs.readFileSync(path.join(root, rel, 'wbitmaps.res'));
 const BT = svc.MORE0, USB = svc.MORE0 + 1;
@@ -170,7 +177,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     const st0 = JSON.parse(fs.readFileSync(path.join(run, 'status.json'), 'utf8'));
     assert.strictEqual(st0.url, 'http://192.168.7.9:' + svc.S.port + '/?pin=' + pin);
     assert.strictEqual(st0.slots.length, 15); assert.ok(!st0.slots.some((s) => s.changed)); assert.strictEqual(st0.anyChanged, false);
-    assert.deepStrictEqual(st0.more, [{ n: BT, changed: false, label: 'Nhạc Bluetooth' }]);     // the USB bundle is not what is expected, the others are not on this car
+    assert.deepStrictEqual(st0.more, [{ n: svc.CAR, changed: false, label: 'Hình xe' }, { n: BT, changed: false, label: 'Nhạc Bluetooth' }]);     // the USB bundle is not what is expected, the others are not on this car
     assert.strictEqual(fs.statSync(path.join(run, 't01.rgba')).size, 96 * 96 * 4);
     assert.ok(!fs.existsSync(path.join(state, 'backup', 'replacement_media_plug_usb.res.orig')));
     ok('starts, keeps every bundle\'s original, tells the app the address, the PIN, 15 pictures and the placeholders this car has');
@@ -181,6 +188,8 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('GET', '/api/state?pin=' + (pin === '1234' ? '4321' : '1234')); assert.strictEqual(r.code, 401);
     r = await call('GET', '/api/state' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.json.slots.length, 15);
     assert.strictEqual(r.json.slots[0].size, 570); assert.strictEqual(r.json.more[0].size, 1305); assert.ok(r.json.more[0].where);
+    assert.strictEqual(r.json.more.length, 1); assert.strictEqual(r.json.car.length, 1); assert.ok(r.json.car[0].alpha); assert.strictEqual(r.json.car[0].w, 1344); assert.strictEqual(r.json.car[0].h, 672);
+    r = await call('GET', '/api/thumb/' + svc.CAR + q); assert.strictEqual(r.body.readUInt32BE(16), 512); assert.strictEqual(r.body.readUInt32BE(20), 256);
     r = await call('GET', '/api/thumb/4' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.type, 'image/png'); assert.strictEqual(r.body.readUInt32BE(16), 256);
     r = await call('GET', '/api/thumb/' + BT + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.readUInt32BE(16), 256);
     r = await call('GET', '/api/thumb/16' + q); assert.strictEqual(r.code, 404);
@@ -232,6 +241,29 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('GET', '/api/state' + q); assert.ok(r.json.more[0].changed);
     ok('a placeholder picture goes into all four sizes and both colours of its bundle');
 
+    // the car: a cut-out photo goes in as it is (colours multiplied by transparency), the paint masks are emptied
+    const CW = svc.CAR_W, CH = svc.CAR_H, cut = picture(31, CW, CH);
+    for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) { const d = Math.hypot((x - CW / 2) / (CW / 2), (y - CH / 2) / (CH / 2)); cut[(y * CW + x) * 4 + 3] = d < 0.7 ? 255 : d < 0.9 ? 128 : 0; }
+    r = await call('POST', '/api/picture/' + svc.CAR + q, cut); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
+    let big = new W.Bundle(carFile('vehicle2D_big'), mkBig.ids), small = new W.Bundle(carFile('vehicle2D_small'), mkSmall.ids);
+    const wantBig = W.flipRows(svc.premultiply(W.fit(cut, CW, CH, 672, 336)), 672, 336);
+    ['tex_vehicle_welcome_g05_trimA7_bitmap', 'tex_vehicle_welcome_g05_trimA9_bitmap'].forEach((k) => assert.strictEqual(Buffer.compare(big.rgba(k), wantBig), 0, k));
+    ['tex_vehicle_welcome_g05_trimA_mask8_bitmap', 'tex_vehicle_welcome_g05_trimA_mask10_bitmap'].forEach((k) => { assert.ok(big.rgba(k).every((v) => v === 0), k); assert.ok(small.rgba(k).every((v) => v === 0), k); });
+    assert.strictEqual(Buffer.compare(small.rgba('tex_vehicle_welcome_g05_trimA7_bitmap'), W.flipRows(svc.premultiply(W.fit(cut, CW, CH, 440, 222)), 440, 222)), 0);
+    const mid = W.flipRows(big.rgba('tex_vehicle_welcome_g05_trimA7_bitmap'), 672, 336);
+    assert.strictEqual(mid[3], 0); assert.strictEqual(mid[0] + mid[1] + mid[2], 0); assert.strictEqual(mid[(168 * 672 + 336) * 4 + 3], 255);
+    const half = (168 * 672 + 336 + Math.round(0.8 * 336)) * 4; assert.strictEqual(mid[half + 3], 128); assert.ok(mid[half] <= 128 && mid[half + 1] <= 128 && mid[half + 2] <= 128);
+    // a plain photo gets soft edges instead of a hard rectangle
+    r = await call('POST', '/api/picture/' + svc.CAR + q, picture(32, CW, CH)); assert.strictEqual(r.code, 200);
+    big = new W.Bundle(carFile('vehicle2D_big'), mkBig.ids);
+    const soft = W.flipRows(big.rgba('tex_vehicle_welcome_g05_trimA9_bitmap'), 672, 336);
+    assert.ok(soft[3] < 40); assert.strictEqual(soft[(168 * 672 + 336) * 4 + 3], 255); assert.ok(soft[(168 * 672 + 6) * 4 + 3] < 255 && soft[(168 * 672 + 6) * 4 + 3] > 0);
+    r = await call('GET', '/api/state' + q); assert.ok(r.json.car[0].changed);
+    r = await call('POST', '/api/restore/' + svc.CAR + q); assert.strictEqual(r.code, 200);
+    assert.strictEqual(Buffer.compare(carFile('vehicle2D_big'), mkBig.data), 0); assert.strictEqual(Buffer.compare(carFile('vehicle2D_small'), mkSmall.data), 0);
+    await call('POST', '/api/picture/' + svc.CAR + q, cut);
+    ok('the car\'s picture: a cut-out goes into every trim of the big and the small bundle, the paint masks are emptied, a plain photo gets soft edges');
+
     r = await call('POST', '/api/restore/3' + q); assert.strictEqual(r.code, 200);
     now = new W.Bundle(fileOf(AV), mk.ids);
     assert.strictEqual(Buffer.compare(now.blob('S03'), new W.Bundle(mk.data, mk.ids).blob('S03')), 0);
@@ -244,7 +276,8 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('POST', '/api/restore/all' + q); assert.strictEqual(r.code, 200);
     assert.strictEqual(Buffer.compare(fileOf(AV), mk.data), 0); assert.strictEqual(Buffer.compare(fileOf(REG), mkReg.data), 0);
     assert.strictEqual(Buffer.compare(fileOf(STA), mkSta.data), 0); assert.strictEqual(Buffer.compare(fileOf(REPL + 'replacement_media_wireless_bluetooth'), mkBt.data), 0);
-    r = await call('GET', '/api/state' + q); assert.ok(!r.json.slots.some((s) => s.changed) && !r.json.more.some((s) => s.changed) && !r.json.anyChanged);
+    assert.strictEqual(Buffer.compare(carFile('vehicle2D_big'), mkBig.data), 0); assert.strictEqual(Buffer.compare(carFile('vehicle2D_small'), mkSmall.data), 0);
+    r = await call('GET', '/api/state' + q); assert.ok(!r.json.slots.some((s) => s.changed) && !r.json.more.some((s) => s.changed) && !r.json.car[0].changed && !r.json.anyChanged);
     ok('restoring one picture, then all, brings back every original file byte for byte');
 
     // the app's commands: only what was written after the start counts
@@ -273,7 +306,7 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     // a profile bundle of another layout is reported and never written
     const odd = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-odd-'));
     fs.writeFileSync(path.join(odd, 'wbitmaps.res'), Buffer.concat([mk.data, Buffer.from('x')])); fs.writeFileSync(path.join(odd, 'wbitmaps.res.ids'), mk.ids);
-    Object.assign(svc.CFG, { dir: odd, state: path.join(odd, 'st'), root: path.join(odd, 'none') });
+    Object.assign(svc.CFG, { dir: odd, state: path.join(odd, 'st'), root: path.join(odd, 'none'), vehicles: path.join(odd, 'none') });
     assert.strictEqual(svc.load(), false); assert.ok(/cấu trúc lạ/.test(svc.S.error)); assert.strictEqual(svc.S.compatible, false);
     await assert.rejects(() => svc.setPicture(1, picture(1)), /cấu trúc lạ|không dùng được/);
     assert.strictEqual(fs.readFileSync(path.join(odd, 'wbitmaps.res')).length, mk.data.length + 1);

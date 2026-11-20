@@ -4,6 +4,8 @@
  * originals back. The pictures live in bundles (wbitmaps.res, see wbm.js) under assetDB:
  *
  *   the fifteen profile pictures   three bundles: 570x570 (the picker), 84x72 and 72x72 icons (lists, the status bar)
+ *   the car's picture              the 2D picture of the vehicle on the main menu's tile and in the My Vehicle menu:
+ *                                  per model a big and a small bundle, each a picture and a paint mask per trim
  *   placeholder pictures           one bundle each, 4 sizes x 2 colours: what a media source shows without a cover
  *                                  (Bluetooth, USB, music, radio), the caller without a photo
  *
@@ -33,12 +35,13 @@ const crypto = require('crypto');
 const cp = require('child_process');
 const W = require('./wbm');
 
-const VERSION = '0.2.1';
+const VERSION = '0.3.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
 const CFG = {
     root: env('AVATAR_ROOT', '/mnt/dataro/dataro1/hmi/bmw/id7/assetDB'),
+    vehicles: env('AVATAR_VEHICLES', '/mnt/dataro/dataro1/hmi/bmw/widgetasset/vehicles'),   // <model>/vehicle2D_big, vehicle2D_small
     dir: env('AVATAR_DIR', ''),                         // the profile pictures' bundle, if not under the root (tests)
     mount: process.env.AVATAR_MOUNT !== undefined ? process.env.AVATAR_MOUNT : '/mnt/dataro',   // '' = nothing to remount (tests)
     state: env('AVATAR_STATE', '/var/opt/anh-dai-dien'),
@@ -50,7 +53,7 @@ const CFG = {
     scanMs: Number(env('AVATAR_SCAN_MS', 5000)),        // how often the app is looked for while it is missing
 };
 const APP = /^anh_dai_dien\d*$/;
-const SLOTS = 15, THUMB = 256, SMALL = 96, MORE0 = 21;
+const SLOTS = 15, THUMB = 256, SMALL = 96, MORE0 = 21, CAR = 41, CAR_W = 1344, CAR_H = 672;
 const key = (n) => 'S' + (n < 10 ? '0' : '') + n;
 const two = (n) => (n < 10 ? '0' : '') + n;
 const mkdirp = (d) => { if (fs.existsSync(d)) return; mkdirp(path.dirname(d)); try { fs.mkdirSync(d); } catch (e) { if (e.code !== 'EEXIST') throw e; } };
@@ -79,7 +82,8 @@ function log(m) {
 
 /* ---------------- state ---------------- */
 // A bundle: { id, dir, bk (its original's copy), usable, error, changed: { key: true } }. Its bytes are read when needed, not kept.
-// A slot (one picture the owner sets): { n, label, where, size (what the phone sends, square), targets: [{ b, key, w, h, box }] }.
+// A slot (one picture the owner sets): { n, label, where, w, h (what the phone sends), alpha (its transparency is kept),
+//   targets: [{ b, key, w, h, box, zero (this picture is emptied: a paint mask) }] }.
 const S = {
     bundles: {}, slots: {}, compatible: false, error: '', backupNote: '', smallIcons: false,
     thumbs: {}, rev: 0, busy: false, message: '', messageKind: 'dim', needsRestart: false, pin: '', port: 0, startedAt: Date.now(),
@@ -92,12 +96,12 @@ const newPin = () => String(1000 + crypto.randomBytes(2).readUInt16BE(0) % 9000)
 
 function say(kind, text) { S.messageKind = kind; S.message = text; S.rev++; writeStatus(); }
 
-const RES = (b) => path.join(b.dir, 'wbitmaps.res');
+const RES = (b) => path.join(b.dir, b.file);
 const readBundle = (b) => new W.Bundle(fs.readFileSync(RES(b)), b.ids);
 const readOriginal = (b) => new W.Bundle(fs.readFileSync(b.bk), b.ids);
 
-function bundle(id, dir, bkName) {
-    const b = { id, dir, bk: path.join(CFG.state, 'backup', bkName), ids: '', usable: false, error: '', changed: {}, note: '' };
+function bundle(id, dir, bkName, file) {
+    const b = { id, dir, file: file || 'wbitmaps.res', bk: path.join(CFG.state, 'backup', bkName), ids: '', usable: false, error: '', changed: {}, note: '' };
     S.bundles[id] = b;
     return b;
 }
@@ -142,14 +146,88 @@ function writeAtomic(file, data) {
     fs.renameSync(tmp, file);
 }
 
-function thumb(n, topDown, size) {
-    S.thumbs[n] = W.png(W.shrink(topDown, size, size, THUMB), THUMB, THUMB);
-    if (n <= SLOTS) { try { writeAtomic(path.join(CFG.run, 't' + two(n) + '.rgba'), W.shrink(topDown, size, size, SMALL)); } catch (e) { /* no RAM folder (tests) */ } }
+function thumb(n, topDown, w, h) {
+    const tw = h >= w ? THUMB : Math.round(THUMB * w / h);
+    S.thumbs[n] = W.png(W.resize(topDown, w, h, tw, h >= w ? Math.round(THUMB * h / w) : THUMB), tw, h >= w ? Math.round(THUMB * h / w) : THUMB);
+    if (n <= SLOTS) { try { writeAtomic(path.join(CFG.run, 't' + two(n) + '.rgba'), W.shrink(topDown, w, h, SMALL)); } catch (e) { /* no RAM folder (tests) */ } }
 }
+
+/* The car's picture is stored with its colours multiplied by its transparency, and painted by the head unit:
+   shown = sqrt(picture^2 * (1 - mask.a) + paint(mask) * mask.a). With an empty mask the picture is shown as it is. */
+function premultiply(rgba) {
+    const out = Buffer.from(rgba);
+    for (let i = 0; i < out.length; i += 4) { const a = out[i + 3]; if (a < 255) { out[i] = out[i] * a / 255; out[i + 1] = out[i + 1] * a / 255; out[i + 2] = out[i + 2] * a / 255; } }
+    return out;
+}
+/** The car as the head unit would paint it in white (the phone page's look at the original), not multiplied. */
+function painted(pic, mask) {
+    const out = Buffer.alloc(pic.length);
+    for (let i = 0; i < pic.length; i += 4) {
+        const ma = mask[i + 3] / 255, r = mask[i] / 255, g = mask[i + 1] / 255, b = mask[i + 2] / 255;
+        const paint = 0.85 * r + 0.35 * Math.pow(g, 16 / 12.5) + 0.25 * b * b, a = pic[i + 3];
+        for (let c = 0; c < 3; c++) {
+            const v = Math.sqrt(Math.min(1, (pic[i + c] / 255) * (pic[i + c] / 255) * (1 - ma) + paint * ma)) * 255;
+            out[i + c] = a ? Math.min(255, v * 255 / a) : 0;
+        }
+        out[i + 3] = a;
+    }
+    return out;
+}
+/** An opaque photo gets soft edges, so that it does not sit on the menu as a hard rectangle. */
+function feather(rgba, w, h) {
+    for (let i = 3; i < rgba.length; i += 4) if (rgba[i] !== 255) return rgba;
+    const m = Math.round(h * 0.09), out = Buffer.from(rgba);
+    const ramp = (d) => { if (d >= m) return 1; const t = d / m; return t * t * (3 - 2 * t); };
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const k = ramp(Math.min(x, w - 1 - x)) * ramp(Math.min(y, h - 1 - y));
+        if (k < 1) out[(y * w + x) * 4 + 3] = Math.round(255 * k);
+    }
+    return out;
+}
+
 /** A slot's picture as the car has it now: from its first target (the largest the page shows well). */
 function thumbFrom(slot, parsed) {
     const t = slot.targets[0];
-    thumb(slot.n, W.flipRows(parsed.rgba(t.key), t.w, t.h), t.w);
+    let pic = parsed.rgba(t.key);
+    if (slot.alpha) {
+        const mk = slot.targets.filter((x) => x.b === t.b && x.zero && x.pair === t.key)[0];
+        const mask = mk ? parsed.rgba(mk.key) : Buffer.alloc(pic.length);
+        pic = painted(pic, mask);
+    }
+    thumb(slot.n, W.flipRows(pic, t.w, t.h), t.w, t.h);
+}
+
+/** The 2D pictures of the vehicle: under <vehicles>/<model>/vehicle2D_big and _small, a picture and a paint mask per trim. */
+function loadCar() {
+    let models = [];
+    try { models = fs.readdirSync(CFG.vehicles).sort(); } catch (e) { return; }
+    const targets = [];
+    let first = null;
+    models.forEach((model) => ['vehicle2D_big', 'vehicle2D_small'].forEach((sub) => {
+        const dir = path.join(CFG.vehicles, model, sub);
+        if (!fs.existsSync(path.join(dir, 'bitmaps.res'))) return;
+        const id = 'car-' + model + '-' + sub.slice(10);
+        const b = bundle(id, dir, id + '.res.orig', 'bitmaps.res');
+        const p = check(b, []);
+        const num = (k) => { const m = /(\d+)_bitmap$/.exec(k); return m ? Number(m[1]) : -1; };
+        let okay = !!p;
+        if (p) {
+            const masks = p.entries.filter((e) => /_mask\d+_bitmap$/.test(e.key)), pics = p.entries.filter((e) => !/_mask\d+_bitmap$/.test(e.key));
+            const e0 = p.entries[0];
+            if (!pics.length || masks.length !== pics.length || p.entries.some((e) => e.w !== e0.w || e.h !== e0.h || num(e.key) < 0)) { okay = false; b.error = 'other pictures than a picture and a mask per trim'; }
+            else if (backup(b, p)) {
+                pics.sort((x, y) => num(x.key) - num(y.key));
+                pics.forEach((e) => targets.push({ b, key: e.key, w: e.w, h: e.h }));
+                masks.forEach((e) => { const pr = pics.filter((x) => num(x.key) === num(e.key) - 1)[0]; targets.push({ b, key: e.key, w: e.w, h: e.h, zero: true, pair: pr ? pr.key : '' }); });
+                if (!first) first = p;
+            } else okay = false;
+        }
+        b.usable = okay;
+        if (!okay) log(id + ' not usable: ' + b.error);
+    }));
+    if (!first) return;
+    S.slots[CAR] = { n: CAR, label: 'Hình chiếc xe', where: 'ở ô xe ngoài màn hình chính và trong menu Xe của tôi', w: CAR_W, h: CAR_H, alpha: true, targets };
+    thumbFrom(S.slots[CAR], first);
 }
 
 /** Looks at every bundle and makes the list of pictures that can be set. False if the profile pictures cannot. */
@@ -173,7 +251,7 @@ function load() {
     for (let n = 1; n <= SLOTS; n++) {
         const targets = [{ b: big, key: key(n), w: W.SIZE, h: W.SIZE }];
         icons.forEach((i) => { if (i.b.usable) targets.push({ b: i.b, key: key(n), w: i.w, h: i.h, box: i.box }); });
-        S.slots[n] = { n, label: 'Hình số ' + n, where: '', size: W.SIZE, targets };
+        S.slots[n] = { n, label: 'Hình số ' + n, where: '', w: W.SIZE, h: W.SIZE, targets };
         thumbFrom(S.slots[n], parsed);
     }
     // the placeholder pictures: each only if its bundle is on this car and is what is expected
@@ -185,9 +263,10 @@ function load() {
         b.usable = !!(p && p.entries.length === want.length && backup(b, p));
         if (!b.usable) { if (!b.missing) log(b.id + ' not usable: ' + (b.error || 'other pictures than expected')); return; }
         const n = MORE0 + i;
-        S.slots[n] = { n, label: d[1], where: d[2], size: 1305, targets: want.map((w) => ({ b, key: w.key, w: w.w, h: w.h })) };
+        S.slots[n] = { n, label: d[1], where: d[2], w: 1305, h: 1305, targets: want.map((w) => ({ b, key: w.key, w: w.w, h: w.h })) };
         thumbFrom(S.slots[n], p);
     });
+    try { loadCar(); } catch (e) { log('car pictures: ' + e.message); delete S.slots[CAR]; }
     S.compatible = true; S.rev++;
     return true;
 }
@@ -242,25 +321,30 @@ async function setPicture(n, topDownRgba) {
         if (!S.compatible) throw new Error(S.error || 'gói ảnh không dùng được');
         const slot = S.slots[n];
         if (!slot) throw bad('số hình không đúng');
-        if (topDownRgba.length !== slot.size * slot.size * 4) throw bad('ảnh không đúng cỡ ' + slot.size + 'x' + slot.size);
+        if (topDownRgba.length !== slot.w * slot.h * 4) throw bad('ảnh không đúng cỡ ' + slot.w + 'x' + slot.h);
         S.busy = true; writeStatus();
         try {
-            const rgba = Buffer.from(topDownRgba);
-            for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;   // opaque: a transparent corner would show the screen behind
+            let rgba = Buffer.from(topDownRgba);
+            if (slot.alpha) rgba = feather(rgba, slot.w, slot.h);     // the car's picture keeps its transparency (a cut-out car)
+            else for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;   // opaque: a transparent corner would show the screen behind
             // every new file first (nothing is written if one cannot be made), then all of them in one writable moment
             const files = byBundle(slot).map((g) => {
                 const cur = readBundle(g.b), replace = {}, made = {};
                 g.targets.forEach((t) => {
-                    const id = t.w + 'x' + t.h;                      // the two colours of a size get the same picture: made once
-                    if (!made[id]) made[id] = { blob: cur.encode(t.key, W.flipRows(W.place(rgba, slot.size, t.w, t.h, t.box), t.w, t.h)) };
+                    const id = t.w + 'x' + t.h + (t.zero ? 'z' : '');   // pictures of one size get the same bytes: made once
+                    if (!made[id]) {
+                        let pic = t.zero ? Buffer.alloc(t.w * t.h * 4) : W.fit(rgba, slot.w, slot.h, t.w, t.h, t.box);
+                        if (slot.alpha && !t.zero) pic = premultiply(pic);
+                        made[id] = { blob: cur.encode(t.key, W.flipRows(pic, t.w, t.h)) };
+                    }
                     replace[t.key] = made[id];
                 });
                 return { g, buf: cur.build(replace) };
             });
             await writable(async () => files.forEach((f) => { commit(f.g.b, f.buf); f.g.targets.forEach((t) => { f.g.b.changed[t.key] = true; }); }));
-            thumb(n, rgba, slot.size); S.rev++;
+            thumb(n, rgba, slot.w, slot.h); S.rev++;
             log('picture ' + n + ' replaced (' + files.map((f) => f.g.b.id).join(', ') + ')');
-            say('go', 'Đã đổi ' + (n <= SLOTS ? 'hình số ' + n : 'hình "' + slot.label + '"') + '. Khởi động lại màn hình xe để thấy.');
+            say('go', 'Đã đổi ' + (n <= SLOTS ? 'hình số ' + n : n === CAR ? 'hình chiếc xe' : 'hình "' + slot.label + '"') + '. Khởi động lại màn hình xe để thấy.');
         } finally { S.busy = false; writeStatus(); }
     });
 }
@@ -309,7 +393,7 @@ function addresses() {
 /* ---------------- status for the app ---------------- */
 function slotList(from, to) {
     return Object.keys(S.slots).map(Number).filter((n) => n >= from && n <= to).sort((x, y) => x - y)
-        .map((n) => ({ n, changed: slotChanged(S.slots[n]), label: S.slots[n].label, where: S.slots[n].where, size: S.slots[n].size }));
+        .map((n) => ({ n, changed: slotChanged(S.slots[n]), label: S.slots[n].label, where: S.slots[n].where, size: S.slots[n].w, w: S.slots[n].w, h: S.slots[n].h, alpha: !!S.slots[n].alpha }));
 }
 
 function writeStatus() {
@@ -321,7 +405,7 @@ function writeStatus() {
         message: S.message, messageKind: S.messageKind, needsRestart: S.needsRestart,
         backup: S.compatible ? S.backupNote : '', smallIcons: S.smallIcons, anyChanged: S.compatible && anyChanged(),
         slots: S.compatible ? slotList(1, SLOTS).map((s) => ({ n: s.n, changed: s.changed })) : [],
-        more: S.compatible ? slotList(MORE0, 999).map((s) => ({ n: s.n, changed: s.changed, label: s.label })) : [],
+        more: S.compatible ? slotList(CAR, CAR).concat(slotList(MORE0, CAR - 1)).map((s) => ({ n: s.n, changed: s.changed, label: s.n === CAR ? 'Hình xe' : s.label })) : [],
     };
     try { writeAtomic(path.join(CFG.run, 'status.json'), JSON.stringify(st)); } catch (e) { /* no RAM folder (tests) */ }
     return st;
@@ -384,7 +468,7 @@ async function handle(req, res) {
         const st = writeStatus();
         return json(res, 200, { ok: true, version: VERSION, compatible: st.compatible, error: st.error, busy: st.busy, message: st.message,
             messageKind: st.messageKind, needsRestart: st.needsRestart, rev: S.rev, size: W.SIZE, backup: st.compatible, smallIcons: st.smallIcons,
-            anyChanged: st.anyChanged, slots: slotList(1, SLOTS), more: slotList(MORE0, 999) });
+            anyChanged: st.anyChanged, slots: slotList(1, SLOTS), more: slotList(MORE0, CAR - 1), car: slotList(CAR, CAR) });
     }
     let m = /^\/api\/thumb\/(\d+)$/.exec(p);
     if (req.method === 'GET' && m) {
@@ -397,7 +481,7 @@ async function handle(req, res) {
     if (req.method === 'POST' && m) {
         const slot = S.slots[Number(m[1])];
         let b;
-        try { b = await body(req, (slot ? slot.size * slot.size * 4 : W.RAW) + 1); } catch (e) { return json(res, 413, { ok: false, error: 'Ảnh quá lớn.' }); }
+        try { b = await body(req, (slot ? slot.w * slot.h * 4 : W.RAW) + 1); } catch (e) { return json(res, 413, { ok: false, error: 'Ảnh quá lớn.' }); }
         try { await setPicture(Number(m[1]), b); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
     }
     m = /^\/api\/restore\/(all|\d+)$/.exec(p);
@@ -461,4 +545,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, MORE, MORE0, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, MORE, MORE0, CAR, CAR_W, CAR_H, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

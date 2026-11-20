@@ -6,10 +6,11 @@ Viết cho BMW G30 LCI 2021, iDrive 7, có camera 360 và đã cài MGU Store. H
 
 > **Trên xe (G30, đến bản 0.3.3):** xi nhan thật bật đúng camera từng bên, hình tròn hiện trong vòng đồng hồ. Luồng của G30 là 1280x480, 30 hình/giây: hai loại khung xen kẽ, mỗi khung 2 camera, phân biệt bằng thẻ SEI (`sei@19`). **Chưa xác nhận trên xe (mới ở 0.4.0):** hướng nhìn "chếch về sau" có đúng là phía sau không, màn hình mới (chạm, trang Vị trí), camera trước giữa đồng hồ.
 
-## Dấu Ấn 0.2.1 (app thứ hai trong nguồn này; tên cũ: Ảnh đại diện)
+## Dấu Ấn 0.3.0 (app thứ hai trong nguồn này; tên cũ: Ảnh đại diện)
 
 Xe không có Connected Drive thì không đổi được ảnh đại diện của profile, và danh sách hình có sẵn chỉ có 15 hình. App này cho đặt ảnh của chính mình lên xe, gửi từ điện thoại:
 
+- **Hình chiếc xe (mới trong 0.3.0):** chiếc xe ở ô xe ngoài màn hình chính và trong menu Xe của tôi. Đó là ảnh 2D dựng sẵn (`widgetasset/vehicles/<dòng xe>/vehicle2D_big` và `vehicle2D_small`: mỗi gói trang bị một ảnh xe và một mặt nạ sơn, đầu xe tô màu sơn lên theo mặt nạ). App ghi ảnh của bạn vào ảnh của mọi gói trang bị và xóa trắng mặt nạ, nên xe hiện đúng ảnh bạn gửi và không còn đổi theo màu sơn hay gói trang bị. Ảnh PNG nền trong suốt (xe đã tách nền) thì xe nổi trên nền menu như xe gốc; ảnh thường được làm mờ viền.
 - **Ảnh đại diện:** 15 hình trong danh sách chọn ảnh của profile. Mỗi hình được ghi vào cả ba gói của xe: hình to 570x570 (chỗ chọn ảnh) và hai bộ biểu tượng nhỏ 84x72, 72x72 (danh sách, thanh trạng thái).
 - **Hình mặc định (mới trong 0.2.0):** hình xe hiện khi không có ảnh bìa hay ảnh người gọi: nhạc Bluetooth, nhạc USB, nhạc, radio FM/AM, radio, người gọi không có ảnh. Một ảnh được ghi vào cả 4 cỡ và 2 màu (xanh, đỏ) của gói. Xe không có gói nào, hoặc gói khác cấu trúc, thì mục đó không hiện.
 
@@ -19,7 +20,7 @@ Xe không có Connected Drive thì không đổi được ảnh đại diện c�
 
 **Cách hoạt động:** các hình nằm trong những gói `wbitmaps.res` (định dạng tài nguyên Ramses, mỗi hình RGBA nén LZ4) dưới `assetDB` trên phân vùng chỉ đọc `/mnt/dataro`. Trợ thủ đọc gói, thay đúng các hình được chọn, kiểm tra gói mới đọc lại được, mở ghi phân vùng trong giây lát, ghi file mới cạnh file cũ rồi đổi tên đè lên (một thao tác), và khóa chỉ đọc lại. Gói có cấu trúc lạ (xe khác, bản phần mềm khác) thì không ghi gì. Trang điện thoại phục vụ qua HTTP trong mạng nội bộ cổng 8137, cần mã PIN 4 số hiện trên xe (sai 5 lần thì khóa địa chỉ đó 1 phút). Mã nguồn: `tools/anh-dai-dien/` (`wbm.js` đọc/ghi gói, `anh-dai-dien.js` dịch vụ, `page.html` trang điện thoại) và `apps/anh_dai_dien/`.
 
-**Đã kiểm tra gì:** trên máy, với bản sao các gói thật của một xe G30 (ảnh đại diện 3 gói, bìa Bluetooth, người gọi): đọc, ghi lại giống từng byte, đổi hình, khôi phục về đúng file gốc. Trên xe: một gói ảnh đại diện ghi tay vẫn còn nguyên sau khi khởi động lại (xe không tự khôi phục). **Chưa kiểm tra trên xe:** app và trợ thủ chạy thật, điện thoại nối vào cổng 8137 (tường lửa), chiều ảnh khi hiện, các gói hình mặc định ngoài hai gói kể trên (cùng tên hình và cỡ thì dùng, khác thì bỏ qua).
+**Đã kiểm tra gì:** trên máy, với bản sao các gói thật của một đầu G20 trên bench (ảnh đại diện 3 gói, bìa Bluetooth, người gọi, hình xe G20 to và nhỏ): đọc, ghi lại giống từng byte, đổi hình, khôi phục về đúng file gốc. Trên xe: một gói ảnh đại diện ghi tay vẫn còn nguyên sau khi khởi động lại (xe không tự khôi phục). **Chưa kiểm tra trên xe:** app và trợ thủ chạy thật, điện thoại nối vào cổng 8137 (tường lửa), chiều ảnh khi hiện, hình xe của dòng xe khác G20 (cùng kiểu một ảnh và một mặt nạ cho mỗi gói trang bị thì dùng), các gói hình mặc định ngoài hai gói kể trên (cùng tên hình và cỡ thì dùng, khác thì bỏ qua).
 
 ## Mới trong 0.7.11 (trợ thủ 0.7.9)
 
