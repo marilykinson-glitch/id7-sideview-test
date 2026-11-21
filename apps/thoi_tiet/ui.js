@@ -65,9 +65,9 @@ function tile(cv, G, t, x, y, w, h, info, tall, windDir) {
         cv.line(ax + dx * r, ay + dy * r, ax + dx * r * 0.2 - dy * 6, ay + dy * r * 0.2 + dx * 6, 2.5, t.text);
     }
 }
-function tiles(cv, G, t, ids, cur, today, d, y0) {
+function tiles(cv, G, t, ids, cur, today, d, y0, ex) {
     const n = ids.length; if (!n) return;
-    const two = n > 5, per = two ? Math.ceil(n / 2) : n, gap = 6, tw = Math.min(two ? 150 : 108, (464 - (per - 1) * gap) / per), th = two ? 54 : Math.max(92, G.BOTTOM - 18 - y0);
+    const two = n > 5, per = two ? Math.ceil(n / 2) : n, gap = 6, tw = Math.min(two ? 150 : 108, (464 - (per - 1) * gap) / per), th = two ? 54 + (ex || 0) / 2 : Math.max(92, G.BOTTOM + (ex || 0) - 18 - y0);
     ids.forEach((id, i) => {
         const r = two ? Math.floor(i / per) : 0, c = two ? i % per : i;
         tile(cv, G, t, 56 + c * (tw + gap), y0 + r * (th + 6), tw, th, Wx.tileInfo(id, cur, today, d.daily, d.air), !two, id === 'wind' ? cur.windDir : null);
@@ -165,8 +165,10 @@ function message(cv, t, v, x, y) { if (v.message) cv.text(fit(cv, v.message, 19,
 function drawMain(cv, G, t, v, act) {
     const set = v.set, places = v.places || [], d = v.data, cur = d && d.current;
     const time = v.time || 0, wc = cur ? Wx.describe(cur.code) : null, fx = set.fx && !!cur;
-    if (fx) Fx.sky(cv, G, wc.icon, cur.day, 26, G.TOP + 2, W - 52, G.BOTTOM - G.TOP - 4);
-    if (fx) Fx.draw(cv, G, wc.icon, cur.day, cur.wind || 0, 30, G.TOP + 4, 520, G.BOTTOM - G.TOP - 8, time);
+    // the room the car's screen has under the page (the panel reaches down into it): the page's lower parts stretch into it
+    const ex = G.pageBottom(cv) - G.BOTTOM;
+    if (fx) Fx.sky(cv, G, wc.icon, cur.day, 26, G.TOP + 2, W - 52, G.BOTTOM + ex - G.TOP - 4);
+    if (fx) Fx.draw(cv, G, wc.icon, cur.day, cur.wind || 0, 30, G.TOP + 4, 520, G.BOTTOM + ex - G.TOP - 8, time);
     // top row: the places, the list of places | settings, drive, refresh
     const y0 = G.TOP + 14, hh = 40, rbw = 150, sbw = 130, dbw = 120;
     const rightStart = W - 56 - rbw - 10 - sbw - 10 - dbw - 16;
@@ -201,7 +203,7 @@ function drawMain(cv, G, t, v, act) {
     cv.text(wc.text, 56, G.TOP + 292, 32, t.text, BOLD);
     if (tp) tipChip(cv, G, t, tp, 520, G.TOP + 266, 34, 17, 520 - (56 + wtw + 24));
     cv.text('Cảm giác như ' + Wx.deg(cur.feels) + '  ·  Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo), 56, G.TOP + 324, 19, t.dim, LAB);
-    tiles(cv, G, t, set.tiles, cur, today, d, G.TOP + 346);
+    tiles(cv, G, t, set.tiles, cur, today, d, G.TOP + 346, ex);
     rainChip(cv, G, t, cur, 520, G.TOP + 226, 34, 18);
 
     // right: the middle block, the next days
@@ -211,8 +213,8 @@ function drawMain(cv, G, t, v, act) {
         if (set.block === 'icons') hoursIcons(cv, G, t, d, R, rw); else if (set.block === 'chart') hoursChart(cv, G, t, d, R, rw); else sunArc(cv, G, t, cur, today, R, rw);
     }
     if (set.days) {
-        if (set.block !== 'off') { cv.fillRect(rx, G.TOP + 250, rw, 1, G.withAlpha('#ffffff', 0.12)); label(cv, t, '5 NGÀY TỚI', rx, G.TOP + 274); days(cv, G, t, d, rx, rw, G.TOP + 290, 35); }
-        else { label(cv, t, '5 NGÀY TỚI', rx, G.TOP + 100); days(cv, G, t, d, rx, rw, G.TOP + 120, 62); }
+        if (set.block !== 'off') { cv.fillRect(rx, G.TOP + 250, rw, 1, G.withAlpha('#ffffff', 0.12)); label(cv, t, '5 NGÀY TỚI', rx, G.TOP + 274); days(cv, G, t, d, rx, rw, G.TOP + 290 + ex * 0.2, 35 + ex * 0.2); }
+        else { label(cv, t, '5 NGÀY TỚI', rx, G.TOP + 100); days(cv, G, t, d, rx, rw, G.TOP + 120 + ex * 0.2, 62 + ex * 0.2); }
     }
 }
 
@@ -221,7 +223,8 @@ function drawDrive(cv, G, t, v, act) {
     const set = v.set, d = v.data, cur = d && d.current, places = v.places || [], time = v.time || 0;
     if (!cur) { cv.text('Chưa có dự báo.', W / 2, G.TOP + 220, 30, t.dim, { literal: true, font: 'label', align: 'center' }); G.button(cv, t, W - 56 - 150, G.TOP + 14, 150, 44, 'Thoát', () => act.drive && act.drive(false), { key: 'wxExit' }); return; }
     const wc = Wx.describe(cur.code), today = d.daily[0] || {};
-    if (set.fx) { Fx.sky(cv, G, wc.icon, cur.day, 26, G.TOP + 2, W - 52, G.BOTTOM - G.TOP - 4); Fx.draw(cv, G, wc.icon, cur.day, cur.wind || 0, 30, G.TOP + 4, W - 60, G.BOTTOM - G.TOP - 8, time); }
+    const ex = G.pageBottom(cv) - G.BOTTOM, sg = ex / 4;
+    if (set.fx) { Fx.sky(cv, G, wc.icon, cur.day, 26, G.TOP + 2, W - 52, G.BOTTOM + ex - G.TOP - 4); Fx.draw(cv, G, wc.icon, cur.day, cur.wind || 0, 30, G.TOP + 4, W - 60, G.BOTTOM + ex - G.TOP - 8, time); }
     const name = (d.name || (places[v.sel] && places[v.sel].name) || '') + (places.length > 1 ? '  >' : '');
     cv.text(fit(cv, name, 30, BOLD, 700), 64, G.TOP + 58, 30, t.text, BOLD);
     if (places.length > 1) cv.target(40, G.TOP + 18, 760, 54, () => act.select && act.select((v.sel + 1) % places.length), 'wxNext');
@@ -237,11 +240,11 @@ function drawDrive(cv, G, t, v, act) {
     if (tp) tipChip(cv, G, t, tp, 1060, G.TOP + 392, 56, 28, 620);
     const stats = [['Cao / Thấp', Wx.deg(today.hi) + ' / ' + Wx.deg(today.lo), ''], ['Mưa', Wx.pct(today.pop), cur.rain > 0 ? cur.rain + ' mm' : ''], ['Gió km/h', cur.wind === null ? '–' : String(Math.round(cur.wind)), Wx.compass(cur.windDir)], ['AQI', d.air ? String(Math.round(d.air.aqi)) : '–', d.air ? Wx.aqiBand(d.air.aqi).text : '']];
     stats.forEach((s, i) => {
-        const sx = 1130, sy = G.TOP + 96 + i * 92;
-        cv.roundRect(sx, sy, 400, 80, 14, G.withAlpha('#000000', 0.28)); cv.roundRect(sx, sy, 400, 80, 14, G.withAlpha('#ffffff', 0.05));
+        const sx = 1130, sy = G.TOP + 96 + i * (92 + sg), sh = 80 + sg;
+        cv.roundRect(sx, sy, 400, sh, 14, G.withAlpha('#000000', 0.28)); cv.roundRect(sx, sy, 400, sh, 14, G.withAlpha('#ffffff', 0.05));
         cv.text(s[0], sx + 20, sy + 30, 18, t.dim, LAB);
-        cv.text(s[1], sx + 20, sy + 66, 34, t.text, BOLD);
-        if (s[2]) cv.text(s[2], sx + 380, sy + 66, 22, i === 3 ? Wx.aqiBand(d.air && d.air.aqi).color : t.dim, { literal: true, font: 'bold', align: 'right' });
+        cv.text(s[1], sx + 20, sy + 66 + sg * 0.7, 34, t.text, BOLD);
+        if (s[2]) cv.text(s[2], sx + 380, sy + 66 + sg * 0.7, 22, i === 3 ? Wx.aqiBand(d.air && d.air.aqi).color : t.dim, { literal: true, font: 'bold', align: 'right' });
     });
 }
 

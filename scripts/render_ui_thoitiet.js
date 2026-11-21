@@ -65,6 +65,17 @@ Object.keys(states).forEach((k) => {
     console.log(path.join(out, k + '.png'));
 });
 
+// the car's screen with room under the page (cv.extra): the page must reach down into it
+['1-hom-nay', '20-che-do-lai'].forEach((k) => {
+    if (!states[k]) return;
+    const ex = 56, r = new Recorder(UI.W, UI.H + ex, { textScale: 1 });
+    r.own = true; r.extra = ex;
+    UI.draw(r, G, theme, states[k], {});
+    const cv = new Canvas(UI.W, UI.H + ex);
+    play(r.words(), cv);
+    fs.writeFileSync(path.join(out, k + '-xe.png'), cv.png());
+});
+
 // the home-screen widget, small and big (sizes are a guess from the home screen: the small cell is about 3:1)
 {
     const w0 = sample({ code: 80 }); w0.current.rainIn = 20;
