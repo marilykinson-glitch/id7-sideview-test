@@ -14,6 +14,7 @@ const path = require('path');
 const mgu = require('./kit/mgu');
 const G = require('./kit/gauges');
 const { Canvas } = require('./kit/canvas');
+const { Recorder, play } = require('./kit/record');
 const UI = require('./ui');
 const Wx = require('./weather');
 
@@ -135,13 +136,17 @@ mgu.run({
             await ui.image('MAIN_GFX', cv);
         };
         // the home-screen widget: the place "Vị trí hiện tại" if it has a forecast, else the first place that has one; redrawn about once a second
+        const wcache = {};
         if (ctx.widget && ctx.widget.loop) {
             ctx.widget.loop(1, async (inst) => {
                 readStatus(Date.now());
                 const list = status && status.places ? status.places : [];
                 const d = list.filter((p) => p.here && p.current)[0] || list.filter((p) => p.current)[0] || null;
-                const w = inst.big ? 760 : 360, cv = ctx.canvas(w, 240) || new Canvas(w, 240);
-                UI.drawWidget(cv, G, ctx.theme(), { data: d, big: !!inst.big, w, h: 240 });
+                // ctx.canvas gives a Recorder; the widget wants pixels: draw on a Recorder, play it onto a Canvas (kept per size)
+                const w = inst.big ? 1280 : 640, h = inst.big ? 420 : 210, rec = new Recorder(w, h, { textScale: 1 });
+                UI.drawWidget(rec, G, ctx.theme(), { data: d, big: !!inst.big, w, h });
+                const cv = wcache[w] || (wcache[w] = new Canvas(w, h));
+                play(rec.words(), cv);
                 return cv;
             });
         }

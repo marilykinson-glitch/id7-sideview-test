@@ -312,7 +312,7 @@ function drawWidget(cv, G, t, v) {
     cv.text(big, 150 * s, 118 * s, 84 * s, t.text, BOLD);
     cv.text('°' + Wx.getUnit(), 150 * s + cv.textWidth(big, 84 * s, BOLD) + 4, 70 * s, 26 * s, t.dim, BOLD);
     cv.text(fit(cv, d.name || '', 22 * s, BOLD, w - 24 * s), 14 * s, 26 * s, 22 * s, t.text, BOLD);
-    cv.text(fit(cv, wc.text, 24 * s, BOLD, (v.big ? 330 : 190) * s), 150 * s, 152 * s, 24 * s, t.text, BOLD);
+    cv.text(fit(cv, wc.text, 24 * s, BOLD, 190 * s), 150 * s, 152 * s, 24 * s, t.text, BOLD);
     const rainIn = cur.rainIn;
     let msg = '', col = t.dim;
     if (typeof rainIn === 'number') { msg = rainIn === 0 ? 'Đang mưa' : 'Mưa sau ' + rainIn + ' phút'; col = RAIN; }
@@ -320,7 +320,7 @@ function drawWidget(cv, G, t, v) {
     else msg = 'Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo);
     if (typeof rainIn === 'number') { cv.roundRect(12 * s, 176 * s, w - 24 * s, 46 * s, 23 * s, G.withAlpha(RAIN, 0.25)); cv.strokeRoundRect(12 * s, 176 * s, w - 24 * s, 46 * s, 23 * s, 1.5, G.withAlpha(RAIN, 0.8)); }
     cv.text(fit(cv, msg, 24 * s, BOLD, w - 48 * s), w / 2, 208 * s, 24 * s, typeof rainIn === 'number' ? t.text : col, { literal: true, font: 'bold', align: 'center' });
-    if (v.big) {
+    {
         const hrs = (d.hourly || []).filter((_, i) => i % 3 === 0).slice(1, 5), x0 = 350 * s, cw = (w - x0 - 10 * s) / 4;
         hrs.forEach((hr, i) => {
             const cx = x0 + cw * i + cw / 2;

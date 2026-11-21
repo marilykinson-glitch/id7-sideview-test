@@ -64,12 +64,12 @@ Object.keys(states).forEach((k) => {
     console.log(path.join(out, k + '.png'));
 });
 
-// the home-screen widget, small and big (sizes are a guess until seen on the car)
+// the home-screen widget, small and big (sizes are a guess from the home screen: the small cell is about 3:1)
 {
     const w0 = sample({ code: 80 }); w0.current.rainIn = 20;
-    [[360, false, w0], [760, true, w0], [360, false, sample({ code: 2 })]].forEach((a, i) => {
-        const cv = new Recorder(a[0], 240, { textScale: 1 }), c2 = new Canvas(a[0], 240);
-        cv.own = true; UI.drawWidget(cv, G, theme, { data: a[2], big: a[1], w: a[0], h: 240 });
-        cv.own = true; play(cv.words(), c2); fs.writeFileSync(path.join(out, 'widget-' + i + '.png'), c2.png());
+    [[640, 210, w0], [1280, 420, w0], [640, 210, sample({ code: 2 })]].forEach((a, i) => {
+        const rec = new Recorder(a[0], a[1], { textScale: 1 }), c2 = new Canvas(a[0], a[1]);
+        UI.drawWidget(rec, G, theme, { data: a[2], big: a[0] > 700, w: a[0], h: a[1] });
+        play(rec.words(), c2); fs.writeFileSync(path.join(out, 'widget-' + i + '.png'), c2.png());
     });
 }
