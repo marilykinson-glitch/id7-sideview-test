@@ -107,7 +107,7 @@ mgu.run({
             const d = s && s.places ? s.places.filter((p) => p.key === list[sel].key)[0] : null;
             const busy = !!(s && s.busy) || Date.now() - refreshAt < 2500;
             return {
-                mode, drive, state: !s ? 'down' : 'ok', why, places: list, sel, data: d || null, busy, set,
+                mode, drive, state: !s ? 'down' : 'ok', why, netError: s && s.netError, places: list, sel, data: d || null, busy, set,
                 updated: d && d.at ? hhmm(d.at) + (d.ok ? '' : ' (cũ)') : '',
                 pick: { keys, page, pages: pagesOf(), region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
                 phone: { url: s && s.url, pin: s && s.pin, host: s && s.host, count: custom.length },

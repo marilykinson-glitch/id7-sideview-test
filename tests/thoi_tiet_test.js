@@ -66,7 +66,7 @@ srv.listen(0, '127.0.0.1', async () => {
     assert.strictEqual(here.ok, false); assert.ok(here.error);          // the here place used 21.03: the fake server fails it
     assert.strictEqual(here.name, 'Hanoi'); ok('end to end: a good place, a failing one, the place by address');
     // a failure keeps the last good forecast
-    T.S.data.hcm.ok = true; const good = T.S.data.hcm.current;
+    T.S.data.hcm.ok = true; T.S.data.hcm.at = Date.now() - 3600000; const good = T.S.data.hcm.current;
     T.S.places = T.S.places.map((q) => (q.key === 'hcm' ? Object.assign({}, q, { lat: 50, lon: 5 }) : q));
     await T.refreshAll();
     assert.strictEqual(T.S.data.hcm.ok, false); assert.deepStrictEqual(T.S.data.hcm.current, good); ok('a failure keeps the old forecast, marked');
@@ -99,6 +99,13 @@ srv.listen(0, '127.0.0.1', async () => {
     const st2 = T.writeStatus(); assert.strictEqual(st2.custom.length, 1); assert.ok(st2.seq >= 1); assert.strictEqual(st2.pin, '4321');
     assert.strictEqual((await call('GET', '/api/search?q=dus')).json.results.length, 1);
     assert.strictEqual((await call('POST', '/api/remove', { key: add.json.added.key })).json.custom.length, 0); ok('add, remove, keep');
+    const pl = await call('GET', '/api/places'); assert.ok(pl.json.places.some((x) => x.key === 'hcm')); assert.ok(/^\/v1\/forecast/.test(pl.json.forecast) && /^\/v1\/air-quality/.test(pl.json.air));
+    T.S.data.hcm = { key: 'hcm', name: 'old', ok: false, at: 0, error: 'EAI_AGAIN', current: null, hourly: [], daily: [] };
+    const pushed = await call('POST', '/api/push', { key: 'hcm', name: 'HCM', forecast: answer, air: { current: { us_aqi: 55 } } });
+    assert.strictEqual(pushed.json.accepted, 'hcm'); assert.strictEqual(T.S.data.hcm.ok, true); assert.strictEqual(T.S.data.hcm.via, 'phone'); assert.strictEqual(T.S.data.hcm.air.aqi, 55); assert.strictEqual(T.S.data.hcm.current.t, 31.2); assert.strictEqual(T.S.data.hcm.name, 'HCM' === 'x' ? '' : T.S.places.filter((x) => x.key === 'hcm')[0].name);
+    assert.strictEqual((await call('POST', '/api/push', { key: 'nope', forecast: answer })).code, 400); assert.strictEqual((await call('POST', '/api/push', { key: 'hcm', forecast: { current: {} } })).code, 400);
+    T.S.places = T.S.places.map((q) => (q.key === 'hcm' ? Object.assign({}, q, { lat: 50, lon: 5 }) : q)); await T.refreshAll();     // the car's own fetch fails: what the phone sent a moment ago stays
+    assert.strictEqual(T.S.data.hcm.ok, true); assert.strictEqual(T.S.data.hcm.via, 'phone'); ok('forecast sent by the phone');
     for (let i = 0; i < 6; i++) await call('GET', '/api/state', null, '9999'); assert.strictEqual((await call('GET', '/api/state', null, '9999')).code, 429); ok('wrong PINs are slowed down');
     web.close();
     /* the firewall rule: one rule of this tool, kept, replaced when the interface changes, taken away */
