@@ -321,37 +321,38 @@ function drawSettings(cv, G, t, v, act) {
 function drawWidgetBig(cv, G, t, v) {
     // measured on the car: the picture is shown ~1.5x, the left ~85px and right ~100px are cropped and the top
     // ~120px fades out, so content lives in x 90..875 and y >= 120
-    const w = v.w, h = v.h, d = v.data, cur = d.current, ox = 90, R = 875, W2 = R - ox;
+    const w = v.w, h = v.h, d = v.data, cur = d.current, ox = 104, R = 900, W2 = R - ox;
     const wc = Wx.describe(cur.code), today = (d.daily && d.daily[0]) || {};
-    cv.fillRect(0, 0, w, h, '#0b1018');
-    cv.gradientRect(0, 0, w, h, [[0, G.withAlpha(cur.day ? '#1c4c8c' : '#18224a', 1)], [1, '#0b1018']]);
+    // the car draws this picture ~50% see-through over grey and fades its top: flat saturated colours, white text
+    const DIM = '#e2e8f4';
+    cv.fillRect(0, 0, w, h, cur.day ? '#0a2f66' : '#0c1740');
     cv.text(fit(cv, d.name || '', 34, BOLD, 400), ox, 146, 34, t.text, BOLD);
     if (typeof cur.rainIn === 'number') rainChip(cv, G, t, cur, R, 104, 46, 26);
-    else cv.text('Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo), R, 144, 26, t.dim, { literal: true, font: 'label', align: 'right' });
-    cv.roundRect(ox - 4, 164, 150, 150, 75, G.withAlpha('#000000', 0.38));
+    else cv.text('Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo), R, 144, 26, DIM, { literal: true, font: 'label', align: 'right' });
+    cv.roundRect(ox - 4, 164, 150, 150, 75, G.withAlpha('#000000', 0.5));
     Icons.draw(cv, wc.icon, cur.day, ox + 71, 239, 124);
     const big = Wx.deg(cur.t).replace('°', '');
-    cv.text(big, ox + 168, 262, 104, t.text, BOLD);
-    cv.text('°' + Wx.getUnit(), ox + 168 + cv.textWidth(big, 104, BOLD) + 4, 196, 30, t.dim, BOLD);
+    cv.text(big, ox + 168, 264, 112, t.text, BOLD);
+    cv.text('°' + Wx.getUnit(), ox + 168 + cv.textWidth(big, 112, BOLD) + 4, 196, 30, DIM, BOLD);
     cv.text(fit(cv, wc.text, 28, BOLD, 250), ox + 168, 310, 28, t.text, BOLD);
     const hrs = (d.hourly || []).filter((_, i) => i % 3 === 0).slice(1, 5), x0 = 500, cw = (R - x0) / 4;
     hrs.forEach((hr, i) => {
         const cx = x0 + cw * i + cw / 2;
-        cv.roundRect(cx - cw / 2 + 3, 168, cw - 6, 146, 14, G.withAlpha('#000000', 0.3));
-        cv.text(hr.time, cx, 196, 20, t.dim, { literal: true, font: 'label', align: 'center' });
+        cv.roundRect(cx - cw / 2 + 3, 168, cw - 6, 146, 14, G.withAlpha('#000000', 0.42));
+        cv.text(hr.time, cx, 196, 20, DIM, { literal: true, font: 'label', align: 'center' });
         Icons.draw(cv, Wx.describe(hr.code).icon, hr.day, cx, 240, 50);
         cv.text(Wx.deg(hr.t), cx, 296, 28, t.text, { literal: true, font: 'bold', align: 'center' });
     });
-    cv.fillRect(ox, 334, W2, 1, G.withAlpha('#ffffff', 0.14));
+    cv.fillRect(ox, 334, W2, 1, G.withAlpha('#ffffff', 0.3));
     const ids = (v.tiles || []).slice(0, 5), n = ids.length;
     if (!n) return;
     const gap = 8, tw = (W2 - (n - 1) * gap) / n, ty = 348, th = h - ty - 30;
     ids.forEach((id, i) => {
         const info = Wx.tileInfo(id, cur, today, d.daily, d.air), x = ox + i * (tw + gap);
-        cv.roundRect(x, ty, tw, th, 14, G.withAlpha('#ffffff', 0.1));
-        cv.text(fit(cv, info.title, 20, LAB, tw - 20), x + 12, ty + 38, 20, t.dim, LAB);
+        cv.roundRect(x, ty, tw, th, 14, G.withAlpha('#ffffff', 0.2));
+        cv.text(fit(cv, info.title, 20, LAB, tw - 20), x + 12, ty + 38, 20, DIM, LAB);
         cv.text(fit(cv, info.value, 42, BOLD, tw - 20), x + 12, ty + 98, 42, t.text, BOLD);
-        if (info.sub) cv.text(fit(cv, info.sub, 18, LAB, tw - 20), x + 12, ty + th - 16, 18, t.dim, LAB);
+        if (info.sub) cv.text(fit(cv, info.sub, 18, LAB, tw - 20), x + 12, ty + th - 16, 18, DIM, LAB);
         if (info.bar) cv.fillRect(x + 12, ty + 114, tw - 24, 4, info.bar);
     });
 }
