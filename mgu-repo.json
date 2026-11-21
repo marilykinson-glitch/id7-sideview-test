@@ -74,6 +74,43 @@
           "oap-sdk"
         ]
       }
+    },
+    {
+      "id": "thoi_tiet",
+      "kind": "app",
+      "path": "apps/thoi_tiet",
+      "manifest": "app.json",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
+      ],
+      "requires": {
+        "idrive7-renderd": "2.1.7",
+        "mgu-inputgate": "1.0.0",
+        "thoi-tiet": "0.1.0"
+      },
+      "build": {
+        "python": "kit/tools/build.py",
+        "args": [
+          "--language",
+          "vi",
+          "--plain-version",
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz",
+        "shared": [
+          "kit/runtime",
+          "kit/platform",
+          "kit/localization",
+          "kit/tools/build.py",
+          "kit/tools/pack_data.py",
+          "kit/tools/localize.py",
+          "kit/tools/locale-revisions.json",
+          "kit/tools/oapgen",
+          "oap-sdk"
+        ]
+      }
     }
   ],
   "tools": [
@@ -97,6 +134,14 @@
       "id": "anh-dai-dien",
       "path": "tools/anh-dai-dien",
       "title": "Trợ thủ MGU Studio",
+      "mguHmi": [
+        "ID7"
+      ]
+    },
+    {
+      "id": "thoi-tiet",
+      "path": "tools/thoi-tiet",
+      "title": "Trợ thủ Thời tiết",
       "mguHmi": [
         "ID7"
       ]
