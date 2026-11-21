@@ -102,6 +102,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     <div id="startBox" class="hide">
       <div class="sec">Màn hình khởi động</div>
       <p class="hint">Hình lúc màn hình khởi động, lúc chào khi lên xe và lúc tạm biệt. Thay chữ BMW bằng ảnh của bạn.  Lúc chào hình mở ra từ giữa, lúc tạm biệt hình khép lại.</p>
+      <div class="banner" id="draftBar"><b>Có bản nháp màn hình khởi động.</b> Xem thử trên màn hình xe rồi áp dụng, hoặc áp dụng luôn ở đây.<br><button class="btn pri" id="draftApply" style="margin-top:10px">Áp dụng bản nháp</button> <button class="btn" id="draftDrop" style="margin-top:10px">Bỏ bản nháp</button></div>
       <div class="grid one start" id="start"></div>
     </div>
     <div class="sec">Ảnh đại diện</div>
@@ -136,7 +137,8 @@ input[type=range]{flex:1;accent-color:var(--acc)}
   </div>
   <div class="ctl">
     <div class="zoom hide" id="zoomRow"><span>Nhỏ</span><input type="range" id="zoom" min="0" max="100" value="0"><span>Lớn</span></div>
-    <div class="hide" id="spotRow"><button class="btn" id="spotBtn">Toả sáng một điểm khi hình hiện (tuỳ chọn)</button>
+    <div class="hide" id="spotRow"><label class="small" style="display:flex;gap:10px;align-items:center;margin:0 0 10px"><input type="checkbox" id="draftChk" checked style="width:22px;height:22px"> <span>Xem thử trên màn hình xe trước, rồi mới áp dụng</span></label>
+      <button class="btn" id="spotBtn">Toả sáng một điểm khi hình hiện (tuỳ chọn)</button>
       <div class="hide" id="spotCtl"><p class="small">Chạm vào chỗ cần toả sáng, ví dụ logo, rồi chỉnh khung vừa với nó. Sau khi hình mở xong, chỗ đó sáng lên và toả ánh sáng ra xung quanh.</p>
       <div class="zoom"><span>Hẹp</span><input type="range" id="spotW" min="4" max="60" value="18"><span>Rộng</span></div>
       <div class="zoom"><span>Thấp</span><input type="range" id="spotH" min="4" max="60" value="16"><span>Cao</span></div></div></div>
@@ -220,6 +222,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
       st.appendChild(b);
     });
     $('startBox').className = (j.start || []).length ? '' : 'hide';
+    $('draftBar').className = 'banner' + (j.draft ? ' show' : '');
     $('resetAll').disabled = !j.backup || !j.anyChanged;
   }
   function refresh() { return api('/api/state').then(function (j) { if (j.ok) show(j); }); }
@@ -328,6 +331,7 @@ input[type=range]{flex:1;accent-color:var(--acc)}
   crop.addEventListener('wheel', function (e) { if (!img) return; e.preventDefault(); var p = pos(e); setZoom(k * (e.deltaY < 0 ? 1.08 : 0.92), p.x, p.y); }, { passive: false });
 
   /* ---- send ---- */
+  function startQs() { return '?draft=' + (cur && cur.start && $('draftChk').checked ? '1' : '0'); }
   $('use').onclick = function () {
     if (!img) return;
     var out = document.createElement('canvas'); out.width = SW; out.height = SH;
@@ -336,11 +340,18 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     x.drawImage(img, ox, oy, img.width * k, img.height * k);
     var data = x.getImageData(0, 0, SW, SH).data;
     busy(true, 'Đang gửi ảnh lên xe…');
-    api('/api/picture/' + cur.n + (cur.alpha ? '?where=' + where : spot ? '?shine=' + [spot.cx - spot.w / 2, spot.cy - spot.h / 2, spot.w, spot.h].map(function (v) { return Math.max(0, Math.min(1, v)).toFixed(4); }).join(',') : ''), { method: 'POST', body: data.buffer, headers: { 'Content-Type': 'application/octet-stream' } }).then(function (j) {
+    api('/api/picture/' + cur.n + (cur.alpha ? '?where=' + where : startQs() + (spot ? '&shine=' + [spot.cx - spot.w / 2, spot.cy - spot.h / 2, spot.w, spot.h].map(function (v) { return Math.max(0, Math.min(1, v)).toFixed(4); }).join(',') : '')), { method: 'POST', body: data.buffer, headers: { 'Content-Type': 'application/octet-stream' } }).then(function (j) {
       busy(false);
-      if (j.ok) { closeSheet(); toast('Đã đổi ' + name(cur) + '. Bấm Khởi động lại để thấy.', 'go'); refresh(); }
+      if (j.ok) { var d = cur.start && $('draftChk').checked; closeSheet(); toast(d ? 'Đã gửi bản nháp lên xe. Xem thử trên màn hình xe (ô Màn hình khởi động, chạm Xem thử), rồi bấm Áp dụng.' : 'Đã đổi ' + name(cur) + '. Bấm Khởi động lại để thấy.', 'go'); refresh(); }
       else toast(j.error || 'Không đổi được', 'crit');
     }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
+  };
+  $('draftApply').onclick = function () {
+    busy(true, 'Đang áp dụng…');
+    api('/api/draft/apply', { method: 'POST' }).then(function (j) { busy(false); toast(j.ok ? 'Đã áp dụng. Bấm Khởi động lại để thấy.' : (j.error || 'Không áp dụng được'), j.ok ? 'go' : 'crit'); refresh(); }).catch(function () { busy(false); toast('Mất kết nối với xe.', 'crit'); });
+  };
+  $('draftDrop').onclick = function () {
+    api('/api/draft/discard', { method: 'POST' }).then(function (j) { toast(j.ok ? 'Đã bỏ bản nháp.' : (j.error || 'Không bỏ được'), j.ok ? 'go' : 'crit'); refresh(); }).catch(function () { toast('Mất kết nối với xe.', 'crit'); });
   };
   $('resetOne').onclick = function () {
     busy(true, 'Đang khôi phục…');

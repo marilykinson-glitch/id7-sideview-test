@@ -26,7 +26,7 @@ if (process.argv[3]) { thumbs[41] = small(process.argv[3], 48, 24); thumbs[51] =
 Object.keys(thumbs).forEach((k) => { if (!thumbs[k]) delete thumbs[k]; });
 const slots = (changed) => Array.from({ length: 15 }, (_, i) => ({ n: i + 1, changed: changed.indexOf(i + 1) >= 0 }));
 const more = (changed) => [[41, 'Hình xe'], [51, 'Khởi động'], [21, 'Nhạc Bluetooth'], [22, 'Nhạc USB'], [23, 'Nhạc'], [24, 'Radio FM'], [25, 'Radio AM'], [26, 'Radio'], [27, 'Người gọi']].map((d) => ({ n: d[0], label: d[1], changed: changed.indexOf(d[0]) >= 0 }));
-const base = { state: 'ok', more: more([]), url: 'http://192.168.43.15:8137/?pin=4821', host: '192.168.43.15:8137', pin: '4821', slots: slots([]), thumbs, version: 'Bản 0.9.0', message: 'Sẵn sàng.', messageKind: 'dim', anyChanged: false };
+const base = { state: 'ok', more: more([]), url: 'http://192.168.43.15:8137/?pin=4821', host: '192.168.43.15:8137', pin: '4821', slots: slots([]), thumbs, version: 'Bản 0.10.0', message: 'Sẵn sàng.', messageKind: 'dim', anyChanged: false };
 const states = {
     '1-san-sang': base,
     '2-da-doi': Object.assign({}, base, { slots: slots([2, 7]), more: more([41, 51, 21]), anyChanged: true, needsRestart: true, message: 'Đã đổi hình số 7. Khởi động lại màn hình xe để thấy.', messageKind: 'go' }),
@@ -37,10 +37,21 @@ const states = {
     '5-tro-thu-chua-chay': { state: 'down', slots: [], version: 'Bản 0.7.2' },
     '6-goi-la': { state: 'bad', error: 'Gói ảnh có cấu trúc lạ (pictures are not back to back)', slots: [], version: 'Bản 0.7.2' },
 };
+// the preview of the start-up screen (the picture of argv[4] at 120 x 45 cells, a light on the logo at the middle)
+const { Player } = require(path.join(__dirname, '..', 'apps', 'anh_dai_dien', 'preview.js'));
+const pvCells = process.argv[4] ? small(process.argv[4], 120, 45) : null;
+if (pvCells) {
+    const player = new Player(pvCells, 120, 45, { x: 0.42, y: 0.41, w: 0.165, h: 0.17 });
+    const withPv = (kind, f, extra) => Object.assign({}, base, { mode: 'preview', pvReady: true, pv: { buf: player.frame(kind, f), w: 120, h: 45 } }, extra);
+    states['9-xem-thu-dang-mo'] = withPv('in', 20, { draft: true, playing: 'both' });
+    states['10-xem-thu-toa-sang'] = withPv('in', 42, { draft: true, playing: 'both' });
+    states['11-xem-thu-dang-tat'] = withPv('out', 26, { draft: false, playing: 'out' });
+    states['12-the-co-ban-nhap'] = Object.assign({}, base, { slots: slots([]), slots: slots([]), more: more([41]), pvReady: true, draft: true, message: 'Đã gửi bản nháp. Xem thử trên màn hình xe, rồi bấm Áp dụng.', messageKind: 'go' });
+}
 Object.keys(states).forEach((k) => {
     const r = new Recorder(UI.W, UI.H, { textScale: 1 });
     r.own = true;                                   // the kit runs the screen: the page's own buttons are drawn
-    UI.draw(r, G, theme, states[k], {});
+    UI.draw(r, G, theme, states[k], { openPreview: () => {}, play: () => {}, apply: () => {}, discard: () => {}, back: () => {} });
     const cv = new Canvas(UI.W, UI.H);
     play(r.words(), cv);
     fs.writeFileSync(path.join(out, k + '.png'), cv.png());

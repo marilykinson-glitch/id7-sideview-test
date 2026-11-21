@@ -14,10 +14,11 @@
  *                                  (Bluetooth, USB, music, radio), the caller without a photo
  *
  *   the phone   -> http://<head unit>:8137/?pin=NNNN   a page (page.html) to pick a photo, crop it, send it
- *   the app     -> <its folder>/data/command.json       { id, cmd: 'restore_all' | 'new_pin' | 'next_ip' }
+ *   the app     -> <its folder>/data/command.json       { id, cmd: 'restore_all' | 'reboot' | 'apply_draft' | 'discard_draft' }
  *   this        -> /run/anh-dai-dien/status.json        what the app shows: address, PIN, pictures, messages
  *                  /run/anh-dai-dien/t01.rgba..t15.rgba the fifteen profile pictures at 96x96 for the app (top-down RGBA)
  *                  /run/anh-dai-dien/t41.rgba, t51.rgba the car and the start-up screen, 48 pixels wide, for the app
+ *                  /run/anh-dai-dien/p51.rgba the start-up picture (or its draft) at 120 x 45, which the app plays as a preview
  *
  * The bundles sit on a read-only partition: a write remounts it read-write for a moment, writes a new file next
  * to the old one, flips it in with one rename and mounts it read-only again. Each bundle's original is copied to
@@ -48,7 +49,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.9.0';
+const VERSION = '0.10.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -189,6 +190,13 @@ function thumb(n, topDown, w, h) {
     // the car and the start-up screen for the app's cards: MINI pixels wide, as many rows as the shape gives
     if (n === CAR || n === START) { try { writeAtomic(path.join(CFG.run, 't' + n + '.rgba'), W.resize(topDown, w, h, MINI, Math.max(1, Math.round(MINI * h / w)))); } catch (e) { /* no RAM folder (tests) */ } }
 }
+
+/** What the app's preview plays: the start-up picture at 120 x 45 (p51.rgba) and whether it is a draft, with the light's box. */
+function previewOf(topDown, w, h, shine, draft) {
+    S.preview = { w: PREVIEW_W, h: PREVIEW_H, draft: !!draft, shine: shine || null };
+    try { writeAtomic(path.join(CFG.run, 'p' + START + '.rgba'), W.resize(topDown, w, h, PREVIEW_W, PREVIEW_H)); } catch (e) { /* no RAM folder (tests) */ }
+}
+function readShine() { try { const j = JSON.parse(fs.readFileSync(shineFile(), 'utf8')); return j && isFinite(j.x) ? j : null; } catch (e) { return null; } }
 
 /* The car's picture is stored with its colours multiplied by its transparency, and painted by the head unit:
    shown = sqrt(picture^2 * (1 - mask.a) + paint(mask) * mask.a). With an empty mask the picture is shown as it is. */
@@ -522,6 +530,8 @@ async function restoreCar() {
 
 /* ---------------- the start-up screen ---------------- */
 const startMark = () => path.join(CFG.state, 'start-changed');
+const shineFile = () => path.join(CFG.state, 'start-shine.json'), draftPic = () => path.join(CFG.state, 'start-draft.rgba'), draftInfo = () => path.join(CFG.state, 'start-draft.json');
+const PREVIEW_W = 120, PREVIEW_H = 45;              // one cell per macroblock of a 1920 x 720 picture: the app plays the opening as the video does
 const startBackup = (f) => path.join(CFG.state, 'backup', 'start', f.sub, f.name);
 
 /** The start-up pictures and videos of this head unit's generation (all generations if it cannot be told). */
@@ -544,6 +554,7 @@ function loadStart() {
     }));
     if (!files.some((f) => f.kind === 'png')) return;
     S.startChanged = fs.existsSync(startMark());
+    try { const d = JSON.parse(fs.readFileSync(draftInfo(), 'utf8')); S.draft = fs.existsSync(draftPic()) ? { shine: d.shine || null } : null; } catch (e) { S.draft = null; }
     S.slots[START] = { n: START, label: 'Màn hình khởi động', where: 'lúc màn hình khởi động, lúc chào khi lên xe và lúc tạm biệt', w: START_W, h: START_H, files, targets: [] };
     startThumb();
 }
@@ -551,7 +562,13 @@ function startThumb() {
     const slot = S.slots[START];
     // the picture of this screen's shape (the others are other displays'), else the widest
     const best = slot.files.filter((f) => f.kind === 'png').sort((x, y) => ((y.w === START_W && y.h === START_H) - (x.w === START_W && x.h === START_H)) || (y.w - x.w))[0];
-    try { const p = BOOT.pngDecode(fs.readFileSync(best.file)); thumb(START, p.rgba, p.w, p.h); } catch (e) { thumb(START, Buffer.alloc(64 * 24 * 4, 0), 64, 24); }
+    try {
+        const p = BOOT.pngDecode(fs.readFileSync(best.file)); thumb(START, p.rgba, p.w, p.h);
+        if (S.draft) {                                                  // a draft waits: the preview plays that
+            try { previewOf(fs.readFileSync(draftPic()), START_W, START_H, S.draft.shine, true); return; } catch (e) { S.draft = null; }
+        }
+        previewOf(p.rgba, p.w, p.h, S.startChanged ? readShine() : null, false);
+    } catch (e) { thumb(START, Buffer.alloc(64 * 24 * 4, 0), 64, 24); S.preview = null; }
 }
 
 /** "x,y,w,h" as fractions of the picture -> the same as numbers, or null. */
@@ -589,7 +606,9 @@ async function setStart(slot, rgba, shine) {
         jobs.forEach((j) => { putFile(j.f.file, j.m.buf, j.m.first); if (!j.m.first) j.m.first = j.f.file; });
     });
     S.startChanged = true; S.needsRestart = true;
+    try { if (shine) writeAtomic(shineFile(), JSON.stringify(shine)); else fs.unlinkSync(shineFile()); } catch (e) { /* none to remove */ }
     thumb(START, rgba, slot.w, slot.h);
+    previewOf(rgba, slot.w, slot.h, shine || null, false);
     return jobs.length;
 }
 
@@ -599,8 +618,40 @@ async function restoreStart() {
     const jobs = slot.files.map((f) => ({ f, buf: fs.readFileSync(startBackup(f)) }));
     await writable(async () => jobs.forEach((j) => putFile(j.f.file, j.buf)));
     try { fs.unlinkSync(startMark()); } catch (e) { /* gone */ }
+    try { fs.unlinkSync(shineFile()); } catch (e) { /* gone */ }
     S.startChanged = false; S.needsRestart = true;
     startThumb();
+}
+
+/** A start-up picture kept as a draft: nothing on the car changes, the app plays it as a preview until it is applied or dropped. */
+function saveDraft(slot, rgba, shine) {
+    mkdirp(CFG.state);
+    writeAtomic(draftPic(), rgba); writeAtomic(draftInfo(), JSON.stringify({ shine: shine || null, at: Date.now() }));
+    S.draft = { shine: shine || null };
+    previewOf(rgba, slot.w, slot.h, shine || null, true);
+}
+function dropDraft() {
+    try { fs.unlinkSync(draftPic()); } catch (e) { /* none */ }
+    try { fs.unlinkSync(draftInfo()); } catch (e) { /* none */ }
+    S.draft = null;
+}
+async function applyDraft() {
+    return exclusive(async () => {
+        if (!S.draft) throw bad('không có bản nháp');
+        const slot = S.slots[START];
+        if (!slot) throw bad('không có màn hình khởi động');
+        let rgba; try { rgba = fs.readFileSync(draftPic()); } catch (e) { dropDraft(); throw bad('không đọc được bản nháp'); }
+        S.busy = true; writeStatus();
+        try {
+            const shine = S.draft.shine, count = await setStart(slot, rgba, shine);
+            dropDraft(); S.rev++;
+            log('start-up draft applied (' + count + ' files)');
+            say('go', 'Đã áp dụng màn hình khởi động. Khởi động lại màn hình xe để thấy.');
+        } finally { S.busy = false; writeStatus(); }
+    });
+}
+async function discardDraft() {
+    return exclusive(async () => { dropDraft(); startThumb(); S.rev++; say('dim', 'Đã bỏ bản nháp màn hình khởi động.'); });
 }
 
 /** The slot's targets, bundle by bundle: [{ b, targets }]. */
@@ -621,6 +672,13 @@ async function setPicture(n, topDownRgba, opt) {
             let rgba = Buffer.from(topDownRgba);
             if (slot.files) {
                 for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;
+                if (opt && opt.draft) {
+                    saveDraft(slot, rgba, opt.shine); S.rev++;
+                    log('start-up draft kept');
+                    say('go', 'Đã gửi bản nháp. Xem thử trên màn hình xe, rồi bấm Áp dụng.');
+                    return;
+                }
+                if (S.draft) dropDraft();
                 const count = await setStart(slot, rgba, opt && opt.shine);
                 S.rev++;
                 log('start-up screen replaced (' + count + ' files)');
@@ -778,7 +836,7 @@ function writeStatus() {
         compatible: S.compatible, error: S.error, busy: S.busy,
         port: S.port, pin: S.pin, ips, ipIndex: ips.length ? S.ipIndex % ips.length : 0,
         url: ips.length && S.port ? 'http://' + ips[S.ipIndex % ips.length] + ':' + S.port + '/?pin=' + S.pin : '',
-        message: S.message, messageKind: S.messageKind, needsRestart: S.needsRestart, carWhere: carWhere(),
+        message: S.message, messageKind: S.messageKind, needsRestart: S.needsRestart, carWhere: carWhere(), preview: S.preview || null,
         backup: S.compatible ? S.backupNote : '', smallIcons: S.smallIcons, anyChanged: S.compatible && anyChanged(),
         slots: S.compatible ? slotList(1, SLOTS).map((s) => ({ n: s.n, changed: s.changed })) : [],
         more: S.compatible ? slotList(CAR, CAR).concat(slotList(START, START), slotList(MORE0, CAR - 1)).map((s) => ({ n: s.n, changed: s.changed, label: s.n === CAR ? 'Hình xe' : s.n === START ? 'Khởi động' : s.label })) : [],
@@ -844,7 +902,7 @@ async function handle(req, res) {
         const st = writeStatus();
         return json(res, 200, { ok: true, version: VERSION, compatible: st.compatible, error: st.error, busy: st.busy, message: st.message,
             messageKind: st.messageKind, needsRestart: st.needsRestart, carWhere: st.carWhere, rev: S.rev, size: W.SIZE, backup: st.compatible, smallIcons: st.smallIcons,
-            anyChanged: st.anyChanged, slots: slotList(1, SLOTS), more: slotList(MORE0, CAR - 1), car: slotList(CAR, CAR), start: slotList(START, START) });
+            anyChanged: st.anyChanged, draft: !!S.draft, slots: slotList(1, SLOTS), more: slotList(MORE0, CAR - 1), car: slotList(CAR, CAR), start: slotList(START, START) });
     }
     let m = /^\/api\/thumb\/(\d+)$/.exec(p);
     if (req.method === 'GET' && m) {
@@ -858,7 +916,7 @@ async function handle(req, res) {
         const slot = S.slots[Number(m[1])];
         let b;
         try { b = await body(req, (slot ? slot.w * slot.h * 4 : W.RAW) + 1); } catch (e) { return json(res, 413, { ok: false, error: 'Ảnh quá lớn.' }); }
-        try { await setPicture(Number(m[1]), b, { where: q.where, shine: parseShine(q.shine) }); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
+        try { await setPicture(Number(m[1]), b, { where: q.where, shine: parseShine(q.shine), draft: q.draft === '1' }); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
     }
     m = /^\/api\/restore\/(all|\d+)$/.exec(p);
     if (req.method === 'POST' && m) {
@@ -869,6 +927,8 @@ async function handle(req, res) {
         res.writeHead(200, { 'Content-Type': 'application/x-tar', 'Content-Disposition': 'attachment; filename="mgu-studio-chan-doan.tar"', 'Cache-Control': 'no-store' });
         return tar(res, list);
     }
+    if (req.method === 'POST' && p === '/api/draft/apply') { try { await applyDraft(); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'draft'); } }
+    if (req.method === 'POST' && p === '/api/draft/discard') { try { await discardDraft(); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'draft'); } }
     if (req.method === 'POST' && p === '/api/reboot') { reboot(); return json(res, 200, { ok: true, message: S.message }); }
     json(res, 404, { ok: false, error: 'không có' });
 }
@@ -1012,6 +1072,8 @@ function pollCommands() {
     if (c.cmd === 'restore_all') restore('all').catch((e) => { log('restore failed: ' + e.message); say('crit', 'Lỗi: ' + e.message); });
     else if (c.cmd === 'new_pin') { S.pin = newPin(); say('dim', 'Đã đổi mã PIN.'); }
     else if (c.cmd === 'reboot') reboot();
+    else if (c.cmd === 'apply_draft') applyDraft().catch((e) => { log('draft failed: ' + e.message); say('crit', 'Lỗi: ' + e.message); });
+    else if (c.cmd === 'discard_draft') discardDraft().catch((e) => { log('draft failed: ' + e.message); say('crit', 'Lỗi: ' + e.message); });
     else if (c.cmd === 'next_ip') { S.ipIndex++; fwLast = ''; fwCheck(); say('dim', 'Đã đổi sang địa chỉ khác của xe. Quét lại mã QR.'); }
 }
 

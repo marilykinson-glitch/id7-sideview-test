@@ -16,6 +16,7 @@ const mgu = require('./kit/mgu');
 const G = require('./kit/gauges');
 const { Canvas } = require('./kit/canvas');
 const UI = require('./ui');
+const { Player, FPS, FRAMES } = require('./preview');
 
 const RUN = process.env.ANH_RUN || '/run/anh-dai-dien';
 const STALE_MS = 6000;           // the tool writes every 1.5 s
@@ -24,6 +25,7 @@ mgu.run({
     async start(ctx) {
         const { ui, log } = ctx;
         let status = null, readAt = 0, thumbs = {}, thumbRev = -1, cmdId = Date.now(), lastKey = '', shown = false;
+        let pv = null, mode = 'main', playing = '', playAt = 0;       // the preview: its player, the screen shown, what plays and since when
         const version = (ctx.spec && ctx.spec.version) ? 'Bản ' + ctx.spec.version : '';
 
         function readStatus(now) {
@@ -50,6 +52,9 @@ mgu.run({
                     t[x.n] = o;
                 });
                 thumbs = t; thumbRev = status.rev;
+                // the preview picture (120 x 45 cells) and the light's box
+                const pvs = status.preview, pb = pvs && file('p51.rgba');
+                pv = pvs && pb && pb.length === pvs.w * pvs.h * 4 ? new Player(pb, pvs.w, pvs.h, pvs.shine) : null;
             }
         }
 
@@ -74,7 +79,23 @@ mgu.run({
             setTimeout(() => { if (armed === key && Date.now() - armedAt >= ARM_MS) { armed = ''; note = ''; repaint(); } }, ARM_MS + 50);
             return repaint();
         }
+        // the preview plays at the video's pace: FPS pictures a second, FRAMES of them (the opening 'in', the closing 'out'),
+        // 'both' = the opening, a second of the whole picture, the closing
+        const HOLD = FPS;
+        function where(now) {
+            const e = Math.max(0, Math.floor((now - playAt) * FPS / 1000));
+            if (playing === 'in') return { kind: 'in', f: Math.min(e, FRAMES - 1), over: e >= FRAMES };
+            if (playing === 'out') return { kind: 'out', f: Math.min(e, FRAMES - 1), over: e >= FRAMES };
+            if (playing === 'both') return e < FRAMES ? { kind: 'in', f: e } : e < FRAMES + HOLD ? { kind: 'in', f: FRAMES - 1 } : { kind: 'out', f: Math.min(e - FRAMES - HOLD, FRAMES - 1), over: e >= 2 * FRAMES + HOLD };
+            return { kind: 'in', f: FRAMES - 1 };
+        }
+        function play(kind) { playing = kind; playAt = Date.now(); note = ''; repaint(); }
         const acts = {
+            openPreview: () => { if (!pv) return; mode = 'preview'; play('both'); },
+            back: () => { mode = 'main'; playing = ''; repaint(); },
+            play,
+            apply: () => { send('apply_draft'); mode = 'main'; playing = ''; tell('Đã nhận lệnh: đang áp dụng màn hình khởi động…', 'go'); repaint(); },
+            discard: () => { send('discard_draft'); mode = 'main'; playing = ''; tell('Đã nhận lệnh: bỏ bản nháp…', 'go'); repaint(); },
             reboot: () => press('reboot', 'reboot', 'Bấm Khởi động lại lần nữa để xác nhận.', 'Đã nhận lệnh: màn hình xe đang khởi động lại…'),
             restoreAll: () => press('restore', 'restore_all', 'Bấm Khôi phục tất cả lần nữa để xác nhận.', 'Đã nhận lệnh: đang khôi phục hình gốc…'),
         };
@@ -90,20 +111,27 @@ mgu.run({
                 slots: s && s.compatible ? s.slots : [], more: s && s.compatible ? (s.more || []) : [], thumbs, message: s && s.message, messageKind: s && s.messageKind,
                 needsRestart: !!(s && s.needsRestart), carWhere: s && s.carWhere, armed, note, noteKind, busy: !!(s && s.busy), backup: s && s.backup,
                 anyChanged: !!(s && (s.anyChanged || (s.slots || []).some((x) => x.changed))), version,
+                mode, pvReady: !!pv, draft: !!(s && s.preview && s.preview.draft), playing,
             };
         }
 
         const render = async () => {
             const m = model();
             const vis = ui.isVisible('MAIN');
-            const key = JSON.stringify([m.state, m.error, m.url, m.pin, m.slots, m.more, thumbRev, m.message, m.messageKind, m.needsRestart, m.busy, m.anyChanged, m.carWhere, m.armed, m.note, vis]);
+            let at = null;
+            if (mode === 'preview' && pv) {
+                at = where(Date.now());
+                if (at.over && playing) { playing = ''; m.playing = ''; }
+                m.pv = { buf: pv.frame(at.kind, at.f), w: pv.w, h: pv.h };
+            } else if (mode === 'preview') mode = m.mode = 'main';
+            const key = JSON.stringify([m.state, m.error, m.url, m.pin, m.slots, m.more, thumbRev, m.message, m.messageKind, m.needsRestart, m.busy, m.anyChanged, m.carWhere, m.armed, m.note, vis, m.mode, m.draft, m.pvReady, m.playing, at && at.kind, at && at.f]);
             if (key === lastKey && shown) return;
             lastKey = key; shown = true;
             const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);
             UI.draw(cv, G, ctx.theme(), m, acts);
             await ui.image('MAIN_GFX', cv);
         };
-        const loop = ctx.loop('MAIN', 2, render);
+        const loop = ctx.loop('MAIN', 12, render);
         function repaint() { lastKey = ''; return loop && loop.kick ? loop.kick() : render(); }
         ['BTN_REBOOT', 'BTN_RESTORE'].forEach((b) => { if (ctx.hideButton) ctx.hideButton(b); });
         ui.onClick('BTN_RESTORE', acts.restoreAll);

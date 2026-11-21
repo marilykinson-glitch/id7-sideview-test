@@ -58,7 +58,8 @@ function mosaic(cv, G, rgba, w, h, x, y, cell) {
  * One thing that can be changed: its name, a small picture of what is in use now (pics: [{ rgba, w, h }]), whose it
  * is, and where it shows.
  */
-function card(cv, G, t, x, y, w, h, title, sub, mine, state, pics) {
+function card(cv, G, t, x, y, w, h, title, sub, mine, state, pics, extra) {
+    extra = extra || {};
     const go = t.go || '#2fd27a';
     cv.roundRect(x, y, w, h, 14, G.withAlpha('#ffffff', mine ? 0.07 : 0.04));
     cv.strokeRoundRect(x, y, w, h, 14, mine ? 2 : 1.2, mine ? G.withAlpha(go, 0.9) : G.withAlpha('#ffffff', 0.2));
@@ -74,11 +75,67 @@ function card(cv, G, t, x, y, w, h, title, sub, mine, state, pics) {
     const tx = Math.max(px + 6, x + 22);
     cv.circle(tx + 7, py + 30, 6, mine ? go : G.withAlpha('#ffffff', 0.35));
     cv.text(fit(cv, state, 18, { literal: true, font: 'label' }, x + w - 16 - (tx + 22)), tx + 22, py + 37, 18, mine ? go : t.dim, { literal: true, font: 'label' });
-    cv.text(fit(cv, sub, 15, { literal: true, font: 'label' }, w - 44), x + 22, y + h - 16, 15, t.dim, { literal: true, font: 'label' });
+    const hint = extra.run ? 'Xem thử' : '', hw = hint ? cv.textWidth(hint, 16, { literal: true, font: 'bold' }) + 8 : 0;
+    cv.text(fit(cv, sub, 15, { literal: true, font: 'label' }, w - 44 - hw), x + 22, y + h - 16, 15, t.dim, { literal: true, font: 'label' });
+    if (extra.run) {
+        cv.text(hint, x + w - 22, y + h - 16, 16, extra.color || t.accent2 || '#81c4ff', { literal: true, align: 'right', font: 'bold' });
+        cv.target(x, y, w, h, extra.run, 'adStartCard');
+    }
+}
+
+/** Cells (RGB, w x h) as rectangles: colours in 16 steps a channel, equal neighbours in a row one rectangle. */
+function cells(cv, buf, w, h, x, y, cell) {
+    cv.fillRect(x, y, w * cell, h * cell, '#000000');
+    const hex = (v) => (v < 16 ? '0' : '') + v.toString(16);
+    for (let r = 0; r < h; r++) {
+        let from = 0, last = -1;
+        for (let c = 0; c <= w; c++) {
+            let q = -1;
+            if (c < w) { const i = (r * w + c) * 3; q = ((buf[i] >> 4) << 8) | ((buf[i + 1] >> 4) << 4) | (buf[i + 2] >> 4); }
+            if (q === last) continue;
+            if (last > 0) cv.fillRect(x + from * cell, y + r * cell, (c - from) * cell, cell, '#' + hex(((last >> 8) & 15) * 17) + hex(((last >> 4) & 15) * 17) + hex((last & 15) * 17));
+            from = c; last = q;
+        }
+    }
+}
+
+/**
+ * The preview of the start-up screen: the picture in a frame, played as the car will play it (opening when getting
+ * in, closing when leaving), and the buttons: play the opening, the closing, both; apply or drop a draft; back.
+ * v.pv = { buf: RGB cells, w, h }, v.playing ('in' | 'out' | 'both' | ''), v.draft; act = { play(kind), apply, discard, back }
+ */
+function drawPreview(cv, G, t, v, act) {
+    cv.clear(t.bg);
+    G.frame(cv, t, ['MGU Studio'], 0, []);
+    G.panel(cv, t, 24, G.TOP, W - 48, G.BOTTOM - G.TOP, null);
+    const acc = t.accent2 || '#81c4ff', go = t.go || '#2fd27a', warn = t.warn || '#ffb020';
+    cv.text('XEM THỬ MÀN HÌNH KHỞI ĐỘNG', 64, G.TOP + 52, 28, t.text, { literal: true, font: 'bold', spacing: 2 });
+    cv.text(v.draft ? 'Bản nháp: chưa áp dụng cho xe' : 'Đang dùng trên xe', W - 64, G.TOP + 50, 19, v.draft ? warn : go, { literal: true, align: 'right', font: 'label' });
+    const px = 64, py = G.TOP + 70, pcell = 8, pv = v.pv;
+    if (pv) {
+        cells(cv, pv.buf, pv.w, pv.h, px, py, pcell);
+        cv.strokeRoundRect(px - 2, py - 2, pv.w * pcell + 4, pv.h * pcell + 4, 3, 1.5, G.withAlpha('#ffffff', 0.3));
+    }
+    const msg = v.note || (v.playing === 'in' ? 'Đang chạy: lúc lên xe, hình mở ra.' : v.playing === 'out' ? 'Đang chạy: lúc tắt xe, hình khép lại.' : v.playing === 'both' ? 'Đang chạy: lên xe, giữ hình, rồi tắt xe.' : 'Chạm một nút bên phải để xem lại. Trên xe có thể nhanh hoặc chậm hơn một chút.');
+    cv.text(fit(cv, msg, 16, { literal: true, font: 'label' }, 960), px, py + 360 + 30, 16, v.note ? kindColor(t, v.noteKind) : t.dim, { literal: true, font: 'label' });
+    const bx = 64 + 960 + 40, bw = W - 64 - bx, bh = 54, g = 10;
+    let by = py;
+    const btn = (label, run, o) => { G.button(cv, t, bx, by, bw, bh, label, run || nop, o || {}); by += bh + g; };
+    btn('Xem lúc lên xe', () => act.play && act.play('in'), { key: 'adPvIn', primary: v.playing === 'in' });
+    btn('Xem lúc tắt xe', () => act.play && act.play('out'), { key: 'adPvOut', primary: v.playing === 'out' });
+    btn('Xem cả hai', () => act.play && act.play('both'), { key: 'adPvBoth', primary: v.playing === 'both' });
+    by += 8;
+    if (v.draft) {
+        btn('Áp dụng cho xe', act.apply, { key: 'adPvApply', color: go, primary: true });
+        btn('Bỏ bản nháp', act.discard, { key: 'adPvDrop', color: t.crit || '#ef2b2d' });
+    }
+    btn('Quay lại', act.back, { key: 'adPvBack' });
+    return cv;
 }
 
 function draw(cv, G, t, v, act) {
     act = act || {};
+    if (v.mode === 'preview') return drawPreview(cv, G, t, v, act);
     cv.clear(t.bg);
     G.frame(cv, t, ['MGU Studio'], 0, []);
     G.panel(cv, t, 24, G.TOP, W - 48, G.BOTTOM - G.TOP, null);
@@ -125,7 +182,8 @@ function draw(cv, G, t, v, act) {
         const faces = slots.filter((x) => x.changed && th[x.n]).concat(slots.filter((x) => !x.changed && th[x.n])).slice(0, 3).map((x) => ({ rgba: th[x.n], w: 24, h: 24, cell: 2 }));
         const carSub = !(car && car.changed) ? 'Menu Xe của tôi, ô xe ở màn hình chính' : v.carWhere === 'tile' ? 'Chỉ ô xe ở màn hình chính' : v.carWhere === 'menu' ? 'Chỉ trong menu Xe của tôi' : 'Menu Xe của tôi và ô xe màn hình chính';
         card(cv, G, t, rx, cy, cw, ch, 'Hình chiếc xe', carSub, !!(car && car.changed), whose(car), one(CAR));
-        card(cv, G, t, rx + cw + gap, cy, cw, ch, 'Màn hình khởi động', 'Lúc chào và lúc tạm biệt', !!(start && start.changed), whose(start), one(START));
+        card(cv, G, t, rx + cw + gap, cy, cw, ch, 'Màn hình khởi động', v.draft ? 'Có bản nháp chờ xem' : 'Lúc chào và lúc tạm biệt', !!(start && start.changed), v.draft ? 'Bản nháp' : whose(start), one(START),
+            v.pvReady && act.openPreview ? { run: act.openPreview, color: v.draft ? (t.warn || '#ffb020') : undefined } : null);
         card(cv, G, t, rx + 2 * (cw + gap), cy, cw, ch, 'Ảnh đại diện', slots.length + ' hình của hồ sơ người lái', mine > 0, mine ? 'Đã đổi ' + mine + '/' + slots.length : 'Hình gốc', faces);
         if (rest.length) {
             const oy = cy + ch + 12, go = t.go || '#2fd27a';
@@ -153,4 +211,4 @@ function draw(cv, G, t, v, act) {
     return cv;
 }
 
-module.exports = { draw, W, H, MINI };
+module.exports = { draw, drawPreview, W, H, MINI };

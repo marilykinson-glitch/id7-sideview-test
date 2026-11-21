@@ -482,6 +482,47 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     await call('POST', '/api/picture/' + svc.START + q, sp);
     ok('the start-up screen: the picture and a still video at every size, same bytes linked, another generation untouched, restored byte for byte');
 
+    // a draft of the start-up screen: nothing on the car changes until it is applied; the app gets a 120 x 45 preview
+    {
+        const before = startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png'), dp = picture(43, 1920, 720);
+        r = await call('POST', '/api/picture/' + svc.START + q + '&draft=1&shine=0.4,0.4,0.2,0.2', dp); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
+        assert.strictEqual(Buffer.compare(startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png'), before), 0, 'a draft touches no file of the car');
+        r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.draft, true);
+        let st = JSON.parse(fs.readFileSync(path.join(run, 'status.json'), 'utf8'));
+        assert.deepStrictEqual(st.preview, { w: 120, h: 45, draft: true, shine: { x: 0.4, y: 0.4, w: 0.2, h: 0.2 } });
+        assert.strictEqual(fs.readFileSync(path.join(run, 'p51.rgba')).length, 120 * 45 * 4);
+        r = await call('POST', '/api/draft/apply' + q); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
+        assert.notStrictEqual(Buffer.compare(startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png'), before), 0);
+        assert.strictEqual(Buffer.compare(BOOT.pngDecode(startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png')).rgba, W.fit(dp, 1920, 720, 1280, 480)), 0);
+        r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.draft, false);
+        st = JSON.parse(fs.readFileSync(path.join(run, 'status.json'), 'utf8')); assert.strictEqual(st.preview.draft, false); assert.deepStrictEqual(st.preview.shine, { x: 0.4, y: 0.4, w: 0.2, h: 0.2 });
+        r = await call('POST', '/api/draft/apply' + q); assert.strictEqual(r.code, 400);                 // none left
+        const keep = startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png');
+        await call('POST', '/api/picture/' + svc.START + q + '&draft=1', picture(44, 1920, 720));
+        r = await call('POST', '/api/draft/discard' + q); assert.strictEqual(r.code, 200);
+        r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.draft, false);
+        assert.strictEqual(Buffer.compare(startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png'), keep), 0);
+        await call('POST', '/api/picture/' + svc.START + q, sp);
+        ok('a start-up draft: kept apart from the car, previewed at 120 x 45, applied on the owner\'s word or dropped');
+    }
+
+    // the app's preview plays the same order as the video: how many macroblocks the video sends in each picture = the cells the preview changes in it
+    {
+        const P = require(path.join(ROOT, 'apps', 'anh_dai_dien', 'preview.js')), pic2 = picture(55, 160, 96);
+        [false, true].forEach((out) => {
+            const v = BOOT.openingVideo(pic2, 160, 96, { frames: P.FRAMES, out }), nl = BOOT.nals(v).filter((n) => n.type === 1 || n.type === 5);
+            const turn = P.turns(10, 6, Math.round((P.FRAMES - 1) * 0.8), out), per = new Array(P.FRAMES).fill(0);
+            turn.forEach((f) => { per[f]++; });
+            for (let f = 1; f < P.FRAMES; f++) assert.strictEqual(Math.floor((nl[f].end - nl[f].start) / 384), per[f], (out ? 'out ' : 'in ') + f);
+        });
+        const rgba = Buffer.alloc(120 * 45 * 4, 180); for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;
+        const pl = new P.Player(rgba, 120, 45, { x: 0.4, y: 0.4, w: 0.2, h: 0.2 });
+        const lit = (b) => { let c = 0; for (let i = 0; i < b.length; i++) c += b[i]; return c; };
+        assert.strictEqual(lit(pl.frame('in', 0)), 0); assert.strictEqual(lit(pl.frame('in', P.FRAMES - 1)), lit(pl.pic)); assert.strictEqual(lit(pl.frame('out', 0)), lit(pl.pic)); assert.strictEqual(lit(pl.frame('out', P.FRAMES - 1)), 0);
+        assert.ok(lit(pl.frame('in', pl.moving.in + 6)) > lit(pl.pic), 'the light adds to the picture');
+        ok('the app\'s preview changes the same cells in the same pictures as the video does, and lights the mark');
+    }
+
     r = await call('POST', '/api/restore/3' + q); assert.strictEqual(r.code, 200);
     now = new W.Bundle(fileOf(AV), mk.ids);
     assert.strictEqual(Buffer.compare(now.blob('S03'), new W.Bundle(mk.data, mk.ids).blob('S03')), 0);
