@@ -173,7 +173,7 @@ function drawMain(cv, G, t, v, act) {
     if (v.updated) cv.text('Cập nhật ' + v.updated, W - 56, G.TOP + 80, 15, d && d.ok ? t.dim : (t.warn || '#ffb020'), { literal: true, font: 'label', align: 'right' });
 
     if (!cur) {
-        const msg = v.state === 'down' ? 'Trợ thủ thời tiết chưa chạy: khởi động lại màn hình xe.' : d && d.error ? 'Chưa lấy được dự báo: ' + d.error + '. Xe có mạng không?' : 'Đang lấy dự báo…';
+        const why = String(v.why || ''), msg = v.state === 'down' ? (why === 'missing' ? 'Chưa thấy trợ thủ thời tiết: vào Store cài "Trợ thủ Thời tiết" (thoi-tiet), rồi khởi động lại màn hình.' : why === 'denied' ? 'App không đọc được dữ liệu của trợ thủ (bị chặn quyền).' : why.indexOf('old') === 0 ? 'Trợ thủ thời tiết dừng từ ' + why.slice(4) + ' trước: khởi động lại màn hình xe.' : 'Trợ thủ thời tiết trả dữ liệu hỏng: khởi động lại màn hình xe.') : d && d.error ? 'Chưa lấy được dự báo: ' + d.error + '. Xe có mạng không?' : 'Đang lấy dự báo…';
         Icons.draw(cv, 'partly', true, W / 2, G.TOP + 200, 150);
         cv.text(msg, W / 2, G.TOP + 330, 26, t.dim, { literal: true, font: 'label', align: 'center' });
         return;

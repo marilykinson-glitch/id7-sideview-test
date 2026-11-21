@@ -50,7 +50,7 @@ function log(m) {
     process.stdout.write(m + '\n');
 }
 function readJson(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return null; } }
-function mkdirp(d) { fs.mkdirSync(d, { recursive: true }); }
+const mkdirp = (d) => { if (fs.existsSync(d)) return; mkdirp(path.dirname(d)); try { fs.mkdirSync(d); } catch (e) { if (e.code !== 'EEXIST') throw e; } };
 function writeAtomic(file, data) {
     mkdirp(path.dirname(file));
     const tmp = file + '.tmp';

@@ -26,7 +26,7 @@ mgu.run({
     async start(ctx) {
         const { ui, log } = ctx;
         let keys = Wx.DEFAULT_KEYS.slice(), status = null, readAt = 0, cmdId = Date.now(), lastKey = '', shown = false;
-        let mode = 'main', sel = 0, page = 0, region = 'all', drive = false, message = '', messageKind = 'dim', refreshAt = 0, seenSeq = -1, set = Wx.settingsOf(null), custom = [];
+        let why = '', mode = 'main', sel = 0, page = 0, region = 'all', drive = false, message = '', messageKind = 'dim', refreshAt = 0, seenSeq = -1, set = Wx.settingsOf(null), custom = [];
         const f = (n) => path.join(ctx.dataDir, n);
         const load = (n) => { try { return JSON.parse(fs.readFileSync(f(n), 'utf8')); } catch (e) { return null; } };
         const save = (n, v) => { try { fs.writeFileSync(f(n), JSON.stringify(v)); } catch (e) { /* ok */ } };
@@ -48,9 +48,10 @@ mgu.run({
         function readStatus(now) {
             if (now - readAt < 700) return;
             readAt = now;
-            let s = null;
-            try { s = JSON.parse(fs.readFileSync(path.join(RUN, 'weather.json'), 'utf8')); } catch (e) { s = null; }
-            status = s && typeof s.at === 'number' && Math.abs(now - s.at) < STALE_MS ? s : null;
+            let s = null; why = '';
+            try { s = JSON.parse(fs.readFileSync(path.join(RUN, 'weather.json'), 'utf8')); } catch (e) { s = null; why = e && e.code === 'ENOENT' ? 'missing' : e && (e.code === 'EACCES' || e.code === 'EPERM') ? 'denied' : 'bad'; }
+            if (s && !(typeof s.at === 'number' && Math.abs(now - s.at) < STALE_MS)) { why = 'old ' + Math.round(Math.abs(now - (s.at || 0)) / 1000) + 's'; s = null; }
+            status = s;
             if (status && Array.isArray(status.custom) && JSON.stringify(status.custom) !== JSON.stringify(custom)) { custom = status.custom.slice(0, 30); save('custom.json', custom); }
             if (status && typeof status.seq === 'number') {
                 if (seenSeq >= 0 && status.seq !== seenSeq && status.lastAdded && keys.indexOf(status.lastAdded) < 0 && custom.some((c) => c.key === status.lastAdded)) {
@@ -106,7 +107,7 @@ mgu.run({
             const d = s && s.places ? s.places.filter((p) => p.key === list[sel].key)[0] : null;
             const busy = !!(s && s.busy) || Date.now() - refreshAt < 2500;
             return {
-                mode, drive, state: !s ? 'down' : 'ok', places: list, sel, data: d || null, busy, set,
+                mode, drive, state: !s ? 'down' : 'ok', why, places: list, sel, data: d || null, busy, set,
                 updated: d && d.at ? hhmm(d.at) + (d.ok ? '' : ' (cũ)') : '',
                 pick: { keys, page, pages: pagesOf(), region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
                 phone: { url: s && s.url, pin: s && s.pin, host: s && s.host, count: custom.length },
@@ -118,7 +119,7 @@ mgu.run({
             if (!vis && shown) return;                                // nobody looks: no drawing
             const animated = m.set.fx && (m.mode === 'main') && m.data && m.data.current;
             const frame = animated ? Math.floor(m.time * FPS) : 0;
-            const key = JSON.stringify([frame, m.mode, m.drive, m.set, m.state, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick, m.phone, m.message, vis]);
+            const key = JSON.stringify([frame, m.mode, m.drive, m.set, m.state, m.why, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick, m.phone, m.message, vis]);
             if (key === lastKey && shown) return;
             lastKey = key; shown = true;
             const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);
