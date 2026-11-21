@@ -17,6 +17,7 @@ const { Canvas } = require('./kit/canvas');
 const { Recorder, play } = require('./kit/record');
 const UI = require('./ui');
 const Wx = require('./weather');
+const Icons = require('./icons');
 
 const RUN = process.env.TT_RUN || '/run/thoi-tiet';
 const STALE_MS = 8000;
@@ -146,21 +147,60 @@ mgu.run({
             UI.draw(cv, G, ctx.theme(), m, acts);
             await ui.image('MAIN_GFX', cv);
         };
-        // the home-screen widget: the place "Vị trí hiện tại" if it has a forecast, else the first place that has one; redrawn about once a second
-        const wcache = {};
+        // the home-screen widget: BMW's own weather widget layout (LT_Table_OnlineApps_WeatherWidget, big and small), filled cell by
+        // cell: the place "Vị trí hiện tại" if it has a forecast, else the first place that has one. Only what changed is sent.
+        const wsent = {}, wicons = {};
+        const iconCanvas = (icon, day, size) => {
+            const k = icon + '|' + (day ? 1 : 0) + '|' + size;
+            if (!wicons[k]) {
+                const rec = new Recorder(size, size, { textScale: 1 });
+                Icons.draw(rec, icon, day, size / 2, size / 2, Math.round(size * 0.92));
+                const cv = new Canvas(size, size);
+                play(rec.words(), cv);
+                wicons[k] = cv;
+            }
+            return { cv: wicons[k], key: k };
+        };
+        const widgetCells = (d) => {
+            const c = {}, T = (cell, v) => { c[cell] = ['Text', String(v)]; }, B = (cell, v) => { c[cell] = ['Bool', !!v]; }, A = (cell, icon, day, size) => { c[cell] = ['Asset', icon, day, size]; };
+            if (!d || !d.current) { T('Title', 'Thời tiết'); T('Text1stRow', 'Đang chờ dữ liệu'); T('Text2ndRow', ''); T('TextTemp', ''); T('TextTempUnit', ''); B('IsAQI_Visible', false); B('IsAQI_Asia_Visible', false); return c; }
+            const cur = d.current, today = (d.daily && d.daily[0]) || {}, wc = Wx.describe(cur.code), num = (v) => Wx.deg(v).replace('°', '');
+            T('Title', d.name || 'Thời tiết');
+            A('IllustrationActualWeather', wc.icon, cur.day, 200);
+            T('TextTemp', num(cur.t)); T('TextTempUnit', '°' + Wx.getUnit());
+            T('Text1stRow', wc.text);
+            T('Text2ndRow', typeof cur.rainIn === 'number' ? (cur.rainIn === 0 ? 'Đang mưa' : 'Mưa sau ' + cur.rainIn + ' phút') : 'Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo));
+            A('IconRaindrops', 'rain', true, 48);
+            T('TextRainProbability', today.pop === null || today.pop === undefined ? '–' : String(Math.round(today.pop))); T('TextRainProbabilityUnit', '%');
+            (d.daily || []).slice(1, 4).forEach((dy, i) => {
+                const n = i + 1;
+                T('TextDayliDetail' + n, i === 0 ? 'Mai' : (dy.dow === 0 ? 'CN' : 'T' + (dy.dow + 1)));
+                A('IconDayliDetail' + n, Wx.describe(dy.code).icon, true, 64);
+                T('TextTempDayDetail' + n, num(dy.hi)); T('TextTempDayDetailUnit' + n, '°');
+            });
+            const air = d.air && typeof d.air.aqi === 'number';
+            B('IsAQI_Visible', false); B('IsAQI_Asia_Visible', air);
+            if (air) T('TextAQI_Asia', 'AQI ' + Math.round(d.air.aqi));
+            return c;
+        };
         if (ctx.widget && ctx.widget.loop) {
+            if (ctx.widget.onChange) ctx.widget.onChange(() => { Object.keys(wsent).forEach((k) => delete wsent[k]); });
             ctx.widget.loop(1, async (inst) => {
                 readStatus(Date.now());
                 const list = status && status.places ? status.places : [];
                 const d = list.filter((p) => p.here && p.current)[0] || list.filter((p) => p.current)[0] || null;
-                // ctx.canvas gives a Recorder; the widget wants pixels: draw on a Recorder, play it onto a Canvas (kept per size)
-                const w = inst.big ? 1000 : 640, h = inst.big ? 575 : 210, rec = new Recorder(w, h, { textScale: 1 });
                 wstat.frames++;
-                UI.drawWidget(rec, G, ctx.theme(), { data: d, big: !!inst.big, w, h, tiles: set.tiles });
-                const cv = wcache[w] || (wcache[w] = new Canvas(w, h));
-                play(rec.words(), cv);
+                Wx.setUnit(set.unit);
+                const cells = widgetCells(d), sent = wsent[inst.spawnId] || (wsent[inst.spawnId] = {});
+                Object.keys(cells).forEach((cell) => {
+                    const v = cells[cell], sig = JSON.stringify(v);
+                    if (sent[cell] === sig) return;
+                    sent[cell] = sig;
+                    if (v[0] === 'Asset') { const ic = iconCanvas(v[1], v[2], v[3]); ctx.widget.asset(inst.spawnId, cell, ic.cv, ic.key); }
+                    else ctx.widget.set(inst.spawnId, cell, v[1], v[0]);
+                });
                 wstat.ok++;
-                return cv;
+                return null;
             });
         }
         const loop = ctx.loop('MAIN', FPS, render);

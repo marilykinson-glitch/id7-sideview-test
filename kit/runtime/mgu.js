@@ -340,12 +340,17 @@ function patchStartWidgetEvents(app) {
     };
 }
 
+const WIDGET_SLOTS = 120;
 class Widget {
     constructor(spec) {
         this.spec = spec || {};
         this.comp = null;
         this.vis = Object.create(null);      // spawnId -> visible (unknown = true)
         this._img = Object.create(null);
+        this._as = Object.create(null);      // spawnId|cell -> { key, n, live } (asset cells)
+        this._sid = Object.create(null);     // spawnId|cell -> string slot (non-ASCII text cells)
+        this._free = [];
+        for (let i = WIDGET_SLOTS - 1; i >= 0; i--) this._free.push('SID_WG_DYN_' + ('00' + i).slice(-3));
         this._change = [];
         this._tap = [];
         this.timing = { png: 0, push: 0 };
@@ -372,12 +377,19 @@ class Widget {
         c.on('created', (e) => { this.vis[e.spawnId] = true; this._static(e.spawnId); this._changed('placed'); });
         c.on('resize', (e) => { this._forget(e.spawnId); this._changed('resized'); });
         c.on('visible', (e) => { this.vis[e.spawnId] = !!e.visible; if (e.visible) this._forget(e.spawnId); this._changed(e.visible ? 'shown' : 'hidden'); });
-        ['abort', 'destroyed'].forEach((n) => c.on(n, (e) => { delete this.vis[e.spawnId]; this._forget(e.spawnId); this._changed('removed'); }));
+        ['abort', 'destroyed'].forEach((n) => c.on(n, (e) => {
+            delete this.vis[e.spawnId]; this._forget(e.spawnId);
+            Object.keys(this._sid).forEach((k) => { if (k.indexOf(e.spawnId + '|') === 0) { this._free.push(this._sid[k]); delete this._sid[k]; } });
+            this._changed('removed');
+        }));
         c.on('action', (e) => { log.info('widget tapped (' + e.spawnId + ')'); this._tap.forEach((fn) => { try { fn(e); } catch (err) { log.error(err); } }); });
         this.instances().forEach((i) => this._static(i.spawnId));
         this._changed('ready');
     }
-    _forget(spawnId) { const st = this._img[spawnId]; if (st) st.lastPx = null; }
+    _forget(spawnId) {
+        const st = this._img[spawnId]; if (st) st.lastPx = null;
+        Object.keys(this._as).forEach((k) => { if (k.indexOf(spawnId + '|') === 0) this._as[k].key = null; });
+    }
     /** The layout's fixed cells (app.json startWidget.cells), written once per placed widget. */
     _static(spawnId) {
         const cells = this.spec.cells || {};
@@ -388,12 +400,58 @@ class Widget {
     }
     set(spawnId, cell, value, type) {
         if (!this.comp) return Promise.resolve();
-        if ((type || 'Text') === 'Text') value = widgetText(value);
-        return Promise.resolve(this.comp.setValue(Number(spawnId), cell, value, type || 'Text'))
-            .catch((e) => log.warn('widget ' + cell + ': ' + e));
+        type = type || 'Text';
+        const plain = (v) => Promise.resolve().then(() => this.comp.setValue(Number(spawnId), cell, v, type))
+            .then(() => this._once(cell, 'ok (' + type + ')'), (e) => this._once(cell, String(e && e.message || e), true));
+        if (type !== 'Text') return plain(value);
+        value = String(value);
+        // non-ASCII text: a string of the widget's own bundle (slots SID_WG_DYN_nnn, kit/tools/build.py), shown by id;
+        // where that does not work (an older package without the slots, an SDK without the bundle) the text goes plain, ASCII only
+        if (/[^\x20-\x7e]/.test(value) && this._utf !== false && typeof this.comp.getStringBundle === 'function') {
+            const key = spawnId + '|' + cell, sid = this._sid[key] || (this._free.length ? (this._sid[key] = this._free.pop()) : null);
+            if (sid) {
+                const strings = {}; strings[sid] = value;
+                return Promise.resolve().then(() => this.comp.getStringBundle().setStrings(strings))
+                    .then(() => this.comp.setValue(Number(spawnId), cell, sid, 'StringId'))
+                    .then(() => this._once(cell, 'ok (StringId)'), (e) => {
+                        if (this._utf !== false) log.warn('widget: no text by string id (' + (e && e.message || e) + '), plain ASCII from here');
+                        this._utf = false;
+                        return plain(widgetText(value));
+                    });
+            }
+        }
+        return plain(/[^\x20-\x7e]/.test(value) ? widgetText(value) : value);
+    }
+    /** The first result of writing each cell, logged once (the HMI takes any cell name: the log is what tells which worked). */
+    _once(cell, what, bad) {
+        this._seen = this._seen || Object.create(null);
+        if (this._seen[cell] === what) return;
+        this._seen[cell] = what;
+        (bad ? log.warn : log.info)('widget cell ' + cell + ': ' + what);
+    }
+    /** Show a drawn picture (Canvas) in one of the layout's image cells; `key` names its content: the same key is not sent again. */
+    asset(spawnId, cell, img, key) {
+        if (!this.comp) return Promise.resolve();
+        const k = spawnId + '|' + cell, st = this._as[k] || (this._as[k] = { key: null, n: 0, live: [], busy: null });
+        if (st.busy) return st.busy.then(() => this.asset(spawnId, cell, img, key));
+        if (st.key === key) return Promise.resolve();
+        const run = async () => {
+            const rb = this.comp.getResourceBundle();
+            const file = path.join(RHMI_RES, 'dyn_' + RUN_TAG + '_c' + spawnId + '_' + cell.replace(/[^A-Za-z0-9]/g, '') + '_' + (st.n++ % 3) + '.png');
+            fs.writeFileSync(file + '.tmp', img.png());
+            fs.renameSync(file + '.tmp', file);
+            await rb.createResourceHandles([file]);
+            await this.comp.setValue(Number(spawnId), cell, rb.getResourceHandle(file), 'Asset');
+            st.key = key;
+            st.live = st.live.filter((f) => f !== file).concat([file]);
+            while (st.live.length > 2) rb.destroyResourceHandles([st.live.shift()]).catch(() => {});
+        };
+        st.busy = run().then(() => this._once(cell, 'ok (Asset ' + img.w + 'x' + img.h + ')'), (e) => this._once(cell, String(e && e.message || e), true)).then(() => { st.busy = null; });
+        return st.busy;
     }
     /** Show a drawn image (canvas.js Canvas) in a placed widget (cell: app.json startWidget.image). */
     image(spawnId, img) {
+        if (this.spec.image === false) return Promise.resolve();
         const st = this._img[spawnId] || (this._img[spawnId] = { n: 0, live: [], busy: null, next: null });
         if (st.busy) { st.next = img; return st.busy; }
         // the picture's cell: app.json startWidget.image (a name or a list), else the likely names, tried together (a cell the layout
