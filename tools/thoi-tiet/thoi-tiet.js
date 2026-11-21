@@ -166,6 +166,7 @@ async function getJson(host, pathAndQuery) {
 const FORECAST = '/v1/forecast?current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,visibility'
     + '&hourly=temperature_2m,precipitation_probability,weather_code,is_day'
     + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset'
+    + '&minutely_15=precipitation&forecast_minutely_15=8'
     + '&timezone=auto&forecast_days=6&wind_speed_unit=kmh';
 
 const AIR = '/v1/air-quality?current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide&timezone=auto';
@@ -190,6 +191,19 @@ function parse(j) {
         t: num(c.temperature_2m), feels: num(c.apparent_temperature), humidity: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m),
         windDir: num(c.wind_direction_10m), gust: num(c.wind_gusts_10m), vis: num(c.visibility), code: num(c.weather_code), day: c.is_day === 1, rain: num(c.precipitation), pressure: num(c.pressure_msl), time: String(c.time || ''), utc: num(j.utc_offset_seconds),
     };
+    // rain in the next 2 hours from the 15-minute steps: minutes until the first one with rain (0: raining now), null: none / unknown
+    const m15 = j.minutely_15;
+    if (m15 && Array.isArray(m15.time) && Array.isArray(m15.precipitation)) {
+        const at = (s) => { const m = /T(\d\d):(\d\d)/.exec(String(s || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+        const nowM = at(c.time); let first = null, mm = 0;
+        if (nowM !== null) for (let i = 0; i < m15.time.length && first === null; i++) {
+            let t0 = at(m15.time[i]); if (t0 === null) continue; if (t0 < nowM - 720) t0 += 1440;
+            if (t0 + 15 <= nowM) continue;
+            const v = m15.precipitation[i];
+            if (typeof v === 'number' && v >= 0.1) { first = Math.max(0, t0 - nowM); mm = v; }
+        }
+        current.rainIn = first; current.rainMm = first === null ? 0 : mm;
+    }
     const h = j.hourly, hourly = [];
     const now = String(c.time || '').slice(0, 13);                           // YYYY-MM-DDTHH
     let from = (h.time || []).findIndex((s) => String(s).slice(0, 13) >= now); if (from < 0) from = 0;
@@ -473,7 +487,7 @@ function pollCommands() {
     else if (c.cmd === 'refresh' && !first) refreshAll();
 }
 
-const VERSION = '0.4.1';
+const VERSION = '0.4.2';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     S.pin = newPin(); loadCustom();

@@ -295,6 +295,42 @@ function drawSettings(cv, G, t, v, act) {
     G.button(cv, t, W - 56 - 2 * bw - 14, by, bw, 54, 'Về mặc định', act.resetSettings || nop, { key: 'wxReset' });
 }
 
+/**
+ * The home-screen widget picture: the place, icon, temperature, words and the rain alert; the big one adds the high and low
+ * and the next hours. v = { data (place's { name, ok, current, hourly, daily }), big, w, h }. Pixel size of the widget is not known
+ * from here, so everything is laid out from v.w and v.h.
+ */
+function drawWidget(cv, G, t, v) {
+    const w = v.w, h = v.h, d = v.data, cur = d && d.current;
+    cv.fillRect(0, 0, w, h, '#101319');
+    if (!cur) { cv.text('Thời tiết', w / 2, h / 2 - 6, Math.round(h * 0.16), t.text, { literal: true, font: 'bold', align: 'center' }); cv.text('đang chờ dữ liệu', w / 2, h / 2 + h * 0.14, Math.round(h * 0.1), t.dim, { literal: true, font: 'label', align: 'center' }); return; }
+    const wc = Wx.describe(cur.code), s = h / 240, today = (d.daily && d.daily[0]) || {};
+    const tint = cur.day ? '#2a5a9a' : '#1a2340';
+    cv.gradientRect(0, 0, w, h, [[0, G.withAlpha(tint, 0.9)], [1, '#101319']]);
+    Icons.draw(cv, wc.icon, cur.day, 78 * s, 100 * s, 120 * s);
+    const big = Wx.deg(cur.t).replace('°', '');
+    cv.text(big, 150 * s, 118 * s, 84 * s, t.text, BOLD);
+    cv.text('°' + Wx.getUnit(), 150 * s + cv.textWidth(big, 84 * s, BOLD) + 4, 70 * s, 26 * s, t.dim, BOLD);
+    cv.text(fit(cv, d.name || '', 22 * s, BOLD, w - 24 * s), 14 * s, 26 * s, 22 * s, t.text, BOLD);
+    cv.text(fit(cv, wc.text, 24 * s, BOLD, (v.big ? 330 : 190) * s), 150 * s, 152 * s, 24 * s, t.text, BOLD);
+    const rainIn = cur.rainIn;
+    let msg = '', col = t.dim;
+    if (typeof rainIn === 'number') { msg = rainIn === 0 ? 'Đang mưa' : 'Mưa sau ' + rainIn + ' phút'; col = RAIN; }
+    else if (today.pop >= 50) { msg = 'Mưa hôm nay ' + Wx.pct(today.pop); col = RAIN; }
+    else msg = 'Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo);
+    if (typeof rainIn === 'number') { cv.roundRect(12 * s, 176 * s, w - 24 * s, 46 * s, 23 * s, G.withAlpha(RAIN, 0.25)); cv.strokeRoundRect(12 * s, 176 * s, w - 24 * s, 46 * s, 23 * s, 1.5, G.withAlpha(RAIN, 0.8)); }
+    cv.text(fit(cv, msg, 24 * s, BOLD, w - 48 * s), w / 2, 208 * s, 24 * s, typeof rainIn === 'number' ? t.text : col, { literal: true, font: 'bold', align: 'center' });
+    if (v.big) {
+        const hrs = (d.hourly || []).filter((_, i) => i % 3 === 0).slice(1, 5), x0 = 350 * s, cw = (w - x0 - 10 * s) / 4;
+        hrs.forEach((hr, i) => {
+            const cx = x0 + cw * i + cw / 2;
+            cv.text(hr.time, cx, 52 * s, 17 * s, t.dim, { literal: true, font: 'label', align: 'center' });
+            Icons.draw(cv, Wx.describe(hr.code).icon, hr.day, cx, 92 * s, 40 * s);
+            cv.text(Wx.deg(hr.t), cx, 140 * s, 22 * s, t.text, { literal: true, font: 'bold', align: 'center' });
+        });
+    }
+}
+
 function draw(cv, G, t, v, act) {
     act = act || {};
     v = Object.assign({ set: Wx.settingsOf(null) }, v);
@@ -310,4 +346,4 @@ function draw(cv, G, t, v, act) {
     return cv;
 }
 
-module.exports = { draw, W, H };
+module.exports = { draw, drawWidget, W, H };

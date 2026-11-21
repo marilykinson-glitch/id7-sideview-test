@@ -134,6 +134,17 @@ mgu.run({
             UI.draw(cv, G, ctx.theme(), m, acts);
             await ui.image('MAIN_GFX', cv);
         };
+        // the home-screen widget: the place "Vị trí hiện tại" if it has a forecast, else the first place that has one; redrawn about once a second
+        if (ctx.widget && ctx.widget.loop) {
+            ctx.widget.loop(1, async (inst) => {
+                readStatus(Date.now());
+                const list = status && status.places ? status.places : [];
+                const d = list.filter((p) => p.here && p.current)[0] || list.filter((p) => p.current)[0] || null;
+                const w = inst.big ? 760 : 360, cv = ctx.canvas(w, 240) || new Canvas(w, 240);
+                UI.drawWidget(cv, G, ctx.theme(), { data: d, big: !!inst.big, w, h: 240 });
+                return cv;
+            });
+        }
         const loop = ctx.loop('MAIN', FPS, render);
         function repaint() { lastKey = ''; return loop && loop.kick ? loop.kick() : render(); }
         pushPlaces();

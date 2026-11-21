@@ -43,6 +43,8 @@ const answer = { current: { time: '2026-11-21T14:00', temperature_2m: 31.2, appa
 assert.strictEqual(require('../tools/thoi-tiet/thoi-tiet.js').parse(Object.assign({}, answer, { utc_offset_seconds: 25200 })).current.utc, 25200);
 const p = T.parse(answer);
 assert.strictEqual(p.current.t, 31.2); assert.strictEqual(p.current.day, true); assert.strictEqual(p.hourly.length, 24); assert.strictEqual(p.hourly[0].time, '14:00'); assert.strictEqual(p.daily[0].dow, 6); assert.strictEqual(p.daily[0].sunrise, '06:02'); ok('parse');
+const rain = (pr) => T.parse(Object.assign({}, answer, { minutely_15: { time: ['2026-11-21T14:00', '2026-11-21T14:15', '2026-11-21T14:30', '2026-11-21T14:45'], precipitation: pr } })).current;
+assert.strictEqual(rain([0, 0, 0.4, 1]).rainIn, 30); assert.strictEqual(rain([0.5, 0, 0, 0]).rainIn, 0); assert.strictEqual(rain([0, 0, 0, 0.05]).rainIn, null); assert.strictEqual(p.current.rainIn, undefined); ok('rain soon');
 assert.throws(() => T.parse({}), /unexpected/); assert.throws(() => T.parse({ current: {}, hourly: {}, daily: {} }), /temperature/); ok('parse refuses junk');
 assert.deepStrictEqual(T.parseAir({ current: { us_aqi: 87, pm2_5: 29.1, pm10: 41, ozone: 60, nitrogen_dioxide: 12 } }), { aqi: 87, pm25: 29.1, pm10: 41, o3: 60, no2: 12 }); assert.strictEqual(T.parseAir({ current: {} }), null); assert.strictEqual(T.parseAir(null), null);
 assert.strictEqual(Wx.aqiBand(30).text, 'Tốt'); assert.strictEqual(Wx.aqiBand(168).text, 'Xấu'); assert.strictEqual(Wx.aqiBand(null).text, ''); ok('air quality');
