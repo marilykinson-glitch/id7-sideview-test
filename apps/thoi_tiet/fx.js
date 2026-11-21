@@ -10,12 +10,17 @@
 const rnd = (i, k) => { const s = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return s - Math.floor(s); };
 const A = (G, c, a) => G.withAlpha(c, Math.max(0, Math.min(1, a)));
 
-/** The sky behind: a soft vertical tint for the condition, darker at night. */
-function sky(cv, G, kind, day, x, y, w, h) {
-    const rain = /rain|drizzle|showers|storm|sleet/.test(kind);
-    const top = !day ? '#0a1430' : rain ? '#2b3446' : kind === 'clear' || kind === 'mostly-clear' ? '#1d4f8f' : kind === 'fog' ? '#4a525f' : kind === 'snow' ? '#3a4a66' : '#33507a';
+/** The sky behind: a soft vertical tint for the condition and the hour (dawn and dusk warm, noon bright, night dark). */
+function sky(cv, G, kind, day, x, y, w, h, hour) {
+    const hr = typeof hour === 'number' ? hour : new Date().getHours() + new Date().getMinutes() / 60;
+    const rain = /rain|drizzle|showers|storm|sleet/.test(kind), clear = kind === 'clear' || kind === 'mostly-clear';
+    let top = !day ? '#0a1430' : rain ? '#2b3446' : clear ? '#1d4f8f' : kind === 'fog' ? '#4a525f' : kind === 'snow' ? '#3a4a66' : '#33507a';
     const bot = !day ? '#111113' : rain ? '#17191f' : '#111113';
+    // the warm band at sunrise and sunset (not under rain or fog, where the sky is closed)
+    const warm = day && !rain && kind !== 'fog' ? Math.max(0, 1 - Math.abs(hr - 6.2) / 1.4, 1 - Math.abs(hr - 17.6) / 1.6) : 0;
     cv.gradientRect(x, y, w, h, [[0, A(G, top, 0.75)], [1, A(G, bot, 0.0)]]);
+    if (warm > 0) cv.gradientRect(x, y, w, h * 0.85, [[0, A(G, '#ff8a3d', 0)], [1, A(G, '#ff8a3d', 0.16 * warm)]]);
+    if (day && !rain && kind !== 'fog' && hr >= 10 && hr <= 15) cv.gradientRect(x, y, w, h * 0.5, [[0, A(G, '#7fc2ff', 0.10)], [1, A(G, '#7fc2ff', 0)]]);   // noon
 }
 
 function sun(cv, G, x, y, w, h, time) {
@@ -37,17 +42,25 @@ function stars(cv, G, x, y, w, h, time) {
 function clouds(cv, G, x, y, w, h, time, n, dark) {
     for (let i = 0; i < n; i++) {
         const sp = 6 + rnd(i, 5) * 10, cw = 150 + rnd(i, 6) * 130, cx = x + ((rnd(i, 7) * (w + cw) + time * sp) % (w + cw)) - cw / 2, cy = y + 34 + rnd(i, 8) * 130, ch = cw * 0.28;
-        const c = A(G, dark ? '#8d98ab' : '#dfe6f2', dark ? 0.1 : 0.09);
-        cv.roundRect(cx - cw / 2, cy, cw, ch, ch / 2, c); cv.circle(cx - cw * 0.12, cy, ch * 0.7, c); cv.circle(cx + cw * 0.12, cy - ch * 0.12, ch * 0.85, c);
+        const body = (dx, dy, k, c) => { const ww = cw * k; cv.roundRect(cx - ww / 2 + dx, cy + dy, ww, ch * k, ch * k / 2, c); cv.circle(cx - cw * 0.12 + dx, cy + dy, ch * 0.7 * k, c); cv.circle(cx + cw * 0.12 + dx, cy - ch * 0.12 + dy, ch * 0.85 * k, c); };
+        body(0, 0, 1, A(G, dark ? '#4f5b72' : '#9fb0cc', 0.07));                         // the shaded underside
+        body(-cw * 0.006, -ch * 0.07, 0.94, A(G, dark ? '#8d98ab' : '#dfe6f2', dark ? 0.08 : 0.08));
+        cv.circle(cx + cw * 0.12 - cw * 0.02, cy - ch * 0.12 - ch * 0.2, ch * 0.5, A(G, '#ffffff', dark ? 0.05 : 0.07));   // the lit top
     }
 }
 function rain(cv, G, x, y, w, h, time, n, wind, heavy) {
-    const slant = Math.min(0.5, 0.12 + wind / 120), len = heavy ? 30 : 22;
+    const slant = Math.min(0.5, 0.12 + wind / 120);
     for (let i = 0; i < n; i++) {
-        const sp = (heavy ? 520 : 380) + rnd(i, 1) * 160, ph = (rnd(i, 2) * (h + 60) + time * sp) % (h + 60), px = x + rnd(i, 3) * (w + 80) - ph * slant;
+        const z = rnd(i, 6), len = (heavy ? 30 : 22) * (0.6 + 0.6 * z);       // z: 0 far, 1 near - near drops are longer, faster, brighter
+        const sp = ((heavy ? 520 : 380) + rnd(i, 1) * 160) * (0.7 + 0.5 * z), ph = (rnd(i, 2) * (h + 60) + time * sp) % (h + 60), px = x + rnd(i, 3) * (w + 80) - ph * slant;
         const yy = y + ph - 30, xx = px;
         if (xx < x || xx > x + w || yy < y || yy + len > y + h) continue;
-        cv.line(xx, yy, xx - len * slant, yy + len, 2, A(G, '#7cc0ff', 0.55));
+        cv.line(xx, yy, xx - len * slant, yy + len, 1.4 + 1.4 * z, A(G, '#7cc0ff', 0.22 + 0.42 * z));
+    }
+    // rings where the rain lands, along the bottom
+    for (let i = 0; i < Math.ceil(n / 4); i++) {
+        const t = (time * (heavy ? 2.2 : 1.6) + rnd(i, 11)) % 1, r = 2 + t * (heavy ? 12 : 9);
+        cv.arc(x + rnd(i, 12) * w, y + h - 6 - rnd(i, 13) * 14, r - 1.2, r, 0, 360, A(G, '#a9d4ff', 0.4 * (1 - t)));
     }
 }
 function snow(cv, G, x, y, w, h, time, n) {
@@ -66,10 +79,14 @@ function fog(cv, G, x, y, w, h, time) {
 }
 function lightning(cv, G, x, y, w, h, time) {
     const ph = time % 6.5, flash = ph < 0.12 ? 1 - ph / 0.12 : (ph > 0.28 && ph < 0.4 ? 0.6 * (1 - (ph - 0.28) / 0.12) : 0);
-    if (flash > 0) cv.fillRect(x, y, w, h, A(G, '#dfe8ff', 0.14 * flash));
-    if (ph < 0.12) {                                               // the bolt
-        const bx = x + 90 + rnd(Math.floor(time / 6.5), 9) * (w - 180);
-        cv.polyline([[bx, y], [bx - 18, y + 70], [bx + 8, y + 74], [bx - 24, y + 160], [bx + 4, y + 170], [bx - 12, y + 230]], 4, A(G, '#fff3b0', 0.9));
+    if (flash > 0) cv.fillRect(x, y, w, h, A(G, '#dfe8ff', 0.16 * flash));
+    if (ph < 0.12 || (ph > 0.28 && ph < 0.34)) {                  // the bolt: a glow, the stroke, two forks
+        const bx = x + 90 + rnd(Math.floor(time / 6.5), 9) * (w - 180), f = ph < 0.12 ? 1 : 0.6;
+        const main = [[bx, y], [bx - 18, y + 70], [bx + 8, y + 74], [bx - 24, y + 160], [bx + 4, y + 170], [bx - 12, y + 230]];
+        cv.polyline(main, 12, A(G, '#bcd0ff', 0.16 * f));
+        cv.polyline(main, 4, A(G, '#fff3b0', 0.9 * f));
+        cv.polyline([[bx - 18, y + 70], [bx - 52, y + 110], [bx - 60, y + 150]], 2.4, A(G, '#fff3b0', 0.7 * f));
+        cv.polyline([[bx - 24, y + 160], [bx + 14, y + 195], [bx + 26, y + 232]], 2.4, A(G, '#fff3b0', 0.7 * f));
     }
 }
 /** Wind: long thin streaks that cross the box, faster and more of them as it gets stronger (from about 20 km/h). */
