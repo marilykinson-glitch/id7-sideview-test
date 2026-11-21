@@ -5,6 +5,9 @@
  */
 const fs = require('fs'), path = require('path');
 const K = path.join(__dirname, '..', 'dist', 'anh_dai_dien', 'source', 'javascript', 'kit');
+const Module = require('module');
+const load = Module._load;                              // the app finds the kit as ./kit/...: here it is the built one
+Module._load = function (request, parent, isMain) { return load.call(this, /^\.\/kit\//.test(request) ? path.join(K, request.slice(6)) : request, parent, isMain); };
 const { Canvas } = require(path.join(K, 'canvas.js'));
 const G = require(path.join(K, 'gauges.js'));
 const { Recorder, play } = require(path.join(K, 'record.js'));
@@ -24,9 +27,18 @@ function sample(o) {
     return { key: 'x', name: o.name || 'TP. Hồ Chí Minh', ok: true, at: Date.now(), error: '', here: false, air: o.air === undefined ? { aqi: 87, pm25: 29, pm10: 41, o3: 60, no2: 12 } : o.air, current: { t: o.t || 31, feels: (o.t || 31) + 5, humidity: 74, wind: 12, windDir: 135, code: o.code === undefined ? 2 : o.code, day: o.day !== false, rain: 0, pressure: 1009, time: '2026-11-21T14:00' }, hourly: hours, daily };
 }
 const places = Wx.placesFor(['here', 'hcm', 'hanoi', 'danang']);
-const base = { fx: true, time: 3.2, mode: 'main', state: 'ok', places, sel: 1, data: sample(), busy: false, updated: '11:20', pick: { keys: ['here', 'hcm', 'hanoi', 'danang'], page: 0, pages: 2, region: 'all', max: 6, items: [Wx.HERE].concat(Wx.CITIES).slice(0, 24) }, message: '', messageKind: 'dim' };
+const base = { set: Wx.settingsOf(null), fx: true, time: 3.2, mode: 'main', state: 'ok', places, sel: 1, data: sample(), busy: false, updated: '11:20', pick: { keys: ['here', 'hcm', 'hanoi', 'danang'], page: 0, pages: 2, region: 'all', max: 6, items: [Wx.HERE].concat(Wx.CITIES).slice(0, 24) }, message: '', messageKind: 'dim' };
 const fxs = (name, o, extra) => Object.assign({}, base, { sel: 1, data: sample(Object.assign({ name: 'TP. Hồ Chí Minh' }, o)) }, extra || {});
+const withSet = (o, extra) => Object.assign({}, base, { set: Wx.settingsOf(o) }, extra || {});
 const states = {
+    '15-cai-dat': Object.assign({}, base, { mode: 'settings', set: Wx.settingsOf({ tiles: ['wind', 'humidity', 'uv', 'aqi', 'vis', 'sun'], block: 'chart', days: true, tips: true, fx: true, unit: 'C' }) }),
+    '16-bieu-do': withSet({ tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'chart' }, { time: 5 }),
+    '17-cung-mat-troi': withSet({ tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'sun' }),
+    '18-8-o-nhieu-thong-so': withSet({ tiles: ['wind', 'gust', 'humidity', 'rain', 'uv', 'aqi', 'vis', 'pressure'], block: 'icons', unit: 'F' }),
+    '19-chi-con-5-ngay': withSet({ tiles: ['aqi', 'uv'], block: 'off', fx: false }),
+    '20-che-do-lai': Object.assign({}, base, { drive: true, time: 6, data: sample({ code: 63, t: 26 }) }),
+    '21-tim-bang-dien-thoai': Object.assign({}, base, { mode: 'phone', phone: { url: 'http://192.168.43.15:8138/?pin=4821', pin: '4821', host: '192.168.43.15:8138', count: 2 } }),
+    '22-cua-toi': Object.assign({}, base, { mode: 'pick', pick: { keys: ['here', 'hcm', 'c1234_5678'], page: 0, pages: 1, region: 'my', max: 6, items: [{ key: 'c1234_5678', name: 'Chiang Mai' }, { key: 'c2_3', name: 'Cao Bang' }] } }),
     '7-nang': fxs(null, { code: 0, t: 34 }, { time: 4.1 }),
     '8-mua': fxs(null, { code: 63, t: 26 }),
     '9-giong': fxs(null, { code: 95, t: 27 }, { time: 0.05 }),

@@ -1,11 +1,12 @@
 'use strict';
 /**
  * Thời tiết - weather for the car (the car has no Connected Drive). The forecast is fetched by the tool thoi-tiet
- * (tools/thoi-tiet); this app draws it and lets the driver choose the places.
+ * (tools/thoi-tiet); this app draws it, lets the driver choose the places and what to show, and shows the QR code of
+ * the tool's page where any place in the world can be searched on a phone.
  *
- *   the tool  -> /run/thoi-tiet/weather.json   (RAM; read here)
- *   this app  -> <its folder>/data/command.json  { id, cmd: 'places' | 'refresh', places }
- *   this app  -> <its folder>/data/places.json   the chosen keys (so they stay after a restart)
+ *   the tool  -> /run/thoi-tiet/weather.json   (RAM; read here: forecasts, the address and PIN of the page, the places added there)
+ *   this app  -> <its folder>/data/command.json  { id, cmd: 'places' | 'refresh' | 'next_ip', places }
+ *   this app  -> <its folder>/data/places.json    the chosen keys; settings.json the settings; custom.json the places from the phone
  * Node 8.
  */
 const fs = require('fs');
@@ -25,34 +26,45 @@ mgu.run({
     async start(ctx) {
         const { ui, log } = ctx;
         let keys = Wx.DEFAULT_KEYS.slice(), status = null, readAt = 0, cmdId = Date.now(), lastKey = '', shown = false;
-        let mode = 'main', sel = 0, page = 0, region = 'all', fx = true, message = '', messageKind = 'dim', refreshAt = 0;
-        const file = path.join(ctx.dataDir, 'places.json');
-        try { const k = JSON.parse(fs.readFileSync(file, 'utf8')); if (Array.isArray(k) && k.length) keys = Wx.placesFor(k).map((p) => p.key); } catch (e) { /* first start */ }
-
-        const fxFile = path.join(ctx.dataDir, 'fx.json');
-        try { fx = JSON.parse(fs.readFileSync(fxFile, 'utf8')).on !== false; } catch (e) { /* first start: on */ }
+        let mode = 'main', sel = 0, page = 0, region = 'all', drive = false, message = '', messageKind = 'dim', refreshAt = 0, seenSeq = -1, set = Wx.settingsOf(null), custom = [];
+        const f = (n) => path.join(ctx.dataDir, n);
+        const load = (n) => { try { return JSON.parse(fs.readFileSync(f(n), 'utf8')); } catch (e) { return null; } };
+        const save = (n, v) => { try { fs.writeFileSync(f(n), JSON.stringify(v)); } catch (e) { /* ok */ } };
+        set = Wx.settingsOf(load('settings.json'));
+        const c0 = load('custom.json'); if (Array.isArray(c0)) custom = c0.filter((c) => c && c.key && c.name && isFinite(c.lat) && isFinite(c.lon)).slice(0, 30);
+        const k0 = load('places.json'); if (Array.isArray(k0) && k0.length) keys = Wx.placesFor(k0, custom).map((p) => p.key);
         const t0 = Date.now();
+
         function send(cmd, extra) {
             try {
-                const f = path.join(ctx.dataDir, 'command.json');
-                fs.writeFileSync(f + '.tmp', JSON.stringify(Object.assign({ id: ++cmdId, cmd }, extra || {})));
-                fs.renameSync(f + '.tmp', f);
+                const file = f('command.json');
+                fs.writeFileSync(file + '.tmp', JSON.stringify(Object.assign({ id: ++cmdId, cmd }, extra || {})));
+                fs.renameSync(file + '.tmp', file);
             } catch (e) { log.warn('command ' + cmd + ': ' + (e && e.message)); }
             readAt = 0;
         }
-        const pushPlaces = () => {
-            try { fs.writeFileSync(file, JSON.stringify(keys)); } catch (e) { /* ok */ }
-            send('places', { places: Wx.placesFor(keys) });
-        };
+        const pushPlaces = () => { save('places.json', keys); send('places', { places: Wx.placesFor(keys, custom) }); };
+        const saveSet = () => save('settings.json', set);
         function readStatus(now) {
             if (now - readAt < 700) return;
             readAt = now;
             let s = null;
             try { s = JSON.parse(fs.readFileSync(path.join(RUN, 'weather.json'), 'utf8')); } catch (e) { s = null; }
             status = s && typeof s.at === 'number' && Math.abs(now - s.at) < STALE_MS ? s : null;
+            if (status && Array.isArray(status.custom) && JSON.stringify(status.custom) !== JSON.stringify(custom)) { custom = status.custom.slice(0, 30); save('custom.json', custom); }
+            if (status && typeof status.seq === 'number') {
+                if (seenSeq >= 0 && status.seq !== seenSeq && status.lastAdded && keys.indexOf(status.lastAdded) < 0 && custom.some((c) => c.key === status.lastAdded)) {
+                    // a place was just added on the phone: it goes in the list now (the oldest of them leaves when it is full)
+                    if (keys.length >= Wx.MAX_PLACES) keys.splice(keys.findIndex((k) => k !== 'here'), 1);
+                    keys.push(status.lastAdded); sel = keys.length - 1; pushPlaces();
+                    message = 'Đã thêm ' + (custom.filter((c) => c.key === status.lastAdded)[0] || {}).name + ' từ điện thoại.'; messageKind = 'go'; lastKey = '';
+                }
+                seenSeq = status.seq;
+            }
         }
         const hhmm = (ms) => { const d = new Date(ms); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); };
-        const items = () => Wx.listFor(region);
+        const items = () => Wx.listFor(region, custom);
+        const pagesOf = () => Math.max(1, Math.ceil(items().length / PER_PAGE));
 
         const acts = {
             select: (i) => { sel = i; repaint(); },
@@ -61,36 +73,52 @@ mgu.run({
             togglePlace: (k) => {
                 const i = keys.indexOf(k);
                 if (i >= 0) { if (keys.length > 1) keys.splice(i, 1); else { message = 'Cần giữ ít nhất một địa điểm.'; messageKind = 'warn'; } }
-                else if (keys.length < Wx.MAX_PLACES) keys.push(k);
+                else if (keys.length < Wx.MAX_PLACES) { keys.push(k); message = ''; }
                 else { message = 'Tối đa ' + Wx.MAX_PLACES + ' địa điểm: bỏ bớt một nơi trước.'; messageKind = 'warn'; }
                 repaint();
             },
             region: (r) => { region = r; page = 0; repaint(); },
-            toggleFx: () => { fx = !fx; try { fs.writeFileSync(fxFile, JSON.stringify({ on: fx })); } catch (e) { /* ok */ } repaint(); },
-            page: (d) => { const pages = Math.max(1, Math.ceil(items().length / PER_PAGE)); page = (page + d + pages) % pages; repaint(); },
+            page: (d) => { const pages = pagesOf(); page = (page + d + pages) % pages; repaint(); },
             refresh: () => { refreshAt = Date.now(); send('refresh'); repaint(); },
+            openSettings: () => { mode = 'settings'; message = ''; repaint(); },
+            closeSettings: () => { mode = 'main'; repaint(); },
+            toggleTile: (id) => {
+                const i = set.tiles.indexOf(id);
+                if (i >= 0) { set.tiles.splice(i, 1); message = ''; }
+                else if (set.tiles.length < Wx.MAX_TILES) { set.tiles.push(id); set = Wx.settingsOf(set); message = ''; }
+                else { message = 'Tối đa ' + Wx.MAX_TILES + ' ô: tắt bớt một ô trước.'; messageKind = 'warn'; }
+                saveSet(); repaint();
+            },
+            setBlock: (b) => { set.block = b; saveSet(); repaint(); },
+            toggle: (k) => { set[k] = !set[k]; saveSet(); repaint(); },
+            setUnit: (u) => { set.unit = u; saveSet(); repaint(); },
+            resetSettings: () => { set = Wx.settingsOf(null); saveSet(); message = 'Đã về mặc định.'; messageKind = 'go'; repaint(); },
+            drive: (on) => { drive = on; repaint(); },
+            openPhone: () => { mode = 'phone'; message = ''; repaint(); },
+            closePhone: () => { mode = 'pick'; region = 'my'; page = 0; repaint(); },
+            nextIp: () => { send('next_ip'); message = 'Đã đổi sang địa chỉ khác của xe. Quét lại mã QR.'; messageKind = 'dim'; repaint(); },
         };
 
         function model() {
             readStatus(Date.now());
-            const list = Wx.placesFor(keys), s = status;
+            const list = Wx.placesFor(keys, custom), s = status;
             if (sel >= list.length) sel = 0;
             const d = s && s.places ? s.places.filter((p) => p.key === list[sel].key)[0] : null;
-            const pages = Math.max(1, Math.ceil(items().length / PER_PAGE));
             const busy = !!(s && s.busy) || Date.now() - refreshAt < 2500;
             return {
-                mode, state: !s ? 'down' : 'ok', places: list, sel, data: d || null, busy,
+                mode, drive, state: !s ? 'down' : 'ok', places: list, sel, data: d || null, busy, set,
                 updated: d && d.at ? hhmm(d.at) + (d.ok ? '' : ' (cũ)') : '',
-                pick: { keys, page, pages, region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
-                message, messageKind, fx, time: (Date.now() - t0) / 1000,
+                pick: { keys, page, pages: pagesOf(), region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
+                phone: { url: s && s.url, pin: s && s.pin, host: s && s.host, count: custom.length },
+                message, messageKind, time: (Date.now() - t0) / 1000,
             };
         }
         const render = async () => {
             const m = model(), vis = ui.isVisible('MAIN');
             if (!vis && shown) return;                                // nobody looks: no drawing
-            const animated = m.fx && m.mode === 'main' && m.data && m.data.current;
+            const animated = m.set.fx && (m.mode === 'main') && m.data && m.data.current;
             const frame = animated ? Math.floor(m.time * FPS) : 0;
-            const key = JSON.stringify([frame, m.fx, m.pick.region, m.mode, m.state, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick.keys, m.pick.page, m.message, vis]);
+            const key = JSON.stringify([frame, m.mode, m.drive, m.set, m.state, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick, m.phone, m.message, vis]);
             if (key === lastKey && shown) return;
             lastKey = key; shown = true;
             const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);

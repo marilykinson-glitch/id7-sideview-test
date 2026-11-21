@@ -25,9 +25,18 @@ Xe không có Connected Drive thì không đổi được ảnh đại diện c�
 
 **Đã kiểm tra gì:** trên máy, với bản sao các gói thật của một đầu G20 trên bench (ảnh đại diện 3 gói, bìa Bluetooth, người gọi, hình xe G20 to và nhỏ, ảnh và video khởi động 1440x540; video làm ra được ffmpeg giải mã đúng ảnh): đọc, ghi lại giống từng byte, đổi hình, khôi phục về đúng file gốc. Trên xe: một gói ảnh đại diện ghi tay vẫn còn nguyên sau khi khởi động lại (xe không tự khôi phục). **Chưa kiểm tra trên xe:** app và trợ thủ chạy thật, bộ giải mã của đầu xe có phát được video đứng hình không (nếu không: khôi phục từ app), điện thoại nối vào cổng 8137 (tường lửa), chiều ảnh khi hiện, hình chiếc xe 3D (shader đã sửa biên dịch được và vẽ đúng trong một trình biên dịch GLSL thật trên máy, nhưng chưa biết đầu xe có dùng bản shader đã biên dịch sẵn không, tấm bóng đổ có được vẽ ở mọi màn hình không), các gói hình mặc định ngoài hai gói kể trên (cùng tên hình và cỡ thì dùng, khác thì bỏ qua).
 
-## Thời tiết 0.1.0 (app thứ ba trong nguồn này)
+## Thời tiết 0.4.0 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.3.0)
 
-Dự báo thời tiết ngay trên màn hình xe, theo kiểu ứng dụng Thời tiết của BMW Connected Drive (xe không cần Connected Drive): nhiệt độ, biểu tượng, gió, độ ẩm, khả năng mưa, UV, dự báo theo giờ và 5 ngày tới; chọn tối đa 6 địa điểm (vị trí hiện tại, 46 thành phố trong nước lọc theo vùng, 18 thành phố nước ngoài). Trợ thủ `thoi-tiet` lấy dữ liệu từ Open-Meteo (không cần khoá) 20 phút một lần, app chỉ vẽ. Cần xe có mạng. "Vị trí hiện tại" lấy theo địa chỉ mạng của xe (ipwho.is) nên chỉ gần đúng thành phố. Open-Meteo miễn phí chỉ dành cho dùng phi thương mại: lắp cho khách nên cân nhắc.
+Dự báo thời tiết trên màn hình xe, theo kiểu ứng dụng Thời tiết của BMW Connected Drive (xe không cần Connected Drive) nhưng nhiều hơn:
+
+- Nhiệt độ, biểu tượng, gió (có mũi tên hướng), độ ẩm, khả năng mưa, UV, chất lượng không khí (AQI), tầm nhìn, áp suất, gió giật, giờ mặt trời mọc/lặn: **nút Cài đặt** để bật tắt từng ô (tối đa 8), đổi °C/°F.
+- Khối giữa bên phải chọn được: theo giờ (biểu tượng), biểu đồ nhiệt độ 24 giờ, cung mặt trời, hoặc ẩn; 5 ngày tới bật tắt được.
+- Hiệu ứng chuyển động theo thời tiết (nắng, mây, mưa, giông có chớp, tuyết, sương, gió, sao đêm), tắt được trong Cài đặt.
+- Lời nhắc cho người lái ("Mưa lúc 16:00", "Đường trơn", "Sương mù: bật đèn sương", "Bụi mịn cao"…).
+- Chế độ **Lái xe**: chữ rất to, chỉ giữ những gì cần liếc nhìn.
+- Địa điểm: tối đa 6; vị trí hiện tại (theo địa chỉ mạng của xe, chỉ gần đúng thành phố), 46 thành phố trong nước lọc theo vùng, 18 thành phố nước ngoài, và **tìm bằng điện thoại**: quét mã QR, gõ tên bất kỳ nơi nào trên thế giới (trang web do trợ thủ mở ở cổng 8138, có mã PIN như MGU Studio), bấm Thêm là hiện ngay trên xe.
+
+Dữ liệu từ Open-Meteo (không cần khoá), 20 phút lấy một lần. Cần xe có mạng. Open-Meteo miễn phí chỉ dành cho dùng phi thương mại: lắp cho khách nên cân nhắc.
 
 ## Mới trong 0.7.11 (trợ thủ 0.7.9)
 

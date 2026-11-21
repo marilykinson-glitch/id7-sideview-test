@@ -7,6 +7,7 @@
  *   the app  -> <its folder>/data/command.json   { id, cmd: 'places' | 'refresh', places: [{ key, name, lat, lon, here }] }
  *   this     -> /run/thoi-tiet/weather.json      { at, places: [{ key, name, ok, at, error, current, hourly, daily }] }
  *   (kept)   -> /var/opt/thoi-tiet/places.json   the last list, so that a start without the app still has places
+ *   the phone -> http://<head unit>:8138/?pin=NNNN  a page to search any place in the world and add it (custom.json keeps them)
  *
  * Forecasts come from Open-Meteo (no key). A place with `here: true` is placed by the address the head unit reaches
  * the internet from (ipwho.is): near the right city, not at the car's own position.
@@ -15,6 +16,11 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const os = require('os');
+const url = require('url');
+const cp = require('child_process');
+const httpMod = require('http');
+const crypto = require('crypto');
 
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
@@ -27,6 +33,12 @@ const CFG = {
     host: env('TT_HOST', 'api.open-meteo.com'),
     ipHost: env('TT_IP_HOST', 'ipwho.is'),
     airHost: env('TT_AIR_HOST', 'air-quality-api.open-meteo.com'),
+    geoHost: env('TT_GEO_HOST', 'geocoding-api.open-meteo.com'),
+    port: Number(env('TT_PORT', 8138)),
+    nft: env('TT_NFT', 'nft'),
+    route: env('TT_ROUTE', '/proc/net/route'),
+    ips: env('TT_IPS', ''),
+    noServer: env('TT_NO_SERVER', '') === '1',
     base: env('TT_BASE', ''),                                 // tests: http://127.0.0.1:port (no TLS)
 };
 const APP = /^thoi_tiet\d*$/;
@@ -55,7 +67,7 @@ function getJson(host, pathAndQuery, strict) {
     return new Promise((resolve, reject) => {
         let done = false;
         const fin = (err, v) => { if (done) return; done = true; err ? reject(err) : resolve(v); };
-        const http = CFG.base ? require('http') : https;
+        const http = CFG.base ? httpMod : https;
         const opts = CFG.base
             ? { host: '127.0.0.1', port: Number(CFG.base.replace(/^.*:/, '')), path: pathAndQuery, method: 'GET', headers: { Host: host } }
             : { host, path: pathAndQuery, method: 'GET', headers: { 'User-Agent': 'thoi-tiet/1', Accept: 'application/json' }, rejectUnauthorized: strict !== false };
@@ -74,7 +86,7 @@ function getJson(host, pathAndQuery, strict) {
     });
 }
 
-const FORECAST = '/v1/forecast?current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl'
+const FORECAST = '/v1/forecast?current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,visibility'
     + '&hourly=temperature_2m,precipitation_probability,weather_code,is_day'
     + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset'
     + '&timezone=auto&forecast_days=6&wind_speed_unit=kmh';
@@ -99,7 +111,7 @@ function parse(j) {
     const c = j.current;
     const current = {
         t: num(c.temperature_2m), feels: num(c.apparent_temperature), humidity: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m),
-        windDir: num(c.wind_direction_10m), code: num(c.weather_code), day: c.is_day === 1, rain: num(c.precipitation), pressure: num(c.pressure_msl), time: String(c.time || ''),
+        windDir: num(c.wind_direction_10m), gust: num(c.wind_gusts_10m), vis: num(c.visibility), code: num(c.weather_code), day: c.is_day === 1, rain: num(c.precipitation), pressure: num(c.pressure_msl), time: String(c.time || ''),
     };
     const h = j.hourly, hourly = [];
     const now = String(c.time || '').slice(0, 13);                           // YYYY-MM-DDTHH
@@ -120,7 +132,7 @@ function parse(j) {
 }
 
 /* ---------------- state ---------------- */
-const S = { places: [], data: {}, ipPlace: null, ipAt: 0, startedAt: Date.now(), lastCmd: null, busy: false };
+const S = { places: [], custom: [], seq: 0, lastAdded: '', pin: '', port: 0, ipIndex: 0, data: {}, ipPlace: null, ipAt: 0, startedAt: Date.now(), lastCmd: null, busy: false };
 const clean = (p) => {
     if (!p || typeof p !== 'object') return null;
     const key = String(p.key || '').slice(0, 40), name = String(p.name || '').slice(0, 60);
@@ -175,9 +187,167 @@ function refreshAll() {
 
 function writeStatus() {
     const keys = S.places.map((p) => p.key);
-    const st = { at: Date.now(), version: VERSION, busy: S.busy, places: S.places.map((p) => S.data[p.key] || { key: p.key, name: p.name, ok: false, at: 0, error: 'chưa có dữ liệu', current: null, hourly: [], daily: [], here: p.here }), keys };
+    const ips = addresses();
+    const st = { at: Date.now(), version: VERSION, busy: S.busy, pin: S.pin, port: S.port, url: ips.length && S.port ? 'http://' + ips[S.ipIndex % ips.length] + ':' + S.port + '/?pin=' + S.pin : '', host: ips.length && S.port ? ips[S.ipIndex % ips.length] + ':' + S.port : '', custom: S.custom, seq: S.seq, lastAdded: S.lastAdded, places: S.places.map((p) => S.data[p.key] || { key: p.key, name: p.name, ok: false, at: 0, error: 'chưa có dữ liệu', current: null, hourly: [], daily: [], here: p.here }), keys };
     try { writeAtomic(path.join(CFG.run, 'weather.json'), JSON.stringify(st)); } catch (e) { /* no RAM folder (tests) */ }
     return st;
+}
+
+/* ---------------- places the owner searched for on the phone ---------------- */
+const MAX_CUSTOM = 30;
+const VI = 'àáâãèéêìíòóôõùúýăđĩũơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐĨŨƠƯẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼẾỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỴỶỸ';
+/** A name the car's font can draw: Vietnamese letters stay, other accents go (ü -> u), what is left outside plain ASCII goes. */
+function plain(str) {
+    let out = '';
+    for (const ch of String(str || '').normalize('NFC')) {
+        if (VI.indexOf(ch) >= 0 || (ch >= ' ' && ch <= '~')) out += ch;
+        else out += ch.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7e]/g, '');
+    }
+    return out.replace(/\s+/g, ' ').trim();
+}
+const customKey = (lat, lon) => 'c' + Math.round(lat * 100) + '_' + Math.round(lon * 100);
+function loadCustom() { const c = readJson(path.join(CFG.state, 'custom.json')); S.custom = Array.isArray(c) ? c.map(cleanCustom).filter(Boolean).slice(0, MAX_CUSTOM) : []; }
+function cleanCustom(p) {
+    if (!p) return null;
+    const lat = Number(p.lat), lon = Number(p.lon), name = plain(p.name).slice(0, 40);
+    if (!name || !(isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return null;
+    return { key: customKey(lat, lon), name, lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000 };
+}
+function saveCustom() { try { writeAtomic(path.join(CFG.state, 'custom.json'), JSON.stringify(S.custom)); } catch (e) { /* tests */ } }
+function addCustom(p) {
+    const c = cleanCustom(p);
+    if (!c) { const e = new Error('Địa điểm không hợp lệ.'); e.bad = true; throw e; }
+    if (!S.custom.some((x) => x.key === c.key)) {
+        if (S.custom.length >= MAX_CUSTOM) { const e = new Error('Đã có ' + MAX_CUSTOM + ' địa điểm: xoá bớt trước.'); e.bad = true; throw e; }
+        S.custom.push(c); saveCustom();
+    }
+    S.seq++; S.lastAdded = c.key; writeStatus();
+    return c;
+}
+function removeCustom(key) { S.custom = S.custom.filter((x) => x.key !== key); saveCustom(); S.seq++; writeStatus(); }
+
+/** Search a place by name (Open-Meteo's geocoding): up to 8 answers, names the car can draw. */
+async function search(q) {
+    q = String(q || '').trim().slice(0, 60);
+    if (q.length < 2) return [];
+    const j = await getJson(CFG.geoHost, '/v1/search?count=8&language=vi&format=json&name=' + encodeURIComponent(q));
+    return (Array.isArray(j && j.results) ? j.results : []).map((r) => {
+        const where = [r.admin1, r.country].filter(Boolean).map(plain).filter((v, i, a) => v && a.indexOf(v) === i && v !== plain(r.name)).join(', ');
+        return { name: plain(r.name), where, lat: r.latitude, lon: r.longitude };
+    }).filter((r) => r.name && isFinite(r.lat) && isFinite(r.lon));
+}
+
+/* ---------------- the phone's page ---------------- */
+const newPin = () => String(1000 + crypto.randomBytes(2).readUInt16BE(0) % 9000);
+const fails = {};
+function json(res, code, obj) {
+    const b = Buffer.from(JSON.stringify(obj));
+    res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': b.length, 'Cache-Control': 'no-store' });
+    res.end(b);
+}
+function pinOk(req, q, res) {
+    const ip = req.socket.remoteAddress || '?', f = fails[ip];
+    if (f && f.n >= 5 && Date.now() - f.at < 60000) { json(res, 429, { ok: false, error: 'Nhập sai quá nhiều lần. Chờ 1 phút rồi thử lại.' }); return false; }
+    const given = String(q.pin || req.headers['x-pin'] || '');
+    if (given === S.pin) { delete fails[ip]; return true; }
+    fails[ip] = { n: (f && Date.now() - f.at < 60000 ? f.n : 0) + 1, at: Date.now() };
+    json(res, 401, { ok: false, error: given ? 'Mã PIN chưa đúng.' : 'Cần mã PIN.' });
+    return false;
+}
+function readBody(req, max) {
+    return new Promise((resolve, reject) => {
+        const parts = []; let len = 0, over = false;
+        req.on('data', (c) => { if (over) return; len += c.length; if (len > max) { over = true; reject(new Error('quá lớn')); } else parts.push(c); });
+        req.on('end', () => { if (!over) resolve(Buffer.concat(parts, len)); });
+        req.on('error', reject);
+    });
+}
+let pageHtml = null;
+async function handle(req, res) {
+    const u = url.parse(req.url, true), q = u.query, p = u.pathname;
+    if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
+        if (!pageHtml) pageHtml = fs.readFileSync(path.join(__dirname, 'page.html'));
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(pageHtml);
+    }
+    if (p === '/favicon.ico') { res.writeHead(204); return res.end(); }
+    if (p.indexOf('/api/') !== 0) { res.writeHead(404); return res.end(); }
+    if (!pinOk(req, q, res)) return;
+    try {
+        if (req.method === 'GET' && p === '/api/state') return json(res, 200, { ok: true, version: VERSION, custom: S.custom, max: MAX_CUSTOM });
+        if (req.method === 'GET' && p === '/api/search') return json(res, 200, { ok: true, results: await search(q.q) });
+        if (req.method === 'POST' && p === '/api/add') { const b = JSON.parse((await readBody(req, 4096)).toString('utf8') || '{}'); const c = addCustom(b); return json(res, 200, { ok: true, added: c, custom: S.custom }); }
+        if (req.method === 'POST' && p === '/api/remove') { const b = JSON.parse((await readBody(req, 4096)).toString('utf8') || '{}'); removeCustom(String(b.key || '')); return json(res, 200, { ok: true, custom: S.custom }); }
+    } catch (e) {
+        if (e.bad) return json(res, 400, { ok: false, error: e.message });
+        log(p + ' failed: ' + e.message);
+        return json(res, 502, { ok: false, error: 'Không tìm được lúc này (xe có mạng không?): ' + e.message });
+    }
+    res.writeHead(404); res.end();
+}
+
+/** The head unit's addresses, the likeliest for a phone first (the default route's, then Wi-Fi's, then private ranges). */
+let lastIfaces = {};
+function addresses() {
+    if (CFG.ips) return CFG.ips.split(',');
+    let via = '';
+    try {
+        const rows = fs.readFileSync(CFG.route, 'utf8').split('\n').slice(1).map((l) => l.trim().split(/\s+/)).filter((c) => c.length > 7 && c[1] === '00000000' && c[7] === '00000000');
+        rows.sort((x, y) => Number(x[6]) - Number(y[6])); via = rows.length ? rows[0][0] : '';
+    } catch (e) { via = ''; }
+    const out = [], nets = os.networkInterfaces();
+    Object.keys(nets).forEach((name) => (nets[name] || []).forEach((a) => {
+        if (a.internal || (a.family !== 'IPv4' && a.family !== 4) || /^169\.254\./.test(a.address)) return;
+        const range = /^192\.168\./.test(a.address) ? 0 : /^172\.(1[6-9]|2\d|3[01])\./.test(a.address) ? 1 : /^10\./.test(a.address) ? 2 : 3;
+        out.push({ ip: a.address, iface: name, rank: (name === via ? 0 : /^(wl|ml|uap|ap|wifi)/i.test(name) ? 10 : 20) + range });
+    }));
+    lastIfaces = {}; out.forEach((a) => { lastIfaces[a.ip] = a.iface; });
+    return out.sort((a, b) => a.rank - b.rank).map((a) => a.ip);
+}
+
+/* The head unit's firewall (nftables: table ip filter, chain input) drops what it does not accept: this tool keeps one rule
+ * of its own (comment "thoi-tiet") that lets the phone reach its port, and takes it away when it stops (`fwclose`). */
+const FW_TAG = 'thoi-tiet';
+function execNft(args) {
+    return new Promise((resolve, reject) => cp.execFile(CFG.nft, args, { timeout: 15000, maxBuffer: 4 << 20 }, (err, out, stderr) => {
+        if (!err) return resolve(out);
+        const e = new Error('nft ' + args.join(' ') + ': ' + (String(stderr || '').trim() || err.message));
+        e.absent = err.code === 'ENOENT' || /No such file or directory/.test(String(stderr));
+        reject(e);
+    }));
+}
+const fwRules = (out) => out.split('\n').filter((l) => /# handle \d+\s*$/.test(l) && !/^\s*(chain|table)\b/.test(l));
+const fwMine = (rules) => rules.filter((l) => l.indexOf('comment "' + FW_TAG + '"') >= 0);
+async function fwClose(nft) {
+    nft = nft || execNft;
+    let out;
+    try { out = await nft(['-a', 'list', 'chain', 'ip', 'filter', 'input']); } catch (e) { if (e.absent) return 'absent'; throw e; }
+    const mine = fwMine(fwRules(out));
+    for (let i = 0; i < mine.length; i++) await nft(['delete', 'rule', 'ip', 'filter', 'input', 'handle', /# handle (\d+)\s*$/.exec(mine[i])[1]]);
+    return 'closed';
+}
+/** Exactly one rule of this tool in ip filter input (anywhere in it: another tool may have put its own above): 'kept' | 'added' | 'absent'. */
+async function fwEnsure(port, iface, nft) {
+    nft = nft || execNft;
+    let out;
+    try { out = await nft(['-a', 'list', 'chain', 'ip', 'filter', 'input']); } catch (e) { if (e.absent) return 'absent'; throw e; }
+    const mine = fwMine(fwRules(out));
+    const want = (iface ? ['iifname', '"' + iface + '"'] : []).concat(['tcp', 'dport', String(port), 'accept', 'comment', '"' + FW_TAG + '"']);
+    const same = (l) => l.indexOf('dport ' + port + ' ') >= 0 && (iface ? l.indexOf('iifname "' + iface + '"') >= 0 : l.indexOf('iifname') < 0);
+    if (mine.length === 1 && same(mine[0])) return 'kept';
+    await fwClose(nft);
+    await nft(['insert', 'rule', 'ip', 'filter', 'input'].concat(want));
+    return 'added';
+}
+let fwLast = '', fwBusy = false;
+function fwCheck() {
+    if (fwBusy || !S.port) return Promise.resolve();
+    const ips = addresses(), ip = ips.length ? ips[S.ipIndex % ips.length] : '';
+    fwBusy = true;
+    return fwEnsure(S.port, ip ? (lastIfaces[ip] || '') : '').then((r) => {
+        if (r !== 'kept' && r !== fwLast) log(r === 'added' ? 'firewall: port ' + S.port + ' open on ' + (lastIfaces[ip] || 'every interface') : 'firewall: no ip filter input chain, nothing to open');
+        if (r !== 'kept') fwLast = r;
+    }, (e) => { if (e.message !== fwLast) log('firewall: ' + e.message); fwLast = e.message; }).then(() => { fwBusy = false; });
 }
 
 /* ---------------- the app ---------------- */
@@ -202,17 +372,28 @@ function pollCommands() {
     if (c.id === S.lastCmd) return;
     const first = S.lastCmd === null; S.lastCmd = c.id;
     log('command ' + c.cmd);
-    if (c.cmd === 'places' && setPlaces(c.places)) { for (const k of Object.keys(S.data)) if (!S.places.some((p) => p.key === k)) delete S.data[k]; refreshAll(); }
+    if (c.cmd === 'new_pin') { S.pin = newPin(); writeStatus(); }
+    else if (c.cmd === 'next_ip') { S.ipIndex++; fwLast = ''; fwCheck(); writeStatus(); }
+    else if (c.cmd === 'places' && setPlaces(c.places)) { for (const k of Object.keys(S.data)) if (!S.places.some((p) => p.key === k)) delete S.data[k]; refreshAll(); }
     else if (c.cmd === 'refresh' && !first) refreshAll();
 }
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
+    S.pin = newPin(); loadCustom();
     const saved = readJson(path.join(CFG.state, 'places.json'));
     if (saved) setPlaces(saved);
     writeStatus();
-    log('thoi-tiet ' + VERSION + ' started, ' + S.places.length + ' places');
+    log('thoi-tiet ' + VERSION + ' started, ' + S.places.length + ' places, ' + S.custom.length + ' own');
+    if (!CFG.noServer) {
+        const server = httpMod.createServer((req, res) => handle(req, res).catch((e) => { log('request failed: ' + e.message); try { json(res, 500, { ok: false, error: e.message }); } catch (e2) { /* gone */ } }));
+        let port = CFG.port;
+        server.on('error', (e) => { if (e.code === 'EADDRINUSE' && port < CFG.port + 9) { port++; server.listen(port, '0.0.0.0'); } else log('server: ' + e.message); });
+        server.on('listening', () => { S.port = server.address().port; log('page on port ' + S.port + ', PIN ' + S.pin); writeStatus(); fwCheck(); });
+        server.listen(port, '0.0.0.0');
+        S.server = server;
+    }
     const tick = () => {
         try { pollCommands(); } catch (e) { log('poll: ' + e.message); }
         const stale = !S.fetchedAt || Date.now() - S.fetchedAt > (S.places.some((p) => !(S.data[p.key] && S.data[p.key].ok)) ? CFG.retryMs : CFG.everyMs);
@@ -224,8 +405,9 @@ function start() {
 
 if (require.main === module) {
     const cmd = process.argv[2] || 'run';
-    if (cmd === 'status') process.stdout.write(JSON.stringify(readJson(path.join(CFG.run, 'weather.json')) || {}, null, 2) + '\n');
+    if (cmd === 'fwclose') fwClose().then((r) => process.stdout.write(r + '\n'), (e) => { process.stdout.write(e.message + '\n'); });
+    else if (cmd === 'status') process.stdout.write(JSON.stringify(readJson(path.join(CFG.run, 'weather.json')) || {}, null, 2) + '\n');
     else start();
 }
 
-module.exports = { CFG, S, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };
+module.exports = { CFG, S, handle, search, plain, addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };

@@ -33,8 +33,11 @@ const DOW = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm',
 const COMPASS = ['Bắc', 'Đông Bắc', 'Đông', 'Đông Nam', 'Nam', 'Tây Nam', 'Tây', 'Tây Bắc'];
 const compass = (deg) => (deg === null || deg === undefined || !isFinite(deg) ? '' : COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8]);
 
-/** A temperature as the screen writes it: whole degrees, "–" when there is none. */
-const deg = (v) => (v === null || v === undefined || !isFinite(v) ? '–' : Math.round(v) + '°');
+let unit = 'C';
+const setUnit = (u) => { unit = u === 'F' ? 'F' : 'C'; };
+const getUnit = () => unit;
+/** A temperature as the screen writes it: whole degrees (°C or °F as chosen), "–" when there is none. */
+const deg = (v) => (v === null || v === undefined || !isFinite(v) ? '–' : Math.round(unit === 'F' ? v * 9 / 5 + 32 : v) + '°');
 const pct = (v) => (v === null || v === undefined || !isFinite(v) ? '–' : Math.round(v) + '%');
 const kmh = (v) => (v === null || v === undefined || !isFinite(v) ? '–' : Math.round(v) + ' km/h');
 const uvText = (v) => (v === null || v === undefined || !isFinite(v) ? '–' : v < 3 ? 'Thấp' : v < 6 ? 'Vừa' : v < 8 ? 'Cao' : v < 11 ? 'Rất cao' : 'Cực cao');
@@ -73,9 +76,14 @@ const RAW = [
 ];
 const CITIES = RAW.map((c) => ({ key: c[0], name: c[1], lat: c[2], lon: c[3], region: c[4] }));
 /** The filters of the list of places. */
-const REGIONS = [['all', 'Tất cả'], ['bac', 'Miền Bắc'], ['trung', 'Miền Trung'], ['tn', 'Tây Nguyên'], ['nam', 'Miền Nam'], ['nn', 'Nước ngoài']];
-/** The places of one filter ('all' also has the place the car is at, first). */
-function listFor(region) { return region === 'all' || !region ? [Object.assign({ region: 'all' }, { key: 'here', name: 'Vị trí hiện tại' })].concat(CITIES) : CITIES.filter((c) => c.region === region); }
+const REGIONS = [['all', 'Tất cả'], ['bac', 'Miền Bắc'], ['trung', 'Miền Trung'], ['tn', 'Tây Nguyên'], ['nam', 'Miền Nam'], ['nn', 'Nước ngoài'], ['my', 'Của tôi']];
+/** The places of one filter ('all' also has the place the car is at, first, and the ones added from the phone last; 'my' = those). */
+function listFor(region, custom) {
+    const mine = (custom || []).map((c) => Object.assign({}, c, { region: 'my' }));
+    if (region === 'my') return mine;
+    if (region === 'all' || !region) return [{ key: 'here', name: 'Vị trí hiện tại', region: 'all' }].concat(CITIES, mine);
+    return CITIES.filter((c) => c.region === region);
+}
 
 /** A short word for the driver, or null: what the weather means for the road, else when the rain comes. */
 function tip(cur, today, hourly, air) {
@@ -101,14 +109,60 @@ const DEFAULT_KEYS = ['here', 'hanoi', 'hcm', 'danang'];
 const MAX_PLACES = 6;
 
 /** The places for a list of keys, 'here' first if present; unknown keys are dropped. */
-function placesFor(keys) {
+function placesFor(keys, custom) {
     const out = [];
     (keys || []).forEach((k) => {
-        const p = k === 'here' ? HERE : CITIES.filter((c) => c.key === k)[0];
+        const p = k === 'here' ? HERE : CITIES.filter((c) => c.key === k)[0] || (custom || []).filter((c) => c.key === k)[0];
         if (p && !out.some((x) => x.key === p.key)) out.push(Object.assign({}, p));
     });
-    if (!out.length) return placesFor(DEFAULT_KEYS);
+    if (!out.length) return placesFor(DEFAULT_KEYS, custom);
     return out.slice(0, MAX_PLACES);
 }
 
-module.exports = { describe, DOW, compass, deg, pct, kmh, uvText, aqiBand, tip, REGIONS, listFor, CITIES, HERE, DEFAULT_KEYS, MAX_PLACES, placesFor };
+/** The figures that can be shown in the small tiles, in the order of the settings. */
+const TILES = [['wind', 'Gió'], ['gust', 'Gió giật'], ['humidity', 'Độ ẩm'], ['rain', 'Mưa'], ['uv', 'Chỉ số UV'], ['aqi', 'Không khí (AQI)'], ['vis', 'Tầm nhìn'], ['pressure', 'Áp suất'], ['sun', 'Mặt trời']];
+/** What the middle block on the right shows: the next hours as icons, as a temperature curve, the sun's arc, or nothing. */
+const BLOCKS = [['icons', 'Theo giờ'], ['chart', 'Biểu đồ'], ['sun', 'Mặt trời'], ['off', 'Ẩn']];
+const DEFAULT_SETTINGS = { tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'icons', days: true, tips: true, fx: true, unit: 'C' };
+const MAX_TILES = 8;
+/** Settings as stored (anything may be missing or wrong) -> a complete, valid set. */
+function settingsOf(o) {
+    o = o && typeof o === 'object' ? o : {};
+    const ids = TILES.map((x) => x[0]);
+    const tiles = Array.isArray(o.tiles) ? ids.filter((k) => o.tiles.indexOf(k) >= 0).slice(0, MAX_TILES) : DEFAULT_SETTINGS.tiles.slice();
+    const bool = (v, d) => (typeof v === 'boolean' ? v : d);
+    return { tiles, block: BLOCKS.some((b) => b[0] === o.block) ? o.block : DEFAULT_SETTINGS.block, days: bool(o.days, true), tips: bool(o.tips, true), fx: bool(o.fx, true), unit: o.unit === 'F' ? 'F' : 'C' };
+}
+const mins = (hhmm) => { const m = /^(\d\d):(\d\d)/.exec(String(hhmm || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+/** The sun today: { rise, set (minutes of the day), now, p: 0..1 while it is up (else null), left: minutes of light left (0 when down) }. */
+function sunDay(curTime, today) {
+    const rise = mins(today && today.sunrise), set = mins(today && today.sunset), now = mins(String(curTime || '').slice(11, 16));
+    if (rise === null || set === null || now === null || set <= rise) return null;
+    const up = now >= rise && now <= set;
+    return { rise, set, now, p: up ? (now - rise) / (set - rise) : null, left: up ? set - now : 0 };
+}
+const hm = (m) => (m === null ? '–' : ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2));
+/** One tile: { title, value, sub, bar } (bar: a colour for an accent under the value) from what the forecast knows. */
+function tileInfo(id, cur, today, daily, air) {
+    const f = (v) => v !== null && v !== undefined && isFinite(v);
+    if (id === 'wind') return { title: 'Gió km/h', value: f(cur.wind) ? String(Math.round(cur.wind)) : '–', sub: compass(cur.windDir) };
+    if (id === 'gust') return { title: 'Gió giật', value: f(cur.gust) ? String(Math.round(cur.gust)) : '–', sub: 'km/h' };
+    if (id === 'humidity') return { title: 'Độ ẩm', value: pct(cur.humidity), sub: '' };
+    if (id === 'rain') return { title: 'Mưa', value: pct(today.pop), sub: cur.rain > 0 ? cur.rain + ' mm' : '' };
+    if (id === 'uv') return { title: 'UV', value: f(today.uv) ? String(Math.round(today.uv)) : '–', sub: uvText(today.uv) };
+    if (id === 'aqi') { const b = aqiBand(air && air.aqi); return { title: 'AQI', value: air ? String(Math.round(air.aqi)) : '–', sub: air ? b.text : 'chưa có', bar: air ? b.color : '' }; }
+    if (id === 'vis') return { title: 'Tầm nhìn', value: f(cur.vis) ? (cur.vis >= 10000 ? String(Math.round(cur.vis / 1000)) : (cur.vis / 1000).toFixed(1)) : '–', sub: 'km' };
+    if (id === 'pressure') return { title: 'Áp suất', value: f(cur.pressure) ? String(Math.round(cur.pressure)) : '–', sub: 'hPa' };
+    if (id === 'sun') {
+        const sd = sunDay(cur.time, today);
+        if (!sd) return { title: 'Mặt trời', value: '–', sub: '' };
+        if (sd.now < sd.rise) return { title: 'Mọc lúc', value: hm(sd.rise), sub: '' };
+        if (sd.now <= sd.set) return { title: 'Lặn lúc', value: hm(sd.set), sub: 'còn ' + Math.floor(sd.left / 60) + 'g' + ('0' + (sd.left % 60)).slice(-2) };
+        const nx = daily && daily[1] && mins(daily[1].sunrise);
+        return { title: 'Mọc lúc', value: nx === null || nx === undefined ? '–' : hm(nx), sub: 'ngày mai' };
+    }
+    return { title: '', value: '', sub: '' };
+}
+
+module.exports = {
+    setUnit, getUnit, TILES, BLOCKS, DEFAULT_SETTINGS, MAX_TILES, settingsOf, sunDay, hm, tileInfo, describe, DOW, compass, deg, pct, kmh, uvText, aqiBand, tip, REGIONS, listFor, CITIES, HERE, DEFAULT_KEYS, MAX_PLACES, placesFor };

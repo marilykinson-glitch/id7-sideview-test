@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thời tiết cho xe</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0d0f13;color:#e8ecf2;font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:18px 16px 40px}h1{font-size:22px;margin:6px 0 2px;letter-spacing:.5px}h2{font-size:13px;letter-spacing:1.5px;color:#8a93a3;margin:26px 0 8px;text-transform:uppercase}
+p{color:#8a93a3;margin:4px 0 14px}.row{display:flex;gap:8px}input{flex:1;font:inherit;color:inherit;background:#171a21;border:1px solid #2a2f3a;border-radius:12px;padding:13px 14px;outline:none}input:focus{border-color:#4da3ff}
+button{font:inherit;color:#0b1118;background:#81c4ff;border:0;border-radius:12px;padding:0 18px;font-weight:600;cursor:pointer}button.ghost{background:#1d212a;color:#e8ecf2;border:1px solid #2a2f3a;font-weight:500;padding:8px 12px;font-size:14px}
+ul{list-style:none;margin:0;padding:0}li{display:flex;align-items:center;gap:10px;background:#171a21;border:1px solid #232834;border-radius:12px;padding:11px 12px;margin-bottom:8px}li div{flex:1;min-width:0}li b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}li small{color:#8a93a3}
+#msg{min-height:22px;margin:10px 0 0;color:#8a93a3}#msg.ok{color:#2fd27a}#msg.err{color:#ff7a66}
+</style></head><body><main>
+<h1>Thời tiết cho xe</h1><p>Tìm một nơi bất kỳ trên thế giới, bấm để thêm vào app Thời tiết trên màn hình xe.</p>
+<div class="row"><input id="q" placeholder="Tên thành phố, huyện, địa danh…" autocomplete="off" enterkeyhint="search"><button id="go">Tìm</button></div>
+<div id="msg"></div>
+<h2>Kết quả</h2><ul id="res"></ul>
+<h2>Đã thêm</h2><ul id="mine"></ul>
+</main><script>
+var pin=new URLSearchParams(location.search).get('pin')||'';
+function $(i){return document.getElementById(i)}
+function say(t,k){var m=$('msg');m.textContent=t||'';m.className=k||''}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function api(path,body){
+  var o=body?{method:'POST',body:JSON.stringify(body)}:{};
+  return fetch('/api/'+path+(path.indexOf('?')<0?'?':'&')+'pin='+encodeURIComponent(pin),o).then(function(r){return r.json().then(function(j){if(!j.ok)throw new Error(j.error||'Lỗi');return j})})
+}
+function mine(list){
+  $('mine').innerHTML=list.length?list.map(function(p){return '<li><div><b>'+esc(p.name)+'</b><small>'+p.lat.toFixed(2)+', '+p.lon.toFixed(2)+'</small></div><button class="ghost" data-k="'+esc(p.key)+'">Xoá</button></li>'}).join(''):'<p>Chưa có nơi nào.</p>';
+}
+$('mine').onclick=function(e){var k=e.target.getAttribute&&e.target.getAttribute('data-k');if(!k)return;api('remove',{key:k}).then(function(j){mine(j.custom);say('Đã xoá.','ok')}).catch(function(x){say(x.message,'err')})};
+var found=[];
+$('res').onclick=function(e){var b=e.target.closest&&e.target.closest('li');if(!b)return;var p=found[+b.getAttribute('data-i')];if(!p)return;
+  api('add',{name:p.name,lat:p.lat,lon:p.lon}).then(function(j){mine(j.custom);say('Đã thêm '+j.added.name+'. Xem trên màn hình xe.','ok')}).catch(function(x){say(x.message,'err')})};
+function search(){var q=$('q').value.trim();if(q.length<2){say('Gõ ít nhất 2 chữ.','err');return}say('Đang tìm…');
+  api('search?q='+encodeURIComponent(q)).then(function(j){found=j.results;say(found.length?'':'Không thấy nơi nào tên đó.',found.length?'':'err');
+    $('res').innerHTML=found.map(function(p,i){return '<li data-i="'+i+'"><div><b>'+esc(p.name)+'</b><small>'+esc(p.where||'')+'</small></div><button class="ghost">Thêm</button></li>'}).join('')}).catch(function(x){say(x.message,'err')})}
+$('go').onclick=search;$('q').onkeydown=function(e){if(e.key==='Enter')search()};
+api('state').then(function(j){mine(j.custom)}).catch(function(x){say(x.message,'err')});
+</script></body></html>
