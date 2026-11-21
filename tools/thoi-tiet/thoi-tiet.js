@@ -39,6 +39,7 @@ const CFG = {
     route: env('TT_ROUTE', '/proc/net/route'),
     ips: env('TT_IPS', ''),
     noServer: env('TT_NO_SERVER', '') === '1',
+    dns: env('TT_DNS', ''),                                   // tests/overrides: extra name servers, comma separated
     base: env('TT_BASE', ''),                                 // tests: http://127.0.0.1:port (no TLS)
 };
 const APP = /^thoi_tiet\d*$/;
@@ -59,18 +60,64 @@ function writeAtomic(file, data) {
 }
 
 /* ---------------- fetching ---------------- */
+/* ---------------- names ----------------
+ * The head unit's own resolver is not always usable by a service running as root (getaddrinfo EAI_AGAIN while the phone's
+ * hotspot works). So when the system cannot find a name, ask name servers directly: the ones the system lists in its
+ * resolv.conf files, the default gateway (a phone's hotspot answers DNS itself), then public ones. */
+const dnsMod = require('dns');
+const nsCache = {};
+function nameServers() {
+    const out = [];
+    const add = (ip) => { if (/^\d+\.\d+\.\d+\.\d+$/.test(ip) && ip !== '0.0.0.0' && !/^127\./.test(ip) && out.indexOf(ip) < 0) out.push(ip); };
+    CFG.dns.split(',').forEach((x) => add(x.trim()));
+    ['/etc/resolv.conf', '/run/connman/resolv.conf', '/var/run/connman/resolv.conf', '/run/systemd/resolve/resolv.conf', '/run/dnsmasq/resolv.conf'].forEach((f) => {
+        try { fs.readFileSync(f, 'utf8').split('\n').forEach((l) => { const m = /^\s*nameserver\s+(\S+)/.exec(l); if (m) add(m[1]); }); } catch (e) { /* not there */ }
+    });
+    try {                                                           // the default gateway: 4 bytes of hex, least significant first
+        fs.readFileSync(CFG.route, 'utf8').split('\n').slice(1).map((l) => l.trim().split(/\s+/)).filter((c) => c.length > 7 && c[1] === '00000000').forEach((c) => {
+            const g = parseInt(c[2], 16); add([g & 255, (g >>> 8) & 255, (g >>> 16) & 255, (g >>> 24) & 255].join('.'));
+        });
+    } catch (e) { /* no route table */ }
+    ['1.1.1.1', '8.8.8.8', '9.9.9.9'].forEach(add);
+    return out;
+}
+/** An IPv4 address of `host` from the name servers above, tried one after the other; kept 10 minutes. */
+function resolveHost(host) {
+    const c = nsCache[host];
+    if (c && Date.now() - c.at < 600000) return Promise.resolve(c.ip);
+    const servers = nameServers();
+    return new Promise((resolve, reject) => {
+        let i = 0, last = null;
+        const next = () => {
+            if (i >= servers.length) return reject(last || new Error('no name server'));
+            const r = new dnsMod.Resolver(), srv = servers[i++];
+            let done = false;
+            const t = setTimeout(() => { if (done) return; done = true; last = new Error('DNS ' + srv + ': timeout'); next(); }, 3000);
+            try { r.setServers([srv]); } catch (e) { clearTimeout(t); last = e; return next(); }
+            r.resolve4(host, (err, ips) => {
+                if (done) return; done = true; clearTimeout(t);
+                if (err || !ips || !ips.length) { last = err || new Error('DNS ' + srv + ': no answer'); return next(); }
+                nsCache[host] = { ip: ips[0], at: Date.now() }; log('dns: ' + host + ' = ' + ips[0] + ' (asked ' + srv + ')'); resolve(ips[0]);
+            });
+        };
+        next();
+    });
+}
+
 /**
  * GET a JSON document. A certificate the head unit's old Node does not trust (it carries an old set of roots) is
  * tried again without the check: this is public weather data, nothing of the car's goes out in the request.
  */
-function getJson(host, pathAndQuery, strict) {
+function getJson(host, pathAndQuery, strict, ip) {
+    if (!ip && !CFG.base && nsCache[host] && Date.now() - nsCache[host].at < 600000) ip = nsCache[host].ip;      // the system could not find it before: do not wait for it again
     return new Promise((resolve, reject) => {
         let done = false;
         const fin = (err, v) => { if (done) return; done = true; err ? reject(err) : resolve(v); };
         const http = CFG.base ? httpMod : https;
         const opts = CFG.base
             ? { host: '127.0.0.1', port: Number(CFG.base.replace(/^.*:/, '')), path: pathAndQuery, method: 'GET', headers: { Host: host } }
-            : { host, path: pathAndQuery, method: 'GET', headers: { 'User-Agent': 'thoi-tiet/1', Accept: 'application/json' }, rejectUnauthorized: strict !== false };
+            : { host, path: pathAndQuery, method: 'GET', headers: { 'User-Agent': 'thoi-tiet/1', Accept: 'application/json', Host: host }, rejectUnauthorized: strict !== false };
+        if (ip && !CFG.base) { opts.host = ip; opts.servername = host; }
         const req = http.request(opts, (res) => {
             if (res.statusCode !== 200) { res.resume(); return fin(new Error('HTTP ' + res.statusCode)); }
             const chunks = []; let n = 0;
@@ -79,7 +126,8 @@ function getJson(host, pathAndQuery, strict) {
         });
         req.setTimeout(15000, () => { req.abort(); fin(new Error('timeout')); });
         req.on('error', (e) => {
-            if (strict !== false && !CFG.base && /certificate|CERT|self signed|issuer/i.test(String(e && (e.code || e.message)))) return getJson(host, pathAndQuery, false).then((v) => fin(null, v), (e2) => fin(e2));
+            if (strict !== false && !CFG.base && /certificate|CERT|self signed|issuer/i.test(String(e && (e.code || e.message)))) return getJson(host, pathAndQuery, false, ip).then((v) => fin(null, v), (e2) => fin(e2));
+            if (!ip && !CFG.base && /EAI_AGAIN|ENOTFOUND/.test(String(e && (e.code || e.message)))) return resolveHost(host).then((addr) => getJson(host, pathAndQuery, strict, addr)).then((v) => fin(null, v), (e2) => fin(new Error(String(e.code || e.message) + ' (và tra DNS trực tiếp cũng lỗi: ' + e2.message + ')')));
             fin(e);
         });
         req.end();
@@ -378,7 +426,7 @@ function pollCommands() {
     else if (c.cmd === 'refresh' && !first) refreshAll();
 }
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     S.pin = newPin(); loadCustom();
@@ -410,4 +458,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, handle, search, plain, addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };
+module.exports = { CFG, S, nameServers, resolveHost, handle, search, plain, addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };

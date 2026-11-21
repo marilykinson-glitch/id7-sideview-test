@@ -76,6 +76,10 @@ srv.listen(0, '127.0.0.1', async () => {
     fs.writeFileSync(path.join(root, 'data', 'command.json'), JSON.stringify({ id: 1, cmd: 'places', places: [{ key: 'hcm', name: 'HCM', lat: 10.7, lon: 106.7 }] }));
     T.pollCommands(); await T.refreshAll();
     assert.deepStrictEqual(T.S.places.map((q) => q.key), ['hcm']); assert.strictEqual(T.S.data.hcm.ok, true); ok('the app\'s command changes the places');
+    /* names: the servers asked when the system's resolver fails */
+    const rt = path.join(dir, 'route'); fs.writeFileSync(rt, 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\nwlan0\t00000000\t012BA8C0\t0003\t0\t0\t0\t00000000\n');
+    T.CFG.route = rt; T.CFG.dns = '10.1.1.1, 127.0.0.1, nonsense';
+    const ns = T.nameServers(); assert.strictEqual(ns[0], '10.1.1.1'); assert.ok(ns.indexOf('192.168.43.1') > 0); assert.ok(ns.indexOf('127.0.0.1') < 0 && ns.indexOf('nonsense') < 0); ['1.1.1.1', '8.8.8.8', '9.9.9.9'].forEach((x) => assert.ok(ns.indexOf(x) >= 0)); assert.strictEqual(new Set(ns).size, ns.length); ok('name servers: the gateway of a hotspot, then public ones');
     /* the phone's page */
     assert.strictEqual(T.plain('Düsseldorf'), 'Dusseldorf'); assert.strictEqual(T.plain('Hà Nội'), 'Hà Nội'); assert.strictEqual(T.plain('東京 Tokyo'), 'Tokyo'); assert.strictEqual(T.plain('São Paulo'), 'São Paulo'); assert.strictEqual(T.plain('Zürich'), 'Zurich'); ok('names the car can draw');
     const found = await T.search('dus'); assert.strictEqual(found.length, 1); assert.strictEqual(found[0].name, 'Dusseldorf'); assert.strictEqual(found[0].where, 'Nordrhein-Westfalen, Đức'); assert.deepStrictEqual(await T.search('d'), []); ok('search');
