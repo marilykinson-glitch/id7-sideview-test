@@ -52,6 +52,26 @@ function run(done, max) {
         });
     });
     if (!descs.length) add('không thấy thư mục rhmiDataStartWidget nào của xe');
+    // 1b. anywhere on the car: a folder named like a start widget, or a file named after the Drive Recorder (BMW's own widget)
+    const queue = (process.env.TT_OAP ? [] : ['/usr/lib', '/opt', '/var/opt', '/usr/share', '/etc', '/usr/local', '/srv', '/home']).map((p) => [p, 0]);
+    let qi = 0, hits = 0;
+    const wide = () => {
+        const until = Date.now() + 40;
+        while (qi < queue.length && Date.now() < until && hits < 8) {
+            const [d, depth] = queue[qi++];
+            ls(d).forEach((n) => {
+                const p = path.join(d, n);
+                if (/startwidget|DriveRecorder|OnlineApps/i.test(n) && hits < 8) {
+                    hits++; add((isDir(p) ? 'thư mục ' : 'tệp ') + p.slice(-70));
+                    if (isDir(p)) { const k = ls(p).slice(0, 6).join(' '); if (k) add('   chứa: ' + k.slice(0, 80)); }
+                } else if (depth < 5 && !/^(proc|sys|dev|node_modules|\.git|locale|doc|man|zoneinfo|fonts|icons|python|perl)/i.test(n) && isDir(p)) queue.push([p, depth + 1]);
+            });
+        }
+        if (qi < queue.length && hits < 8 && Date.now() - t0 < 9000) return setTimeout(wide, 5);
+        add('(dò khắp xe: ' + qi + ' thư mục, ' + hits + ' kết quả)');
+        return scanJs();
+    };
+    const scanJs = () => {
     // 2. the JavaScript of the OAP apps: setValue(spawn, 'Cell', ...) in a file about widgets
     const files = [];
     ls(OAP).filter((n) => /^oap_/.test(n)).forEach((n) => jsFiles(path.join(OAP, n, 'source', 'javascript'), 5, files));
@@ -59,7 +79,7 @@ function run(done, max) {
     const step = () => {
         const until = Date.now() + 40;
         while (i < files.length && Date.now() < until) {
-            const f = files[i++], t = /thoi_tiet/.test(f) ? null : read(f, 3e6);
+            const f = files[i++], t = /thoi_tiet|scan\.js/.test(f) ? null : read(f, 3e6);
             if (!t || !/idget/.test(t)) continue;
             const names = {};
             t.replace(/setValue\([^;]{0,120}?['"]([A-Za-z][A-Za-z0-9_]{2,40})['"]/g, (m, a) => { names[a] = 1; return m; });
@@ -72,6 +92,8 @@ function run(done, max) {
         return done(lines);
     };
     setTimeout(step, 0);
+    };
+    setTimeout(wide, 0);
 }
 
 module.exports = { run, widgetDescs, jsFiles };

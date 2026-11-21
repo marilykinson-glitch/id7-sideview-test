@@ -31,7 +31,7 @@ const base = { set: Wx.settingsOf(null), fx: true, time: 3.2, mode: 'main', stat
 const fxs = (name, o, extra) => Object.assign({}, base, { sel: 1, data: sample(Object.assign({ name: 'TP. Hồ Chí Minh' }, o)) }, extra || {});
 const withSet = (o, extra) => Object.assign({}, base, { set: Wx.settingsOf(o) }, extra || {});
 const states = {
-    '15-cai-dat': Object.assign({}, base, { mode: 'settings', widget: { version: '0.5.4', ready: true, n: 1, frames: 12, ok: 0, lines: ['widget initialized', 'widget ready: []', 'warn: widget image 1: TypeError: example error'] }, set: Wx.settingsOf({ tiles: ['wind', 'humidity', 'uv', 'aqi', 'vis', 'sun'], block: 'chart', days: true, tips: true, fx: true, unit: 'C' }) }),
+    '15-cai-dat': Object.assign({}, base, { mode: 'settings', widget: { version: '0.5.5', ready: true, n: 1, frames: 12, ok: 0, lines: ['widget initialized', 'widget ready: []', 'warn: widget image 1: TypeError: example error'] }, set: Wx.settingsOf({ tiles: ['wind', 'humidity', 'uv', 'aqi', 'vis', 'sun'], block: 'chart', days: true, tips: true, fx: true, unit: 'C' }) }),
     '23-do-widget': Object.assign({}, base, { mode: 'scan', scan: ['uiDescription oap_12345/rhmiDataStartWidget: Widget=LT_Table_OnlineApps_DriveRecorderWidget SelectionName=... ', 'oap_12345: BackgroundImage1 Text1stRow', '(đã xem 40/40 tệp JavaScript trong 0.3 giây)'] }),
     '16-bieu-do': withSet({ tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'chart' }, { time: 5 }),
     '17-cung-mat-troi': withSet({ tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'sun' }),

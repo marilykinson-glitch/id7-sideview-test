@@ -396,7 +396,10 @@ class Widget {
     image(spawnId, img) {
         const st = this._img[spawnId] || (this._img[spawnId] = { n: 0, live: [], busy: null, next: null });
         if (st.busy) { st.next = img; return st.busy; }
-        const cell = this.spec.image || 'BackgroundImage1';
+        // the picture's cell: app.json startWidget.image (a name or a list), else the likely names, tried together (a cell the layout
+        // does not have is ignored or refused: the result of each is logged once, so the right one can be told)
+        const cells = this.spec.image ? [].concat(this.spec.image) : ['BackgroundImage1', 'BackgroundImage', 'Image', 'Image1', 'Picture', 'Thumbnail', 'WidgetImage', 'Icon'];
+        const cell = cells.join('/');
         const run = async (frame) => {
             if (!this.comp) return;
             const px = Buffer.from(frame.d.buffer, frame.d.byteOffset, frame.d.length);
@@ -413,7 +416,10 @@ class Widget {
             step = 'file written';
             await rb.createResourceHandles([file]);
             step = 'resource handle made';
-            await this.comp.setValue(Number(spawnId), cell, rb.getResourceHandle(file), 'Asset');
+            const handle = rb.getResourceHandle(file);
+            for (const c of cells) {
+                try { await this.comp.setValue(Number(spawnId), c, handle, 'Asset'); if (first) log.info('widget cell ' + c + ': ok'); } catch (e) { if (first) log.info('widget cell ' + c + ': ' + (e && e.message || e)); }
+            }
             if (dog) clearTimeout(dog);
             this.timing.png += t1 - t0; this.timing.push += Date.now() - t1;
             if (!st.lastPush) log.info('widget ' + spawnId + ': first image in ' + (Date.now() - t0) + ' ms (' + frame.w + 'x' + frame.h + ', cell ' + cell + ')');
