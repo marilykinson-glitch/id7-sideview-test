@@ -32,7 +32,8 @@ function moon(cv, cx, cy, s) {
         const t = i / N, to = tu + al + t * (2 * Math.PI - 2 * al), ti = fa + t * d1;
         O.push([cx + Math.cos(to) * R, cy + Math.sin(to) * R]); I.push([bx + Math.cos(ti) * rb, by + Math.sin(ti) * rb]);
     }
-    for (let i = 0; i < N; i++) cv.quad([O[i], O[i + 1], I[i + 1], I[i]], MOON);
+    // each piece reaches half a piece into the next one: anti-aliased edges that only touch would show as stripes
+    for (let i = 0; i < N; i++) { const j = Math.min(N, i + 2); cv.quad([O[i], O[j], I[j], I[i]], MOON); }
     cv.circle(cx - s * 0.2, cy + s * 0.2, s * 0.025, '#ffffffcc'); cv.circle(cx + s * 0.28, cy + s * 0.18, s * 0.02, '#ffffffaa');
 }
 /** the cloud's outline pieces for a body centred at (cx, cy), width s*0.74; k shrinks it about the centre, (dx, dy) shifts it */

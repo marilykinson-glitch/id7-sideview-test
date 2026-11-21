@@ -41,8 +41,12 @@ function clouds(cv, G, x, y, w, h, time, n, dark, day) {
     // solid, low-contrast colours: see-through discs would show their seams where they overlap
     const pal = !day ? ['#0d1630', '#101a38', '#131f41'] : dark ? ['#262d3b', '#2b3342', '#303949'] : ['#23406a', '#294874', '#2f507d'];
     for (let i = 0; i < n; i++) {
-        const sp = 6 + rnd(i, 5) * 10, cw = 150 + rnd(i, 6) * 130, cx = x + ((rnd(i, 7) * (w + cw) + time * sp) % (w + cw)) - cw / 2, cy = y + 34 + rnd(i, 8) * 130, ch = cw * 0.28;
-        const body = (dx, dy, k, c) => { const ww = cw * k; cv.roundRect(cx - ww / 2 + dx, cy + dy, ww, ch * k, ch * k / 2, c); cv.circle(cx - cw * 0.12 + dx, cy + dy, ch * 0.7 * k, c); cv.circle(cx + cw * 0.12 + dx, cy - ch * 0.12 + dy, ch * 0.85 * k, c); };
+        const sp = 6 + rnd(i, 5) * 10, cw0 = 150 + rnd(i, 6) * 130, cx = x + ((rnd(i, 7) * (w + cw0) + time * sp) % (w + cw0)) - cw0 / 2, cy0 = y + 34 + rnd(i, 8) * 130;
+        // a cloud shrinks away towards the edges of the box instead of being cut by them
+        const k = Math.max(0, Math.min(1, Math.min(cx - x, x + w - cx) / (cw0 * 0.7)));
+        if (k < 0.08) continue;
+        const cw = cw0 * k, ch = cw * 0.28, cy = cy0 + (cw0 * 0.28 - ch) / 2;
+        const body = (dx, dy, kk, c) => { const ww = cw * kk; cv.roundRect(cx - ww / 2 + dx, cy + dy, ww, ch * kk, ch * kk / 2, c); cv.circle(cx - cw * 0.12 + dx, cy + dy, ch * 0.7 * kk, c); cv.circle(cx + cw * 0.12 + dx, cy - ch * 0.12 + dy, ch * 0.85 * kk, c); };
         body(0, 0, 1, pal[0]); body(-cw * 0.006, -ch * 0.06, 0.93, pal[1]); body(-cw * 0.01, -ch * 0.14, 0.76, pal[2]);
     }
 }
