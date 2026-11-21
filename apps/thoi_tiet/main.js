@@ -63,7 +63,15 @@ mgu.run({
                 seenSeq = status.seq;
             }
         }
-        const hhmm = (ms) => { const d = new Date(ms); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); };
+        // the car's own clock zone is not trusted: the time is shown in the zone of "Vị trí hiện tại" (else of the place shown), as Open-Meteo reports it
+        const zoneOf = (d) => {
+            const ok = (p) => p && p.current && typeof p.current.utc === 'number';
+            const here = status && status.places ? status.places.filter((p) => p.here && ok(p))[0] : null;
+            return ok(here) ? here.current.utc : ok(d) ? d.current.utc : null;
+        };
+        const hhmm = (ms, utc) => {
+            if (typeof utc === 'number') { const z = new Date(ms + utc * 1000); return ('0' + z.getUTCHours()).slice(-2) + ':' + ('0' + z.getUTCMinutes()).slice(-2); }
+            const d = new Date(ms); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); };
         const items = () => Wx.listFor(region, custom);
         const pagesOf = () => Math.max(1, Math.ceil(items().length / PER_PAGE));
 
@@ -108,7 +116,7 @@ mgu.run({
             const busy = !!(s && s.busy) || Date.now() - refreshAt < 2500;
             return {
                 mode, drive, state: !s ? 'down' : 'ok', why, netError: s && s.netError, places: list, sel, data: d || null, busy, set,
-                updated: d && d.at ? hhmm(d.at) + (d.ok ? '' : ' (cũ)') : '',
+                updated: d && d.at ? hhmm(d.at, zoneOf(d)) + (d.ok ? '' : ' (cũ)') : '',
                 pick: { keys, page, pages: pagesOf(), region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
                 phone: { url: s && s.url, pin: s && s.pin, host: s && s.host, count: custom.length },
                 message, messageKind, time: (Date.now() - t0) / 1000,

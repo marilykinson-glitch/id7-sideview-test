@@ -40,6 +40,7 @@ const hrs = []; for (let i = 0; i < 48; i++) hrs.push('2026-11-21T' + ('0' + (i 
 const answer = { current: { time: '2026-11-21T14:00', temperature_2m: 31.2, apparent_temperature: 36, relative_humidity_2m: 74, wind_speed_10m: 12, wind_direction_10m: 135, weather_code: 2, is_day: 1, precipitation: 0, pressure_msl: 1009 },
     hourly: { time: hrs.map((s, i) => (i < 24 ? s : s.replace('21', '22'))), temperature_2m: hrs.map((_, i) => 20 + i % 10), precipitation_probability: hrs.map(() => 10), weather_code: hrs.map(() => 3), is_day: hrs.map((_, i) => (i % 24 >= 6 && i % 24 < 18 ? 1 : 0)) },
     daily: { time: ['2026-11-21', '2026-11-22', '2026-11-23'], weather_code: [95, 61, 3], temperature_2m_max: [33, 32, 31], temperature_2m_min: [25, 24, 24], precipitation_probability_max: [70, 50, 20], uv_index_max: [8, 7, 6], sunrise: ['2026-11-21T06:02', '', ''], sunset: ['2026-11-21T17:28', '', ''] } };
+assert.strictEqual(require('../tools/thoi-tiet/thoi-tiet.js').parse(Object.assign({}, answer, { utc_offset_seconds: 25200 })).current.utc, 25200);
 const p = T.parse(answer);
 assert.strictEqual(p.current.t, 31.2); assert.strictEqual(p.current.day, true); assert.strictEqual(p.hourly.length, 24); assert.strictEqual(p.hourly[0].time, '14:00'); assert.strictEqual(p.daily[0].dow, 6); assert.strictEqual(p.daily[0].sunrise, '06:02'); ok('parse');
 assert.throws(() => T.parse({}), /unexpected/); assert.throws(() => T.parse({ current: {}, hourly: {}, daily: {} }), /temperature/); ok('parse refuses junk');

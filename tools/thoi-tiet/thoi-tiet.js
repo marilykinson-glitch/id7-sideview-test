@@ -188,7 +188,7 @@ function parse(j) {
     const c = j.current;
     const current = {
         t: num(c.temperature_2m), feels: num(c.apparent_temperature), humidity: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m),
-        windDir: num(c.wind_direction_10m), gust: num(c.wind_gusts_10m), vis: num(c.visibility), code: num(c.weather_code), day: c.is_day === 1, rain: num(c.precipitation), pressure: num(c.pressure_msl), time: String(c.time || ''),
+        windDir: num(c.wind_direction_10m), gust: num(c.wind_gusts_10m), vis: num(c.visibility), code: num(c.weather_code), day: c.is_day === 1, rain: num(c.precipitation), pressure: num(c.pressure_msl), time: String(c.time || ''), utc: num(j.utc_offset_seconds),
     };
     const h = j.hourly, hourly = [];
     const now = String(c.time || '').slice(0, 13);                           // YYYY-MM-DDTHH
@@ -473,7 +473,7 @@ function pollCommands() {
     else if (c.cmd === 'refresh' && !first) refreshAll();
 }
 
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     S.pin = newPin(); loadCustom();
