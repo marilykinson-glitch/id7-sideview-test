@@ -289,6 +289,7 @@ function drawSettings(cv, G, t, v, act) {
     const other = [['5 ngày tới', set.days ? 'Bật' : 'Tắt', set.days, 'days'], ['Lời nhắc cho người lái', set.tips ? 'Bật' : 'Tắt', set.tips, 'tips'], ['Hiệu ứng chuyển động', set.fx ? 'Bật' : 'Tắt', set.fx, 'fx']];
     other.forEach((o, i) => onChip(56 + i * (cw + gap), G.TOP + 326, cw, o[0] + ': ' + o[1], o[2], () => act.toggle && act.toggle(o[3]), 'wxO' + o[3]));
     onChip(56 + 3 * (cw + gap), G.TOP + 326, cw, 'Đơn vị: °' + set.unit, true, () => act.setUnit && act.setUnit(set.unit === 'C' ? 'F' : 'C'), 'wxUnit');
+    onChip(56 + 4 * (cw + gap), G.TOP + 326, cw, 'Dò widget BMW', false, () => act.scan && act.scan(), 'wxScan');
     const wd = v.widget;
     if (wd) {
         label(cv, t, 'WIDGET MÀN HÌNH CHÍNH', 56, G.TOP + 392);
@@ -337,6 +338,15 @@ function drawWidget(cv, G, t, v) {
     }
 }
 
+function drawScan(cv, G, t, v, act) {
+    cv.text('DÒ WIDGET CỦA XE', 56, G.TOP + 52, 28, t.text, { literal: true, font: 'bold', spacing: 2 });
+    const sc = v.scan;
+    if (!sc) cv.text('Đang dò… (tối đa vài giây)', 56, G.TOP + 100, 20, t.dim, LAB);
+    else sc.forEach((l, i) => cv.text(fit(cv, l, 17, LAB, W - 112), 56, G.TOP + 96 + i * 26, 17, i === sc.length - 1 ? t.dim : t.text, LAB));
+    const by = G.pageBottom(cv) - (cv.own ? G.MARGIN : 0) - 54, bw = 220;
+    G.button(cv, t, W - 56 - bw, by, bw, 54, 'Xong', act.closeScan || nop, { key: 'wxScanDone', primary: true });
+}
+
 function draw(cv, G, t, v, act) {
     act = act || {};
     v = Object.assign({ set: Wx.settingsOf(null) }, v);
@@ -347,6 +357,7 @@ function draw(cv, G, t, v, act) {
     if (v.mode === 'pick') drawPick(cv, G, t, v, act);
     else if (v.mode === 'phone') drawPhone(cv, G, t, v, act);
     else if (v.mode === 'settings') drawSettings(cv, G, t, v, act);
+    else if (v.mode === 'scan') drawScan(cv, G, t, v, act);
     else if (v.drive) drawDrive(cv, G, t, v, act);
     else drawMain(cv, G, t, v, act);
     return cv;

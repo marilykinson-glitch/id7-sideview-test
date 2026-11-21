@@ -37,6 +37,7 @@ mgu.run({
             };
         });
         let keys = Wx.DEFAULT_KEYS.slice(), status = null, readAt = 0, cmdId = Date.now(), lastKey = '', shown = false;
+        let scanLines = null;
         let why = '', mode = 'main', sel = 0, page = 0, region = 'all', drive = false, message = '', messageKind = 'dim', refreshAt = 0, seenSeq = -1, set = Wx.settingsOf(null), custom = [];
         const f = (n) => path.join(ctx.dataDir, n);
         const load = (n) => { try { return JSON.parse(fs.readFileSync(f(n), 'utf8')); } catch (e) { return null; } };
@@ -102,6 +103,8 @@ mgu.run({
             refresh: () => { refreshAt = Date.now(); send('refresh'); repaint(); },
             openSettings: () => { mode = 'settings'; message = ''; repaint(); },
             closeSettings: () => { mode = 'main'; repaint(); },
+            scan: () => { mode = 'scan'; scanLines = null; repaint(); try { require('./scan').run((l) => { scanLines = l; repaint(); }); } catch (e) { scanLines = ['dò lỗi: ' + (e && e.message)]; repaint(); } },
+            closeScan: () => { mode = 'settings'; repaint(); },
             toggleTile: (id) => {
                 const i = set.tiles.indexOf(id);
                 if (i >= 0) { set.tiles.splice(i, 1); message = ''; }
@@ -131,6 +134,7 @@ mgu.run({
                 pick: { keys, page, pages: pagesOf(), region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
                 phone: { url: s && s.url, pin: s && s.pin, host: s && s.host, count: custom.length },
                 widget: { version: (mgu.SPEC && mgu.SPEC.version) || '', ready: !!(ctx.widget && ctx.widget.ready), n: ctx.widget && ctx.widget.instances ? ctx.widget.instances().length : 0, frames: wstat.frames, ok: wstat.ok, lines: [wstat.warn || 'chưa có cảnh báo hay lỗi nào về widget', wstat.first || 'chưa đẩy được ảnh đầu tiên lên widget', wstat.pushes || wlog[wlog.length - 1] || ''] },
+                scan: scanLines,
                 message, messageKind, time: (Date.now() - t0) / 1000,
             };
         }
@@ -139,7 +143,7 @@ mgu.run({
             if (!vis && shown) return;                                // nobody looks: no drawing
             const animated = m.set.fx && (m.mode === 'main') && m.data && m.data.current;
             const frame = animated ? Math.floor(m.time * FPS) : 0;
-            const key = JSON.stringify([frame, m.mode, m.drive, m.set, m.state, m.why, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick, m.phone, m.message, vis]);
+            const key = JSON.stringify([frame, m.mode, m.drive, m.set, m.state, m.why, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick, m.phone, m.message, vis, m.scan, m.mode === 'settings' ? m.widget : 0]);
             if (key === lastKey && shown) return;
             lastKey = key; shown = true;
             const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);
