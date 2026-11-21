@@ -39,7 +39,7 @@ function stars(cv, G, x, y, w, h, time) {
 }
 function clouds(cv, G, x, y, w, h, time, n, dark, day) {
     // solid, low-contrast colours: see-through discs would show their seams where they overlap
-    const pal = !day ? ['#1b2748', '#222f57', '#2a3a68'] : dark ? ['#323c50', '#3d485f', '#485471'] : ['#35568a', '#41659c', '#4e73ad'];
+    const pal = !day ? ['#0d1630', '#101a38', '#131f41'] : dark ? ['#262d3b', '#2b3342', '#303949'] : ['#23406a', '#294874', '#2f507d'];
     for (let i = 0; i < n; i++) {
         const sp = 6 + rnd(i, 5) * 10, cw = 150 + rnd(i, 6) * 130, cx = x + ((rnd(i, 7) * (w + cw) + time * sp) % (w + cw)) - cw / 2, cy = y + 34 + rnd(i, 8) * 130, ch = cw * 0.28;
         const body = (dx, dy, k, c) => { const ww = cw * k; cv.roundRect(cx - ww / 2 + dx, cy + dy, ww, ch * k, ch * k / 2, c); cv.circle(cx - cw * 0.12 + dx, cy + dy, ch * 0.7 * k, c); cv.circle(cx + cw * 0.12 + dx, cy - ch * 0.12 + dy, ch * 0.85 * k, c); };
