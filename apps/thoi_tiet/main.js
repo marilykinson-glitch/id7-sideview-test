@@ -17,7 +17,7 @@ const { Canvas } = require('./kit/canvas');
 const { Recorder, play } = require('./kit/record');
 const UI = require('./ui');
 const Wx = require('./weather');
-const IconsLine = require('./icons_line');
+const IconsLine = require('./icons3d');
 
 const RUN = process.env.TT_RUN || '/run/thoi-tiet';
 const STALE_MS = 8000;
