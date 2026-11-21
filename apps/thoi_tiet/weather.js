@@ -104,6 +104,15 @@ function tip(cur, today, hourly, air) {
     return null;
 }
 
+/** A place name the location service gives in English ("Ho Chi Minh City", "Hanoi", "Da Nang") as the list writes it, with its accents. */
+const bare = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase()
+    .replace(/\b(city|province|thanh pho|tp|tinh)\b/g, ' ').replace(/[^a-z0-9]+/g, '');
+function viName(name) {
+    const b = bare(name);
+    if (!b) return name;
+    const hit = CITIES.filter((c) => c.region !== 'nn' && bare(c.name) === b)[0];
+    return hit ? hit.name : name;
+}
 const HERE = { key: 'here', name: 'Vị trí hiện tại', lat: 0, lon: 0, here: true };
 const DEFAULT_KEYS = ['here', 'hanoi', 'hcm', 'danang'];
 const MAX_PLACES = 6;
@@ -165,4 +174,4 @@ function tileInfo(id, cur, today, daily, air) {
 }
 
 module.exports = {
-    setUnit, getUnit, TILES, BLOCKS, DEFAULT_SETTINGS, MAX_TILES, settingsOf, sunDay, hm, tileInfo, describe, DOW, compass, deg, pct, kmh, uvText, aqiBand, tip, REGIONS, listFor, CITIES, HERE, DEFAULT_KEYS, MAX_PLACES, placesFor };
+    setUnit, getUnit, TILES, BLOCKS, DEFAULT_SETTINGS, MAX_TILES, settingsOf, sunDay, hm, tileInfo, describe, viName, DOW, compass, deg, pct, kmh, uvText, aqiBand, tip, REGIONS, listFor, CITIES, HERE, DEFAULT_KEYS, MAX_PLACES, placesFor };

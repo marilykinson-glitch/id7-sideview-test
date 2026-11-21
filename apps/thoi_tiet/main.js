@@ -17,7 +17,7 @@ const { Canvas } = require('./kit/canvas');
 const { Recorder, play } = require('./kit/record');
 const UI = require('./ui');
 const Wx = require('./weather');
-const Icons = require('./icons');
+const IconsLine = require('./icons_line');
 
 const RUN = process.env.TT_RUN || '/run/thoi-tiet';
 const STALE_MS = 8000;
@@ -63,6 +63,7 @@ mgu.run({
             let s = null; why = '';
             try { s = JSON.parse(fs.readFileSync(path.join(RUN, 'weather.json'), 'utf8')); } catch (e) { s = null; why = e && e.code === 'ENOENT' ? 'missing' : e && (e.code === 'EACCES' || e.code === 'EPERM') ? 'denied' : 'bad'; }
             if (s && !(typeof s.at === 'number' && Math.abs(now - s.at) < STALE_MS)) { why = 'old ' + Math.round(Math.abs(now - (s.at || 0)) / 1000) + 's'; s = null; }
+            if (s && Array.isArray(s.places)) s.places.forEach((p) => { if (p && p.here && p.name) p.name = Wx.viName(p.name); });
             status = s;
             if (status && Array.isArray(status.custom) && JSON.stringify(status.custom) !== JSON.stringify(custom)) { custom = status.custom.slice(0, 30); save('custom.json', custom); }
             if (status && typeof status.seq === 'number') {
@@ -155,11 +156,7 @@ mgu.run({
             const k = icon + '|' + (day ? 1 : 0) + '|' + size;
             if (!wicons[k]) {
                 const w = size[0] || size, h = size[1] || size, sz = size[2] || Math.round(size * 0.98);
-                const rec = new Recorder(w, h, { textScale: 1 });
-                Icons.draw(rec, icon, day, w / 2, h / 2, sz);
-                const cv = new Canvas(w, h);
-                play(rec.words(), cv);
-                wicons[k] = cv;
+                wicons[k] = IconsLine.make(icon, day, w, h, sz);
             }
             return { cv: wicons[k], key: k };
         };
