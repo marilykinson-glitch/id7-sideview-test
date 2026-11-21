@@ -87,7 +87,7 @@
       "requires": {
         "idrive7-renderd": "2.1.7",
         "mgu-inputgate": "1.0.0",
-        "thoi-tiet": "0.4.2"
+        "thoi-tiet": "0.4.3"
       },
       "build": {
         "python": "kit/tools/build.py",

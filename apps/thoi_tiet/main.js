@@ -14,10 +14,9 @@ const path = require('path');
 const mgu = require('./kit/mgu');
 const G = require('./kit/gauges');
 const { Canvas } = require('./kit/canvas');
-const { Recorder, play } = require('./kit/record');
 const UI = require('./ui');
 const Wx = require('./weather');
-const IconsLine = require('./icons3d');
+const Icons3d = require('./icons3d');
 
 const RUN = process.env.TT_RUN || '/run/thoi-tiet';
 const STALE_MS = 8000;
@@ -156,7 +155,7 @@ mgu.run({
             const k = icon + '|' + (day ? 1 : 0) + '|' + size;
             if (!wicons[k]) {
                 const w = size[0] || size, h = size[1] || size, sz = size[2] || Math.round(size * 0.98);
-                wicons[k] = IconsLine.make(icon, day, w, h, sz);
+                wicons[k] = Icons3d.make(icon, day, w, h, sz);
             }
             return { cv: wicons[k], key: k };
         };
