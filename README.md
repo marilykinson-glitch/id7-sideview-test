@@ -25,7 +25,7 @@ Xe không có Connected Drive thì không đổi được ảnh đại diện c�
 
 **Đã kiểm tra gì:** trên máy, với bản sao các gói thật của một đầu G20 trên bench (ảnh đại diện 3 gói, bìa Bluetooth, người gọi, hình xe G20 to và nhỏ, ảnh và video khởi động 1440x540; video làm ra được ffmpeg giải mã đúng ảnh): đọc, ghi lại giống từng byte, đổi hình, khôi phục về đúng file gốc. Trên xe: một gói ảnh đại diện ghi tay vẫn còn nguyên sau khi khởi động lại (xe không tự khôi phục). **Chưa kiểm tra trên xe:** app và trợ thủ chạy thật, bộ giải mã của đầu xe có phát được video đứng hình không (nếu không: khôi phục từ app), điện thoại nối vào cổng 8137 (tường lửa), chiều ảnh khi hiện, hình chiếc xe 3D (shader đã sửa biên dịch được và vẽ đúng trong một trình biên dịch GLSL thật trên máy, nhưng chưa biết đầu xe có dùng bản shader đã biên dịch sẵn không, tấm bóng đổ có được vẽ ở mọi màn hình không), các gói hình mặc định ngoài hai gói kể trên (cùng tên hình và cỡ thì dùng, khác thì bỏ qua).
 
-## Thời tiết 0.6.0 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.4.2)
+## Thời tiết 0.5.5 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.4.2)
 
 Trợ thủ ra mạng qua uplink của Store (`mgu-uplink`) bằng uid riêng + DNS trong `/run/mgu-uplink/lease.json`, giống RideTube (root không được uplink cho ra mạng).
 

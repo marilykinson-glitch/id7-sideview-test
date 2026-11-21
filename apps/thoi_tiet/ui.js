@@ -300,12 +300,55 @@ function drawSettings(cv, G, t, v, act) {
     const other = [['5 ngày tới', set.days ? 'Bật' : 'Tắt', set.days, 'days'], ['Lời nhắc cho người lái', set.tips ? 'Bật' : 'Tắt', set.tips, 'tips'], ['Hiệu ứng chuyển động', set.fx ? 'Bật' : 'Tắt', set.fx, 'fx']];
     other.forEach((o, i) => onChip(56 + i * (cw + gap), G.TOP + 326, cw, o[0] + ': ' + o[1], o[2], () => act.toggle && act.toggle(o[3]), 'wxO' + o[3]));
     onChip(56 + 3 * (cw + gap), G.TOP + 326, cw, 'Đơn vị: °' + set.unit, true, () => act.setUnit && act.setUnit(set.unit === 'C' ? 'F' : 'C'), 'wxUnit');
+    const wd = v.widget;
+    if (wd) {
+        label(cv, t, 'WIDGET MÀN HÌNH CHÍNH', 56, G.TOP + 392);
+        cv.text(fit(cv, 'Bản ' + wd.version + '  ·  ' + (wd.ready ? 'xe đã giao ô widget' : 'xe chưa giao ô widget') + '  ·  số ô: ' + wd.n + '  ·  đã vẽ: ' + wd.ok + '/' + wd.frames, 16, LAB, 1000), 56, G.TOP + 412, 16, t.text, LAB);
+        (wd.lines || []).forEach((l, i) => cv.text(fit(cv, l, 14, LAB, 1000), 56, G.TOP + 430 + i * 16, 14, t.dim, LAB));
+    }
     const by = G.pageBottom(cv) - (cv.own ? G.MARGIN : 0) - 54, bw = 220;
     message(cv, t, v, 56, by + 35);
     G.button(cv, t, W - 56 - bw, by, bw, 54, 'Xong', act.closeSettings || nop, { key: 'wxSetDone', primary: true });
     G.button(cv, t, W - 56 - 2 * bw - 14, by, bw, 54, 'Về mặc định', act.resetSettings || nop, { key: 'wxReset' });
 }
 
+/**
+ * The home-screen widget picture: the place, icon, temperature, words and the rain alert; the big one adds the high and low
+ * and the next hours. v = { data (place's { name, ok, current, hourly, daily }), big, w, h }. Pixel size of the widget is not known
+ * from here, so everything is laid out from v.w and v.h.
+ */
+function drawWidget(cv, G, t, v) {
+    const w = v.w, h = v.h, d = v.data, cur = d && d.current;
+    // the car shows the picture centred and cropped at the sides: keep the content off them
+    const ox = Math.round(w * 0.07), W2 = w - 2 * ox;
+    cv.fillRect(0, 0, w, h, '#101319');
+    if (!cur) { cv.text('Thời tiết', w / 2, h / 2 - 6, Math.round(h * 0.16), t.text, { literal: true, font: 'bold', align: 'center' }); cv.text('đang chờ dữ liệu', w / 2, h / 2 + h * 0.14, Math.round(h * 0.1), t.dim, { literal: true, font: 'label', align: 'center' }); return; }
+    const wc = Wx.describe(cur.code), s = h / 240, today = (d.daily && d.daily[0]) || {};
+    const tint = cur.day ? '#2a5a9a' : '#1a2340';
+    cv.gradientRect(0, 0, w, h, [[0, G.withAlpha(tint, 0.9)], [1, '#101319']]);
+    Icons.draw(cv, wc.icon, cur.day, ox + 78 * s, 100 * s, 120 * s);
+    const big = Wx.deg(cur.t).replace('°', '');
+    cv.text(big, ox + 150 * s, 118 * s, 84 * s, t.text, BOLD);
+    cv.text('°' + Wx.getUnit(), ox + 150 * s + cv.textWidth(big, 84 * s, BOLD) + 4, 70 * s, 26 * s, t.dim, BOLD);
+    cv.text(fit(cv, d.name || '', 22 * s, BOLD, W2 - 24 * s), ox + 14 * s, 26 * s, 22 * s, t.text, BOLD);
+    cv.text(fit(cv, wc.text, 24 * s, BOLD, 190 * s), ox + 150 * s, 152 * s, 24 * s, t.text, BOLD);
+    const rainIn = cur.rainIn;
+    let msg = '', col = t.dim;
+    if (typeof rainIn === 'number') { msg = rainIn === 0 ? 'Đang mưa' : 'Mưa sau ' + rainIn + ' phút'; col = RAIN; }
+    else if (today.pop >= 50) { msg = 'Mưa hôm nay ' + Wx.pct(today.pop); col = RAIN; }
+    else msg = 'Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo);
+    if (typeof rainIn === 'number') { cv.roundRect(ox + 12 * s, 176 * s, W2 - 24 * s, 46 * s, 23 * s, G.withAlpha(RAIN, 0.25)); cv.strokeRoundRect(ox + 12 * s, 176 * s, W2 - 24 * s, 46 * s, 23 * s, 1.5, G.withAlpha(RAIN, 0.8)); }
+    cv.text(fit(cv, msg, 24 * s, BOLD, W2 - 48 * s), w / 2, 208 * s, 24 * s, typeof rainIn === 'number' ? t.text : col, { literal: true, font: 'bold', align: 'center' });
+    {
+        const hrs = (d.hourly || []).filter((_, i) => i % 3 === 0).slice(1, 5), x0 = ox + 318 * s, cw = (w - ox - x0 - 10 * s) / 4;
+        hrs.forEach((hr, i) => {
+            const cx = x0 + cw * i + cw / 2;
+            cv.text(hr.time, cx, 52 * s, 15 * s, t.dim, { literal: true, font: 'label', align: 'center' });
+            Icons.draw(cv, Wx.describe(hr.code).icon, hr.day, cx, 92 * s, 40 * s);
+            cv.text(Wx.deg(hr.t), cx, 140 * s, 22 * s, t.text, { literal: true, font: 'bold', align: 'center' });
+        });
+    }
+}
 
 
 function draw(cv, G, t, v, act) {
@@ -323,4 +366,4 @@ function draw(cv, G, t, v, act) {
     return cv;
 }
 
-module.exports = { draw, W, H };
+module.exports = { draw, drawWidget, W, H };

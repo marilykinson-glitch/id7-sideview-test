@@ -14,6 +14,7 @@ const path = require('path');
 const mgu = require('./kit/mgu');
 const G = require('./kit/gauges');
 const { Canvas } = require('./kit/canvas');
+const { Recorder, play } = require('./kit/record');
 const UI = require('./ui');
 const Wx = require('./weather');
 
@@ -25,6 +26,16 @@ const FPS = 8;                 // the moving weather
 mgu.run({
     async start(ctx) {
         const { ui, log } = ctx;
+        // what the home-screen widget does, shown in the settings (the car has no log to read): the last lines the kit logs about it
+        const wlog = [], wstat = { frames: 0, ok: 0, warn: '', first: '', pushes: '', cells: [] };
+        ['info', 'warn', 'error'].forEach((k) => {
+            const orig = log[k];
+            if (typeof orig !== 'function') return;
+            log[k] = function () {
+                try { const m = Array.prototype.map.call(arguments, (a) => (a && a.message) || String(a)).join(' '); if (/widget/i.test(m)) { if (k !== 'info') wstat.warn = k + ': ' + m; else if (/first image/.test(m)) wstat.first = m; else if (/widget cell /.test(m)) wstat.cells.push(m.replace('widget cell ', '').slice(0, 40)); else if (/widget loop/.test(m)) wstat.pushes = m; wlog.push((k === 'info' ? '' : k + ': ') + m); if (wlog.length > 8) wlog.shift(); } } catch (e) { /* the log is not ours */ }
+                return orig.apply(this, arguments);
+            };
+        });
         let keys = Wx.DEFAULT_KEYS.slice(), status = null, readAt = 0, cmdId = Date.now(), lastKey = '', shown = false;
         let why = '', mode = 'main', sel = 0, page = 0, region = 'all', drive = false, message = '', messageKind = 'dim', refreshAt = 0, seenSeq = -1, set = Wx.settingsOf(null), custom = [];
         const f = (n) => path.join(ctx.dataDir, n);
@@ -119,6 +130,7 @@ mgu.run({
                 updated: d && d.at ? hhmm(d.at, zoneOf(d)) + (d.ok ? '' : ' (cũ)') : '',
                 pick: { keys, page, pages: pagesOf(), region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
                 phone: { url: s && s.url, pin: s && s.pin, host: s && s.host, count: custom.length },
+                widget: { version: (mgu.SPEC && mgu.SPEC.version) || '', ready: !!(ctx.widget && ctx.widget.ready), n: ctx.widget && ctx.widget.instances ? ctx.widget.instances().length : 0, frames: wstat.frames, ok: wstat.ok, lines: [wstat.warn || 'chưa có cảnh báo hay lỗi nào về widget', wstat.first || 'chưa đẩy được ảnh đầu tiên lên widget', wstat.cells.length ? 'ô ảnh: ' + wstat.cells.join(' | ') : (wstat.pushes || wlog[wlog.length - 1] || '')] },
                 message, messageKind, time: (Date.now() - t0) / 1000,
             };
         }
@@ -127,13 +139,30 @@ mgu.run({
             if (!vis && shown) return;                                // nobody looks: no drawing
             const animated = m.set.fx && (m.mode === 'main') && m.data && m.data.current;
             const frame = animated ? Math.floor(m.time * FPS) : 0;
-            const key = JSON.stringify([frame, m.mode, m.drive, m.set, m.state, m.why, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick, m.phone, m.message, vis]);
+            const key = JSON.stringify([frame, m.mode, m.drive, m.set, m.state, m.why, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick, m.phone, m.message, vis, m.mode === 'settings' ? m.widget : 0]);
             if (key === lastKey && shown) return;
             lastKey = key; shown = true;
             const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);
             UI.draw(cv, G, ctx.theme(), m, acts);
             await ui.image('MAIN_GFX', cv);
         };
+        // the home-screen widget: the place "Vị trí hiện tại" if it has a forecast, else the first place that has one; redrawn about once a second
+        const wcache = {};
+        if (ctx.widget && ctx.widget.loop) {
+            ctx.widget.loop(1, async (inst) => {
+                readStatus(Date.now());
+                const list = status && status.places ? status.places : [];
+                const d = list.filter((p) => p.here && p.current)[0] || list.filter((p) => p.current)[0] || null;
+                // ctx.canvas gives a Recorder; the widget wants pixels: draw on a Recorder, play it onto a Canvas (kept per size)
+                const w = inst.big ? 1000 : 640, h = inst.big ? 400 : 210, rec = new Recorder(w, h, { textScale: 1 });
+                wstat.frames++;
+                UI.drawWidget(rec, G, ctx.theme(), { data: d, big: !!inst.big, w, h });
+                const cv = wcache[w] || (wcache[w] = new Canvas(w, h));
+                play(rec.words(), cv);
+                wstat.ok++;
+                return cv;
+            });
+        }
         const loop = ctx.loop('MAIN', FPS, render);
         function repaint() { lastKey = ''; return loop && loop.kick ? loop.kick() : render(); }
         pushPlaces();
