@@ -154,7 +154,7 @@ mgu.run({
                 const list = status && status.places ? status.places : [];
                 const d = list.filter((p) => p.here && p.current)[0] || list.filter((p) => p.current)[0] || null;
                 // ctx.canvas gives a Recorder; the widget wants pixels: draw on a Recorder, play it onto a Canvas (kept per size)
-                const w = inst.big ? 1000 : 640, h = inst.big ? 620 : 210, rec = new Recorder(w, h, { textScale: 1 });
+                const w = inst.big ? 1000 : 640, h = inst.big ? 575 : 210, rec = new Recorder(w, h, { textScale: 1 });
                 wstat.frames++;
                 UI.drawWidget(rec, G, ctx.theme(), { data: d, big: !!inst.big, w, h, tiles: set.tiles });
                 const cv = wcache[w] || (wcache[w] = new Canvas(w, h));
