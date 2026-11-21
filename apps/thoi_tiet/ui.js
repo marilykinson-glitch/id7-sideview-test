@@ -317,12 +317,48 @@ function drawSettings(cv, G, t, v, act) {
  * and the next hours. v = { data (place's { name, ok, current, hourly, daily }), big, w, h }. Pixel size of the widget is not known
  * from here, so everything is laid out from v.w and v.h.
  */
+/** The big home-screen widget (about 2:1): place, rain alert or high/low, icon, temperature, words, the next hours and the chosen figures. */
+function drawWidgetBig(cv, G, t, v) {
+    const w = v.w, h = v.h, d = v.data, cur = d.current, ox = Math.round(w * 0.035), W2 = w - 2 * ox;
+    const wc = Wx.describe(cur.code), today = (d.daily && d.daily[0]) || {};
+    cv.fillRect(0, 0, w, h, '#101319');
+    cv.gradientRect(0, 0, w, h, [[0, G.withAlpha(cur.day ? '#2a5a9a' : '#1a2340', 0.9)], [1, '#101319']]);
+    cv.text(fit(cv, d.name || '', 34, BOLD, 520), ox + 8, 52, 34, t.text, BOLD);
+    if (typeof cur.rainIn === 'number') rainChip(cv, G, t, cur, w - ox, 14, 46, 26);
+    else cv.text('Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo), w - ox, 50, 26, t.dim, { literal: true, font: 'label', align: 'right' });
+    Icons.draw(cv, wc.icon, cur.day, ox + 100, 190, 170);
+    const big = Wx.deg(cur.t).replace('°', '');
+    cv.text(big, ox + 205, 236, 120, t.text, BOLD);
+    cv.text('°' + Wx.getUnit(), ox + 205 + cv.textWidth(big, 120, BOLD) + 6, 150, 36, t.dim, BOLD);
+    cv.text(fit(cv, wc.text, 34, BOLD, 360), ox + 205, 284, 34, t.text, BOLD);
+    const hrs = (d.hourly || []).filter((_, i) => i % 3 === 0).slice(1, 5), x0 = 600, cw = (w - ox - x0) / 4;
+    hrs.forEach((hr, i) => {
+        const cx = x0 + cw * i + cw / 2;
+        cv.text(hr.time, cx, 120, 22, t.dim, { literal: true, font: 'label', align: 'center' });
+        Icons.draw(cv, Wx.describe(hr.code).icon, hr.day, cx, 170, 60);
+        cv.text(Wx.deg(hr.t), cx, 236, 32, t.text, { literal: true, font: 'bold', align: 'center' });
+    });
+    cv.fillRect(ox, 304, W2, 1, G.withAlpha('#ffffff', 0.14));
+    const ids = (v.tiles || []).slice(0, 5), n = ids.length;
+    if (!n) return;
+    const gap = 10, tw = (W2 - (n - 1) * gap) / n, ty = 320, th = h - ty - 16;
+    ids.forEach((id, i) => {
+        const info = Wx.tileInfo(id, cur, today, d.daily, d.air), x = ox + i * (tw + gap);
+        cv.roundRect(x, ty, tw, th, 14, G.withAlpha('#ffffff', 0.08));
+        cv.text(fit(cv, info.title, 22, LAB, tw - 24), x + 14, ty + 36, 22, t.dim, LAB);
+        cv.text(fit(cv, info.value, 46, BOLD, tw - 24), x + 14, ty + 92, 46, t.text, BOLD);
+        if (info.sub) cv.text(fit(cv, info.sub, 20, LAB, tw - 24), x + 14, ty + th - 14, 20, t.dim, LAB);
+        if (info.bar) cv.fillRect(x + 14, ty + 104, tw - 28, 4, info.bar);
+    });
+}
+
 function drawWidget(cv, G, t, v) {
     const w = v.w, h = v.h, d = v.data, cur = d && d.current;
     // the car shows the picture centred and cropped at the sides: keep the content off them
     const ox = Math.round(w * 0.07), W2 = w - 2 * ox;
     cv.fillRect(0, 0, w, h, '#101319');
     if (!cur) { cv.text('Thời tiết', w / 2, h / 2 - 6, Math.round(h * 0.16), t.text, { literal: true, font: 'bold', align: 'center' }); cv.text('đang chờ dữ liệu', w / 2, h / 2 + h * 0.14, Math.round(h * 0.1), t.dim, { literal: true, font: 'label', align: 'center' }); return; }
+    if (v.big) return drawWidgetBig(cv, G, t, v);
     const wc = Wx.describe(cur.code), s = h / 240, today = (d.daily && d.daily[0]) || {};
     const tint = cur.day ? '#2a5a9a' : '#1a2340';
     cv.gradientRect(0, 0, w, h, [[0, G.withAlpha(tint, 0.9)], [1, '#101319']]);
