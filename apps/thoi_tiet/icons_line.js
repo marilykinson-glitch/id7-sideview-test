@@ -23,10 +23,12 @@ function body(cv, cx, cy, s, c, inset) {
     // the inside of the outline is one piece: fill between the two bumps and the base
     if (i > 0) cv.fillRect(x0 + w * 0.3, base - h * 1.05, w * 0.27, h * 0.7, c);
 }
-function sun(cv, cx, cy, s, t) {
+/** hidden(x, y): a cloud is there. A ray a cloud touches is left out whole (a stump of it beside the cloud reads as dirt). */
+function sun(cv, cx, cy, s, t, hidden) {
     cv.arc(cx, cy, s * 0.17 - t, s * 0.17, 0, 360, SUN);
     for (let i = 0; i < 8; i++) {
         const a = i * Math.PI / 4, r0 = s * 0.26, r1 = s * 0.36;
+        if (hidden && [0, 0.5, 1].some((k) => hidden(cx + Math.cos(a) * (r0 + (r1 - r0) * k), cy + Math.sin(a) * (r0 + (r1 - r0) * k)))) continue;
         cv.line(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, t, SUN);
     }
 }
@@ -63,12 +65,14 @@ function make(icon, day, w, h, size) {
     /** The sky body behind (sun or moon at (bx, by), `bs` big), then a cloud outline in front that hides what it covers. */
     const scene = (sky, clouds, under) => {
         let back = new Canvas(W, H);
-        if (sky) { if (night) back = moon(W, H, sky[0], sky[1], sky[2], t); else sun(back, sky[0], sky[1], sky[2], t); }
-        clouds.forEach((c) => {
-            const outer = new Canvas(W, H), gap = new Canvas(W, H), inner = new Canvas(W, H);
+        // every cloud with a little air around it: what the sky body must not be drawn on
+        const gaps = clouds.map((c) => { const g = new Canvas(W, H); body(g, c[0], c[1], c[2], WHITE, -Math.min(t, c[2] * 0.075) * 0.7); return g; });
+        const hidden = (x, y) => { x = Math.round(x); y = Math.round(y); return x >= 0 && y >= 0 && x < W && y < H && gaps.some((g) => g.d[(y * W + x) * 4 + 3] > 40); };
+        if (sky) { if (night) back = moon(W, H, sky[0], sky[1], sky[2], t); else sun(back, sky[0], sky[1], sky[2], t, hidden); }
+        clouds.forEach((c, ci) => {
+            const outer = new Canvas(W, H), gap = gaps[ci], inner = new Canvas(W, H);
             body(outer, c[0], c[1], c[2], c[3] || WHITE, 0);
             const ct = Math.min(t, c[2] * 0.075);                // a small cloud takes a thinner line
-            body(gap, c[0], c[1], c[2], WHITE, -ct * 0.7);       // a little air between the cloud and what is behind it
             body(inner, c[0], c[1], c[2], WHITE, ct);
             cut(back, gap);
             back.blit(cut(outer, inner), 0, 0);

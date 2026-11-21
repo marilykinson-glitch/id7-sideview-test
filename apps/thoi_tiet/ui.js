@@ -47,12 +47,17 @@ const label = (cv, t, text, x, y) => cv.text(text, x, y, 16, t.dim, { literal: t
 /** A small figure. tall: title, big value, sub; else one line (value and sub) under the title. */
 function tile(cv, G, t, x, y, w, h, info, tall, windDir) {
     cv.roundRect(x, y, w, h, 12, G.withAlpha('#ffffff', 0.05));
-    cv.text(info.title, x + 10, y + (tall ? 24 : 19), tall ? 15 : 14, t.dim, LAB);
     if (tall) {
-        cv.text(fit(cv, info.value, 24, BOLD, w - 20), x + 10, y + 52, 24, t.text, BOLD);
-        if (info.sub) cv.text(fit(cv, info.sub, 14, LAB, w - 20), x + 10, y + h - 10, 14, t.dim, LAB);
-        if (info.bar) cv.fillRect(x + 10, y + 62, w - 20, 3, info.bar);
+        // the tile grows with the room the screen has: its three lines grow with it and stay spread evenly over its height
+        const k = Math.max(1, Math.min(1.45, h / 104)), ts = Math.round(15 * k), vs = Math.round(26 * k), ss = Math.round(14 * k);
+        const vy = Math.round(y + h * 0.5 + vs * 0.36);
+        cv.text(info.title, x + 10, y + Math.round(10 * k) + ts, ts, t.dim, LAB);
+        cv.text(fit(cv, info.value, vs, BOLD, w - 20), x + 10, vy, vs, t.text, BOLD);
+        if (info.bar) cv.fillRect(x + 10, vy + Math.round(9 * k), w - 20, 3, info.bar);
+        let s2 = ss; while (info.sub && s2 > 13 && cv.textWidth(info.sub, s2, LAB) > w - 20) s2--;
+        if (info.sub) cv.text(fit(cv, info.sub, s2, LAB, w - 20), x + 10, y + h - Math.round(12 * k), s2, t.dim, LAB);
     } else {
+        cv.text(info.title, x + 10, y + 19, 14, t.dim, LAB);
         const vw = cv.textWidth(info.value, 22, BOLD);
         cv.text(fit(cv, info.value, 22, BOLD, w - 20), x + 10, y + 44, 22, t.text, BOLD);
         if (info.sub && w - 20 - vw > 30) cv.text(fit(cv, info.sub, 13, LAB, w - 20 - vw - 6), x + 10 + vw + 6, y + 44, 13, t.dim, LAB);
@@ -173,7 +178,9 @@ function drawMain(cv, G, t, v, act) {
     const y0 = G.TOP + 14, hh = 40, rbw = 150, sbw = 130, dbw = 120;
     const rightStart = W - 56 - rbw - 10 - sbw - 10 - dbw - 16;
     let x = 56; const avail = rightStart - 56 - 160;
-    const names = places.map((p, i) => '' + (i === v.sel && d && d.name ? d.name : p.name));
+    // the place the car is at keeps its own label (its town is written under the row): a town of the list may be there too
+    const names = places.map((p, i) => '' + (i === v.sel && d && d.name && !p.here ? d.name : p.name));
+    if (cur && places[v.sel] && places[v.sel].here && d.name && d.name !== places[v.sel].name) cv.text(fit(cv, d.name, 17, BOLD, 440), 58, G.TOP + 78, 17, t.dim, BOLD);
     const want = names.map((n) => Math.max(110, Math.min(240, cv.textWidth(n, 20, BOLD) + 40)));
     const sum = want.reduce((a, b) => a + b + 10, 0), k = sum > avail ? avail / sum : 1;
     names.forEach((n, i) => { const w = Math.floor(want[i] * k); chip(cv, G, t, x, y0, w, hh, n, i === v.sel, () => act.select && act.select(i), 'wxTab' + i); x += w + 10; });
