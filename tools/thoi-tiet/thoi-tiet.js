@@ -20,6 +20,7 @@ const os = require('os');
 const url = require('url');
 const cp = require('child_process');
 const httpMod = require('http');
+const Up = require('./uplink');
 const crypto = require('crypto');
 
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
@@ -108,7 +109,7 @@ function resolveHost(host) {
  * GET a JSON document. A certificate the head unit's old Node does not trust (it carries an old set of roots) is
  * tried again without the check: this is public weather data, nothing of the car's goes out in the request.
  */
-function getJson(host, pathAndQuery, strict, ip) {
+function getJsonDirect(host, pathAndQuery, strict, ip) {
     if (!ip && !CFG.base && nsCache[host] && Date.now() - nsCache[host].at < 600000) ip = nsCache[host].ip;      // the system could not find it before: do not wait for it again
     return new Promise((resolve, reject) => {
         let done = false;
@@ -126,12 +127,40 @@ function getJson(host, pathAndQuery, strict, ip) {
         });
         req.setTimeout(15000, () => { req.abort(); fin(new Error('timeout')); });
         req.on('error', (e) => {
-            if (strict !== false && !CFG.base && /certificate|CERT|self signed|issuer/i.test(String(e && (e.code || e.message)))) return getJson(host, pathAndQuery, false, ip).then((v) => fin(null, v), (e2) => fin(e2));
-            if (!ip && !CFG.base && /EAI_AGAIN|ENOTFOUND/.test(String(e && (e.code || e.message)))) return resolveHost(host).then((addr) => getJson(host, pathAndQuery, strict, addr)).then((v) => fin(null, v), (e2) => fin(new Error(String(e.code || e.message) + ' (và tra DNS trực tiếp cũng lỗi: ' + e2.message + ')')));
+            if (strict !== false && !CFG.base && /certificate|CERT|self signed|issuer/i.test(String(e && (e.code || e.message)))) return getJsonDirect(host, pathAndQuery, false, ip).then((v) => fin(null, v), (e2) => fin(e2));
+            if (!ip && !CFG.base && /EAI_AGAIN|ENOTFOUND/.test(String(e && (e.code || e.message)))) return resolveHost(host).then((addr) => getJsonDirect(host, pathAndQuery, strict, addr)).then((v) => fin(null, v), (e2) => fin(new Error(String(e.code || e.message) + ' (và tra DNS trực tiếp cũng lỗi: ' + e2.message + ')')));
             fin(e);
         });
         req.end();
     });
+}
+
+/* ---------------- the way out: the car's uplink ----------------
+ * Root cannot reach the internet through the Store's uplink (it lets out only the uids it lists), so a request goes out in
+ * a child as a uid of ours (uplink.js); only where there is no uplink (or its uid cannot be had) does it go out directly. */
+const upOpts = Up.options({ log: (m) => log(m), stateDir: path.join(CFG.state, 'state') });
+let upUid, upTried = 0, upOk = false;
+function uplinkUid() {
+    if (upUid === undefined || (upUid === null && Date.now() - upTried > 60000)) { upTried = Date.now(); try { upUid = Up.pickUid(upOpts); } catch (e) { log('internet uid: ' + e.message); upUid = null; } }
+    return upUid;
+}
+async function getJson(host, pathAndQuery) {
+    if (CFG.base) return getJsonDirect(host, pathAndQuery);
+    const uid = uplinkUid();
+    if (uid) {
+        try {
+            const r = await Up.fetchRequest(upOpts, uid, { host, path: pathAndQuery, timeoutMs: 15000 });
+            if (r.status !== 200) throw new Error('HTTP ' + r.status);
+            let j; try { j = JSON.parse(r.body); } catch (e) { throw new Error('answer is not JSON'); }
+            if (!upOk) { upOk = true; log('internet: through the uplink as uid ' + uid); }
+            return j;
+        } catch (e) {
+            if (upOk || /^HTTP \d+$/.test(e.message)) throw e;           // the uplink works: this is the server's answer or a passing failure
+            log('uplink request failed (' + e.message + '): trying directly');
+            try { return await getJsonDirect(host, pathAndQuery); } catch (e2) { throw e; }
+        }
+    }
+    return getJsonDirect(host, pathAndQuery);
 }
 
 const FORECAST = '/v1/forecast?current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,visibility'
@@ -444,7 +473,7 @@ function pollCommands() {
     else if (c.cmd === 'refresh' && !first) refreshAll();
 }
 
-const VERSION = '0.3.2';
+const VERSION = '0.4.0';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     S.pin = newPin(); loadCustom();
@@ -476,4 +505,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, acceptPush, AIR, nameServers, resolveHost, handle, search, plain, addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };
+module.exports = { CFG, S, Up, upOpts, uplinkUid, acceptPush, AIR, nameServers, resolveHost, handle, search, plain, addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };

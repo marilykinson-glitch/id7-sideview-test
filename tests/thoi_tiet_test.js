@@ -122,6 +122,24 @@ srv.listen(0, '127.0.0.1', async () => {
     assert.strictEqual(await T.fwClose(nft), 'closed'); assert.strictEqual(rules.filter((l) => /thoi-tiet/.test(l)).length, 0); assert.ok(rules.some((l) => /id-studio/.test(l))); ok('firewall');
     srv.close();
 
+    /* the uplink: the lease's DNS servers, and a uid above MainApp's ranges, written for the uplink */
+    {
+        const U = require(path.join(ROOT, 'tools', 'thoi-tiet', 'uplink.js')), os = require('os');
+        const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ttup-'));
+        const w = (f, c) => { const q = path.join(d, f); fs.mkdirSync(path.dirname(q), { recursive: true }); fs.writeFileSync(q, c); return q; };
+        assert.strictEqual(U.uplinkLookup(path.join(d, 'none.json')), undefined);
+        assert.strictEqual(typeof U.uplinkLookup(w('lease.json', JSON.stringify({ dns: ['192.0.2.1'] }))), 'function');
+        w('etc/passwd', 'root:x:0:0::/root:/bin/sh\n'); w('etc/group', 'root:x:0:\n');
+        w('main/config/base.json', JSON.stringify({ usableUidsAndGids: { min: 20000, max: 20099 } }));
+        fs.mkdirSync(path.join(d, 'var', 'mgu-uplink', 'uids.d'), { recursive: true }); fs.mkdirSync(path.join(d, 'proc'));
+        const o = U.options({ stateDir: path.join(d, 'state'), etcDir: path.join(d, 'etc'), oapRoot: path.join(d, 'oap'), toolRoot: path.join(d, 'var'), procDir: path.join(d, 'proc'), mainapps: [{ root: path.join(d, 'main'), hmi: 'x' }] });
+        const uid = U.pickUid(o);
+        assert.strictEqual(uid, 20100);
+        assert.strictEqual(fs.readFileSync(path.join(d, 'var', 'mgu-uplink', 'uids.d', 'thoi-tiet'), 'utf8').trim(), '20100');
+        assert.strictEqual(U.pickUid(o), 20100);
+        assert.strictEqual(U.pickUid(U.options({ stateDir: path.join(d, 's2'), mainapps: [] })), null);
+        ok('uplink');
+    }
     /* the drawing */
     const K = path.join(ROOT, 'dist', 'anh_dai_dien', 'source', 'javascript', 'kit');
     if (fs.existsSync(K)) {

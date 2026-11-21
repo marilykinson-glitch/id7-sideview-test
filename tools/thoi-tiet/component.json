@@ -1,9 +1,9 @@
 {
   "id": "thoi-tiet",
   "kind": "tool",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "title": "Trợ thủ Thời tiết",
-  "description": "Lấy dự báo thời tiết và chất lượng không khí (Open-Meteo, không cần khoá) cho các địa điểm mà app Thời tiết chọn, giữ trong RAM cho app vẽ. Mở thêm một trang web cho điện thoại (cùng mạng với xe, có mã PIN) để tìm bất kỳ địa điểm nào trên thế giới và thêm vào app. Cần xe có mạng (Wi-Fi hoặc điểm phát sóng của điện thoại). Vị trí \"hiện tại\" lấy theo địa chỉ mạng của xe nên chỉ gần đúng thành phố.",
+  "description": "Lấy dự báo thời tiết và chất lượng không khí (Open-Meteo, không cần khoá) cho các địa điểm mà app Thời tiết chọn, giữ trong RAM cho app vẽ. Mở thêm một trang web cho điện thoại (cùng mạng với xe, có mã PIN) để tìm bất kỳ địa điểm nào trên thế giới và thêm vào app. Cần xe có mạng (Wi-Fi hoặc điểm phát sóng của điện thoại). Vị trí \"hiện tại\" lấy theo địa chỉ mạng của xe nên chỉ gần đúng thành phố. Ra internet qua uplink của Store (mgu-uplink) bằng uid riêng, như RideTube.",
   "license": "GPL-3.0-or-later",
   "mguHmi": [
     "ID7"
@@ -15,6 +15,10 @@
   "files": [
     {
       "path": "thoi-tiet.js",
+      "mode": "0644"
+    },
+    {
+      "path": "uplink.js",
       "mode": "0644"
     },
     {
@@ -42,5 +46,7 @@
   ],
   "restart": [
     "thoi-tiet.service"
-  ]
+  ],
+  "internet": true,
+  "uids": "state/internet-uids"
 }
