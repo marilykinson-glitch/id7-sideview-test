@@ -143,18 +143,6 @@ srv.listen(0, '127.0.0.1', async () => {
         assert.strictEqual(U.pickUid(U.options({ stateDir: path.join(d, 's2'), mainapps: [] })), null);
         ok('uplink');
     }
-    /* the widget scan: the cells of a start widget's uiDescription, and setValue names in an app's JavaScript */
-    {
-        const os = require('os'), d = fs.mkdtempSync(path.join(os.tmpdir(), 'ttsc-'));
-        const w = (f, c) => { const q = path.join(d, f); fs.mkdirSync(path.dirname(q), { recursive: true }); fs.writeFileSync(q, c); };
-        w('oap_1/rhmiDataStartWidget/uiDescription/uiDescription.json', JSON.stringify({ containers: { 5: { components: { 7: { type: 'startWidget', cells: { Widget: { value: 'LT_Demo' } } } } } } }));
-        w('oap_1/source/javascript/app.js', "// widget\nw.setValue(spawn, 'DemoImage1', x, 'Asset');");
-        process.env.TT_OAP = d;
-        delete require.cache[require.resolve(path.join(ROOT, 'apps', 'thoi_tiet', 'scan.js'))];
-        require(path.join(ROOT, 'apps', 'thoi_tiet', 'scan.js')).run((lines) => {
-            assert.ok(lines.some((l) => /Widget=LT_Demo/.test(l)), lines.join('|')); assert.ok(lines.some((l) => /DemoImage1/.test(l)), lines.join('|')); delete process.env.TT_OAP; ok('widget scan');
-        });
-    }
     /* the drawing */
     const K = path.join(ROOT, 'dist', 'anh_dai_dien', 'source', 'javascript', 'kit');
     if (fs.existsSync(K)) {

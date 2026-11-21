@@ -31,8 +31,7 @@ const base = { set: Wx.settingsOf(null), fx: true, time: 3.2, mode: 'main', stat
 const fxs = (name, o, extra) => Object.assign({}, base, { sel: 1, data: sample(Object.assign({ name: 'TP. Hồ Chí Minh' }, o)) }, extra || {});
 const withSet = (o, extra) => Object.assign({}, base, { set: Wx.settingsOf(o) }, extra || {});
 const states = {
-    '15-cai-dat': Object.assign({}, base, { mode: 'settings', widget: { version: '0.5.5', ready: true, n: 1, frames: 12, ok: 0, lines: ['widget initialized', 'widget ready: []', 'warn: widget image 1: TypeError: example error'] }, set: Wx.settingsOf({ tiles: ['wind', 'humidity', 'uv', 'aqi', 'vis', 'sun'], block: 'chart', days: true, tips: true, fx: true, unit: 'C' }) }),
-    '23-do-widget': Object.assign({}, base, { mode: 'scan', scan: ['uiDescription oap_12345/rhmiDataStartWidget: Widget=LT_Table_OnlineApps_DriveRecorderWidget SelectionName=... ', 'oap_12345: BackgroundImage1 Text1stRow', '(đã xem 40/40 tệp JavaScript trong 0.3 giây)'] }),
+    '15-cai-dat': Object.assign({}, base, { mode: 'settings', set: Wx.settingsOf({ tiles: ['wind', 'humidity', 'uv', 'aqi', 'vis', 'sun'], block: 'chart', days: true, tips: true, fx: true, unit: 'C' }) }),
     '16-bieu-do': withSet({ tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'chart' }, { time: 5 }),
     '17-cung-mat-troi': withSet({ tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'sun' }),
     '18-8-o-nhieu-thong-so': withSet({ tiles: ['wind', 'gust', 'humidity', 'rain', 'uv', 'aqi', 'vis', 'pressure'], block: 'icons', unit: 'F' }),
@@ -49,6 +48,8 @@ const states = {
     '13-dem-sao': fxs(null, { code: 0, day: false, t: 19 }),
     '14-chon-nuoc-ngoai': Object.assign({}, base, { mode: 'pick', pick: { keys: ['here', 'hcm', 'tokyo', 'munich'], page: 0, pages: 1, region: 'nn', max: 6, items: Wx.listFor('nn') } }),
     '1-hom-nay': base,
+    '24-sap-mua': fxs(null, { code: 3 }, { data: (() => { const d = sample({ code: 3 }); d.current.rainIn = 25; return d; })() }),
+    '25-lai-sap-mua': Object.assign({}, base, { drive: true, time: 6, data: (() => { const d = sample({ code: 61, t: 26 }); d.current.rainIn = 0; return d; })() }),
     '2-mua-giong': Object.assign({}, base, { sel: 3, data: sample({ name: 'Đà Nẵng', code: 95, t: 27, codes: [95, 65, 61, 80, 3, 3, 2, 1] }) }),
     '3-ban-dem': Object.assign({}, base, { sel: 2, data: sample({ name: 'Hà Nội', code: 0, day: false, t: 17, air: { aqi: 168, pm25: 85, pm10: 110, o3: 30, no2: 25 } }) }),
     '4-chon-dia-diem': Object.assign({}, base, { mode: 'pick', pick: { keys: ['here', 'hcm', 'hanoi', 'danang'], page: 0, pages: 3, region: 'all', max: 6, items: Wx.listFor('all').slice(0, 24) }, message: 'Tối đa 6 địa điểm: bỏ bớt một nơi trước.', messageKind: 'warn' }),
@@ -65,12 +66,3 @@ Object.keys(states).forEach((k) => {
     console.log(path.join(out, k + '.png'));
 });
 
-// the home-screen widget, small and big (sizes are a guess from the home screen: the small cell is about 3:1)
-{
-    const w0 = sample({ code: 80 }); w0.current.rainIn = 20;
-    [[640, 210, w0], [1280, 420, w0], [640, 210, sample({ code: 2 })]].forEach((a, i) => {
-        const rec = new Recorder(a[0], a[1], { textScale: 1 }), c2 = new Canvas(a[0], a[1]);
-        UI.drawWidget(rec, G, theme, { data: a[2], big: a[0] > 700, w: a[0], h: a[1] });
-        play(rec.words(), c2); fs.writeFileSync(path.join(out, 'widget-' + i + '.png'), c2.png());
-    });
-}
