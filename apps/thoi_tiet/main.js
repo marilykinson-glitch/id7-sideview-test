@@ -176,7 +176,7 @@ mgu.run({
                 const n = i + 1;
                 T('TextDayliDetail' + n, i === 0 ? 'Mai' : (dy.dow === 0 ? 'CN' : 'T' + (dy.dow + 1)));
                 A('IconDayliDetail' + n, Wx.describe(dy.code).icon, true, 44);
-                T('TextTempDayDetail' + n, num(dy.hi) + '°'); T('TextTempDayDetailUnit' + n, '');
+                T('TextTempDayDetail' + n, num(dy.hi) + '° / ' + num(dy.lo) + '°'); T('TextTempDayDetailUnit' + n, '');
             });
             const air = d.air && typeof d.air.aqi === 'number';
             B('IsAQI_Visible', false); B('IsAQI_Asia_Visible', air);
