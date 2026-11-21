@@ -289,6 +289,12 @@ function drawSettings(cv, G, t, v, act) {
     const other = [['5 ngày tới', set.days ? 'Bật' : 'Tắt', set.days, 'days'], ['Lời nhắc cho người lái', set.tips ? 'Bật' : 'Tắt', set.tips, 'tips'], ['Hiệu ứng chuyển động', set.fx ? 'Bật' : 'Tắt', set.fx, 'fx']];
     other.forEach((o, i) => onChip(56 + i * (cw + gap), G.TOP + 326, cw, o[0] + ': ' + o[1], o[2], () => act.toggle && act.toggle(o[3]), 'wxO' + o[3]));
     onChip(56 + 3 * (cw + gap), G.TOP + 326, cw, 'Đơn vị: °' + set.unit, true, () => act.setUnit && act.setUnit(set.unit === 'C' ? 'F' : 'C'), 'wxUnit');
+    const wd = v.widget;
+    if (wd) {
+        label(cv, t, 'WIDGET MÀN HÌNH CHÍNH', 56, G.TOP + 392);
+        cv.text(fit(cv, 'Bản ' + wd.version + '  ·  ' + (wd.ready ? 'xe đã giao ô widget' : 'xe chưa giao ô widget') + '  ·  số ô: ' + wd.n + '  ·  đã vẽ: ' + wd.ok + '/' + wd.frames, 16, LAB, 1000), 56, G.TOP + 412, 16, t.text, LAB);
+        (wd.lines || []).forEach((l, i) => cv.text(fit(cv, l, 14, LAB, 1000), 56, G.TOP + 430 + i * 16, 14, t.dim, LAB));
+    }
     const by = G.pageBottom(cv) - (cv.own ? G.MARGIN : 0) - 54, bw = 220;
     message(cv, t, v, 56, by + 35);
     G.button(cv, t, W - 56 - bw, by, bw, 54, 'Xong', act.closeSettings || nop, { key: 'wxSetDone', primary: true });

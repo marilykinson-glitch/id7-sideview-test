@@ -26,6 +26,16 @@ const FPS = 8;                 // the moving weather
 mgu.run({
     async start(ctx) {
         const { ui, log } = ctx;
+        // what the home-screen widget does, shown in the settings (the car has no log to read): the last lines the kit logs about it
+        const wlog = [], wstat = { frames: 0, ok: 0 };
+        ['info', 'warn', 'error'].forEach((k) => {
+            const orig = log[k];
+            if (typeof orig !== 'function') return;
+            log[k] = function () {
+                try { const m = Array.prototype.map.call(arguments, (a) => (a && a.message) || String(a)).join(' '); if (/widget/i.test(m)) { wlog.push((k === 'info' ? '' : k + ': ') + m); if (wlog.length > 8) wlog.shift(); } } catch (e) { /* the log is not ours */ }
+                return orig.apply(this, arguments);
+            };
+        });
         let keys = Wx.DEFAULT_KEYS.slice(), status = null, readAt = 0, cmdId = Date.now(), lastKey = '', shown = false;
         let why = '', mode = 'main', sel = 0, page = 0, region = 'all', drive = false, message = '', messageKind = 'dim', refreshAt = 0, seenSeq = -1, set = Wx.settingsOf(null), custom = [];
         const f = (n) => path.join(ctx.dataDir, n);
@@ -120,6 +130,7 @@ mgu.run({
                 updated: d && d.at ? hhmm(d.at, zoneOf(d)) + (d.ok ? '' : ' (cũ)') : '',
                 pick: { keys, page, pages: pagesOf(), region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
                 phone: { url: s && s.url, pin: s && s.pin, host: s && s.host, count: custom.length },
+                widget: { version: (mgu.SPEC && mgu.SPEC.version) || '', ready: !!(ctx.widget && ctx.widget.ready), n: ctx.widget && ctx.widget.instances ? ctx.widget.instances().length : 0, frames: wstat.frames, ok: wstat.ok, lines: wlog.slice(-3) },
                 message, messageKind, time: (Date.now() - t0) / 1000,
             };
         }
@@ -144,9 +155,11 @@ mgu.run({
                 const d = list.filter((p) => p.here && p.current)[0] || list.filter((p) => p.current)[0] || null;
                 // ctx.canvas gives a Recorder; the widget wants pixels: draw on a Recorder, play it onto a Canvas (kept per size)
                 const w = inst.big ? 1280 : 640, h = inst.big ? 420 : 210, rec = new Recorder(w, h, { textScale: 1 });
+                wstat.frames++;
                 UI.drawWidget(rec, G, ctx.theme(), { data: d, big: !!inst.big, w, h });
                 const cv = wcache[w] || (wcache[w] = new Canvas(w, h));
                 play(rec.words(), cv);
+                wstat.ok++;
                 return cv;
             });
         }
