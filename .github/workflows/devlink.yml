@@ -1,0 +1,54 @@
+name: Build MGU DevLink APK
+
+on:
+  push:
+    paths:
+      - 'android/devlink/**'
+      - '.github/workflows/devlink.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build release APK
+        working-directory: android/devlink
+        run: gradle --no-daemon assembleRelease
+
+      - name: Rename APK
+        id: apk
+        run: |
+          VER=$(grep -m1 versionName android/devlink/app/build.gradle | sed -E "s/.*['\"]([0-9.]+)['\"].*/\1/")
+          mkdir -p out
+          cp android/devlink/app/build/outputs/apk/release/*.apk "out/MGU-DevLink-$VER.apk"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MGU-DevLink-${{ steps.apk.outputs.ver }}
+          path: out/*.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="devlink-v${{ steps.apk.outputs.ver }}"
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" out/*.apk --title "MGU DevLink ${{ steps.apk.outputs.ver }}" --notes "APK ký sẵn, cài đè được lên bản cũ."
