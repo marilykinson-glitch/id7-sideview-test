@@ -150,12 +150,14 @@ mgu.run({
         // the home-screen widget: BMW's own weather widget layout (LT_Table_OnlineApps_WeatherWidget, big and small), filled cell by
         // cell: the place "Vị trí hiện tại" if it has a forecast, else the first place that has one. Only what changed is sent.
         const wsent = {}, wicons = {};
+        // size: a number (square) or [w, h, icon size]: the car shows the picture as it is, from the cell's corner
         const iconCanvas = (icon, day, size) => {
             const k = icon + '|' + (day ? 1 : 0) + '|' + size;
             if (!wicons[k]) {
-                const rec = new Recorder(size, size, { textScale: 1 });
-                Icons.draw(rec, icon, day, size / 2, size / 2, Math.round(size * 0.92));
-                const cv = new Canvas(size, size);
+                const w = size[0] || size, h = size[1] || size, sz = size[2] || Math.round(size * 0.98);
+                const rec = new Recorder(w, h, { textScale: 1 });
+                Icons.draw(rec, icon, day, w / 2, h / 2, sz);
+                const cv = new Canvas(w, h);
                 play(rec.words(), cv);
                 wicons[k] = cv;
             }
@@ -166,17 +168,18 @@ mgu.run({
             if (!d || !d.current) { T('Title', 'Thời tiết'); T('Text1stRow', 'Đang chờ dữ liệu'); T('Text2ndRow', ''); T('TextTemp', ''); T('TextTempUnit', ''); B('IsAQI_Visible', false); B('IsAQI_Asia_Visible', false); return c; }
             const cur = d.current, today = (d.daily && d.daily[0]) || {}, wc = Wx.describe(cur.code), num = (v) => Wx.deg(v).replace('°', '');
             T('Title', d.name || 'Thời tiết');
-            A('IllustrationActualWeather', wc.icon, cur.day, 200);
+            A('IllustrationActualWeather', wc.icon, cur.day, [200, 150, 160]);
             T('TextTemp', num(cur.t)); T('TextTempUnit', '°' + Wx.getUnit());
-            T('Text1stRow', wc.text);
-            T('Text2ndRow', typeof cur.rainIn === 'number' ? (cur.rainIn === 0 ? 'Đang mưa' : 'Mưa sau ' + cur.rainIn + ' phút') : 'Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo));
+            // the layout shows no title: the place is the first row, the weather (or the rain that is coming) the second
+            T('Text1stRow', d.name || 'Thời tiết');
+            T('Text2ndRow', typeof cur.rainIn === 'number' ? (cur.rainIn === 0 ? 'Đang mưa' : 'Mưa sau ' + cur.rainIn + ' phút') : wc.text + '  ·  ' + Wx.deg(today.hi) + ' / ' + Wx.deg(today.lo));
             A('IconRaindrops', 'rain', true, 48);
             T('TextRainProbability', today.pop === null || today.pop === undefined ? '–' : String(Math.round(today.pop))); T('TextRainProbabilityUnit', '%');
             (d.daily || []).slice(1, 4).forEach((dy, i) => {
                 const n = i + 1;
                 T('TextDayliDetail' + n, i === 0 ? 'Mai' : (dy.dow === 0 ? 'CN' : 'T' + (dy.dow + 1)));
-                A('IconDayliDetail' + n, Wx.describe(dy.code).icon, true, 64);
-                T('TextTempDayDetail' + n, num(dy.hi)); T('TextTempDayDetailUnit' + n, '°');
+                A('IconDayliDetail' + n, Wx.describe(dy.code).icon, true, 44);
+                T('TextTempDayDetail' + n, num(dy.hi) + '° / ' + num(dy.lo) + '°'); T('TextTempDayDetailUnit' + n, '');
             });
             const air = d.air && typeof d.air.aqi === 'number';
             B('IsAQI_Visible', false); B('IsAQI_Asia_Visible', air);
