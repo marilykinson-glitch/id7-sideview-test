@@ -326,9 +326,15 @@ function drawWidgetBig(cv, G, t, v) {
     // the car draws this picture ~50% see-through over grey and fades its top: flat saturated colours, white text
     const DIM = '#e2e8f4';
     cv.fillRect(0, 0, w, h, cur.day ? '#0a2f66' : '#0c1740');
-    cv.text(fit(cv, d.name || '', 34, BOLD, 400), ox, 146, 34, t.text, BOLD);
+    const nm = fit(cv, d.name || '', 34, BOLD, 400), nw = cv.textWidth(nm, 34, BOLD) + 32;
+    cv.roundRect(ox, 108, nw, 52, 26, G.withAlpha('#000000', 0.42));
+    cv.text(nm, ox + 16, 146, 34, t.text, BOLD);
     if (typeof cur.rainIn === 'number') rainChip(cv, G, t, cur, R, 104, 46, 26);
-    else cv.text('Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo), R, 144, 26, DIM, { literal: true, font: 'label', align: 'right' });
+    else {
+        const hl = 'Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo), hw = cv.textWidth(hl, 26, { literal: true, font: 'bold' }) + 32;
+        cv.roundRect(R - hw, 108, hw, 52, 26, G.withAlpha('#000000', 0.42));
+        cv.text(hl, R - 16, 144, 26, t.text, { literal: true, font: 'bold', align: 'right' });
+    }
     cv.roundRect(ox - 4, 164, 150, 150, 75, G.withAlpha('#000000', 0.5));
     Icons.draw(cv, wc.icon, cur.day, ox + 71, 239, 124);
     const big = Wx.deg(cur.t).replace('°', '');
@@ -343,13 +349,14 @@ function drawWidgetBig(cv, G, t, v) {
         Icons.draw(cv, Wx.describe(hr.code).icon, hr.day, cx, 240, 50);
         cv.text(Wx.deg(hr.t), cx, 296, 28, t.text, { literal: true, font: 'bold', align: 'center' });
     });
-    cv.fillRect(ox, 334, W2, 1, G.withAlpha('#ffffff', 0.3));
+    cv.fillRect(ox, 334, W2, 1, G.withAlpha('#ffffff', 0.35));
     const ids = (v.tiles || []).slice(0, 5), n = ids.length;
     if (!n) return;
     const gap = 8, tw = (W2 - (n - 1) * gap) / n, ty = 348, th = h - ty - 30;
     ids.forEach((id, i) => {
         const info = Wx.tileInfo(id, cur, today, d.daily, d.air), x = ox + i * (tw + gap);
-        cv.roundRect(x, ty, tw, th, 14, G.withAlpha('#ffffff', 0.2));
+        cv.roundRect(x, ty, tw, th, 14, G.withAlpha('#000000', 0.45));
+        cv.strokeRoundRect(x, ty, tw, th, 14, 1.5, G.withAlpha('#ffffff', 0.22));
         cv.text(fit(cv, info.title, 20, LAB, tw - 20), x + 12, ty + 38, 20, DIM, LAB);
         cv.text(fit(cv, info.value, 42, BOLD, tw - 20), x + 12, ty + 98, 42, t.text, BOLD);
         if (info.sub) cv.text(fit(cv, info.sub, 18, LAB, tw - 20), x + 12, ty + th - 16, 18, DIM, LAB);
