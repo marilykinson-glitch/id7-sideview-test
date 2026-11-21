@@ -21,14 +21,14 @@ function sample(o) {
     for (let i = 0; i < 24; i++) { const h = (14 + i) % 24; hours.push({ time: (h < 10 ? '0' : '') + h + ':00', t: (o.t || 31) - Math.abs(i - 3) * 0.7 - (i > 8 ? 3 : 0), pop: [0, 0, 10, 40, 60, 70, 20, 0][i % 8], code: codes[Math.floor(i / 3) % 8], day: h >= 6 && h < 18 }); }
     const daily = [];
     for (let i = 0; i < 6; i++) daily.push({ date: '2026-11-2' + (1 + i), dow: (6 + i) % 7, code: [95, 61, 3, 2, 80, 1][i], hi: 33 - i, lo: 25 - (i % 3), pop: [70, 55, 20, 10, 45, 5][i], uv: 8 - i, sunrise: '06:02', sunset: '17:28' });
-    return { key: 'x', name: o.name || 'TP. Hồ Chí Minh', ok: true, at: Date.now(), error: '', here: false, current: { t: o.t || 31, feels: (o.t || 31) + 5, humidity: 74, wind: 12, windDir: 135, code: o.code === undefined ? 2 : o.code, day: o.day !== false, rain: 0, pressure: 1009, time: '2026-11-21T14:00' }, hourly: hours, daily };
+    return { key: 'x', name: o.name || 'TP. Hồ Chí Minh', ok: true, at: Date.now(), error: '', here: false, air: o.air === undefined ? { aqi: 87, pm25: 29, pm10: 41, o3: 60, no2: 12 } : o.air, current: { t: o.t || 31, feels: (o.t || 31) + 5, humidity: 74, wind: 12, windDir: 135, code: o.code === undefined ? 2 : o.code, day: o.day !== false, rain: 0, pressure: 1009, time: '2026-11-21T14:00' }, hourly: hours, daily };
 }
 const places = Wx.placesFor(['here', 'hcm', 'hanoi', 'danang']);
 const base = { mode: 'main', state: 'ok', places, sel: 1, data: sample(), busy: false, updated: '11:20', pick: { keys: ['here', 'hcm', 'hanoi', 'danang'], page: 0, pages: 2, max: 6, items: [Wx.HERE].concat(Wx.CITIES).slice(0, 24) }, message: '', messageKind: 'dim' };
 const states = {
     '1-hom-nay': base,
     '2-mua-giong': Object.assign({}, base, { sel: 3, data: sample({ name: 'Đà Nẵng', code: 95, t: 27, codes: [95, 65, 61, 80, 3, 3, 2, 1] }) }),
-    '3-ban-dem': Object.assign({}, base, { sel: 2, data: sample({ name: 'Hà Nội', code: 0, day: false, t: 17 }) }),
+    '3-ban-dem': Object.assign({}, base, { sel: 2, data: sample({ name: 'Hà Nội', code: 0, day: false, t: 17, air: { aqi: 168, pm25: 85, pm10: 110, o3: 30, no2: 25 } }) }),
     '4-chon-dia-diem': Object.assign({}, base, { mode: 'pick', message: 'Tối đa 6 địa điểm: bỏ bớt một nơi trước.', messageKind: 'warn' }),
     '5-chua-co-mang': Object.assign({}, base, { data: { key: 'x', name: 'TP. Hồ Chí Minh', ok: false, at: 0, error: 'timeout', current: null, hourly: [], daily: [] }, updated: '' }),
     '6-tro-thu-chua-chay': Object.assign({}, base, { state: 'down', data: null }),

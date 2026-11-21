@@ -1,9 +1,9 @@
 {
   "id": "thoi-tiet",
   "kind": "tool",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "title": "Trợ thủ Thời tiết",
-  "description": "Lấy dự báo thời tiết (Open-Meteo, không cần khoá) cho các địa điểm mà app Thời tiết chọn, giữ trong RAM cho app vẽ. Cần xe có mạng (Wi-Fi hoặc điểm phát sóng của điện thoại). Vị trí \"hiện tại\" lấy theo địa chỉ mạng của xe nên chỉ gần đúng thành phố.",
+  "description": "Lấy dự báo thời tiết và chất lượng không khí (Open-Meteo, không cần khoá) cho các địa điểm mà app Thời tiết chọn, giữ trong RAM cho app vẽ. Cần xe có mạng (Wi-Fi hoặc điểm phát sóng của điện thoại). Vị trí \"hiện tại\" lấy theo địa chỉ mạng của xe nên chỉ gần đúng thành phố.",
   "license": "GPL-3.0-or-later",
   "mguHmi": [
     "ID7"

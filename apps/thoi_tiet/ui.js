@@ -39,9 +39,9 @@ function chip(cv, G, t, x, y, w, h, label, on, run, key, size) {
 
 function tile(cv, G, t, x, y, w, h, title, value, sub) {
     cv.roundRect(x, y, w, h, 12, G.withAlpha('#ffffff', 0.05));
-    cv.text(title, x + 14, y + 24, 15, t.dim, LAB);
-    cv.text(fit(cv, value, 24, BOLD, w - 24), x + 14, y + 54, 24, t.text, BOLD);
-    if (sub) cv.text(fit(cv, sub, 14, LAB, w - 24), x + 14, y + h - 10, 14, t.dim, LAB);
+    cv.text(title, x + 10, y + 24, 15, t.dim, LAB);
+    cv.text(fit(cv, value, 24, BOLD, w - 20), x + 10, y + 52, 24, t.text, BOLD);
+    if (sub) cv.text(fit(cv, sub, 14, LAB, w - 20), x + 10, y + h - 10, 14, t.dim, LAB);
 }
 
 function tempColor(v) { return v < 18 ? '#5ab0ff' : v < 25 ? '#6fd3b0' : v < 30 ? '#ffc933' : v < 35 ? '#ff9f2e' : '#ff5a3c'; }
@@ -77,11 +77,13 @@ function drawMain(cv, G, t, v, act) {
     cv.text('°C', 262 + tw + 6, G.TOP + 130, 34, t.dim, BOLD);
     cv.text(wc.text, 56, G.TOP + 292, 32, t.text, BOLD);
     cv.text('Cảm giác như ' + Wx.deg(cur.feels) + '  ·  Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo), 56, G.TOP + 324, 19, t.dim, LAB);
-    const ty = G.TOP + 346, tw2 = 108, tg = 10;
+    const ty = G.TOP + 346, tw2 = 88, tg = 6, air = d.air, band = Wx.aqiBand(air && air.aqi);
     tile(cv, G, t, 56, ty, tw2, 92, 'Gió km/h', Wx.kmh(cur.wind).replace(' km/h', ''), Wx.compass(cur.windDir));
     tile(cv, G, t, 56 + (tw2 + tg), ty, tw2, 92, 'Độ ẩm', Wx.pct(cur.humidity), '');
     tile(cv, G, t, 56 + 2 * (tw2 + tg), ty, tw2, 92, 'Mưa', Wx.pct(today.pop), cur.rain > 0 ? cur.rain + ' mm' : '');
-    tile(cv, G, t, 56 + 3 * (tw2 + tg), ty, tw2, 92, 'Chỉ số UV', today.uv === null || today.uv === undefined ? '–' : String(Math.round(today.uv)), Wx.uvText(today.uv));
+    tile(cv, G, t, 56 + 3 * (tw2 + tg), ty, tw2, 92, 'UV', today.uv === null || today.uv === undefined ? '–' : String(Math.round(today.uv)), Wx.uvText(today.uv));
+    tile(cv, G, t, 56 + 4 * (tw2 + tg), ty, tw2, 92, 'AQI', air ? String(Math.round(air.aqi)) : '–', air ? band.text : 'chưa có');
+    if (air) cv.fillRect(56 + 4 * (tw2 + tg) + 10, ty + 62, tw2 - 20, 3, band.color);
 
     // right: next hours (every 3 hours), next days
     const rx = 560, rw = W - 56 - rx;

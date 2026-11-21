@@ -16,7 +16,7 @@ function sun(cv, cx, cy, s) {
 }
 function moon(cv, cx, cy, s) {
     cv.circle(cx, cy, s * 0.28, MOON);
-    cv.circle(cx + s * 0.13, cy - s * 0.08, s * 0.25, '#0c0f14');      // the bite (the screen is dark)
+    cv.circle(cx + s * 0.13, cy - s * 0.08, s * 0.25, '#111113');      // the bite (the screen is dark)
     cv.circle(cx - s * 0.2, cy + s * 0.2, s * 0.025, '#ffffffcc'); cv.circle(cx + s * 0.28, cy + s * 0.18, s * 0.02, '#ffffffaa');
 }
 /** A cloud whose body is centred at (cx, cy), width s*k. */

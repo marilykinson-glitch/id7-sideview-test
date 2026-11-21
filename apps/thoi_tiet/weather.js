@@ -39,6 +39,17 @@ const pct = (v) => (v === null || v === undefined || !isFinite(v) ? '–' : Math
 const kmh = (v) => (v === null || v === undefined || !isFinite(v) ? '–' : Math.round(v) + ' km/h');
 const uvText = (v) => (v === null || v === undefined || !isFinite(v) ? '–' : v < 3 ? 'Thấp' : v < 6 ? 'Vừa' : v < 8 ? 'Cao' : v < 11 ? 'Rất cao' : 'Cực cao');
 
+/** US AQI: the word and the colour of its band. */
+function aqiBand(v) {
+    if (v === null || v === undefined || !isFinite(v)) return { text: '', color: '#8a93a3' };
+    if (v <= 50) return { text: 'Tốt', color: '#2fd27a' };
+    if (v <= 100) return { text: 'Trung bình', color: '#ffd23f' };
+    if (v <= 150) return { text: 'Kém', color: '#ff9f2e' };
+    if (v <= 200) return { text: 'Xấu', color: '#ff5a3c' };
+    if (v <= 300) return { text: 'Rất xấu', color: '#b45cff' };
+    return { text: 'Nguy hại', color: '#c0392b' };
+}
+
 /** Places to choose from: key, name, latitude, longitude. */
 const CITIES = [
     ['hanoi', 'Hà Nội', 21.028, 105.854], ['hcm', 'TP. Hồ Chí Minh', 10.776, 106.701], ['danang', 'Đà Nẵng', 16.054, 108.202], ['haiphong', 'Hải Phòng', 20.845, 106.688],
@@ -69,4 +80,4 @@ function placesFor(keys) {
     return out.slice(0, MAX_PLACES);
 }
 
-module.exports = { describe, DOW, compass, deg, pct, kmh, uvText, CITIES, HERE, DEFAULT_KEYS, MAX_PLACES, placesFor };
+module.exports = { describe, DOW, compass, deg, pct, kmh, uvText, aqiBand, CITIES, HERE, DEFAULT_KEYS, MAX_PLACES, placesFor };

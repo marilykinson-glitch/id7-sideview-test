@@ -23,11 +23,14 @@ const answer = { current: { time: '2026-11-21T14:00', temperature_2m: 31.2, appa
 const p = T.parse(answer);
 assert.strictEqual(p.current.t, 31.2); assert.strictEqual(p.current.day, true); assert.strictEqual(p.hourly.length, 24); assert.strictEqual(p.hourly[0].time, '14:00'); assert.strictEqual(p.daily[0].dow, 6); assert.strictEqual(p.daily[0].sunrise, '06:02'); ok('parse');
 assert.throws(() => T.parse({}), /unexpected/); assert.throws(() => T.parse({ current: {}, hourly: {}, daily: {} }), /temperature/); ok('parse refuses junk');
+assert.deepStrictEqual(T.parseAir({ current: { us_aqi: 87, pm2_5: 29.1, pm10: 41, ozone: 60, nitrogen_dioxide: 12 } }), { aqi: 87, pm25: 29.1, pm10: 41, o3: 60, no2: 12 }); assert.strictEqual(T.parseAir({ current: {} }), null); assert.strictEqual(T.parseAir(null), null);
+assert.strictEqual(Wx.aqiBand(30).text, 'Tốt'); assert.strictEqual(Wx.aqiBand(168).text, 'Xấu'); assert.strictEqual(Wx.aqiBand(null).text, ''); ok('air quality');
 assert.ok(!T.setPlaces([{ key: 'a', name: 'A', lat: 999, lon: 0 }])); assert.ok(T.setPlaces([{ key: 'here', name: 'Đây', here: true }, { key: 'hcm', name: 'HCM', lat: 10.7, lon: 106.7 }])); ok('places are checked');
 
 const hits = [];
 const srv = http.createServer((req, res) => {
     hits.push(req.url);
+    if (/^\/v1\/air-quality/.test(req.url)) { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ current: { us_aqi: 87, pm2_5: 29, pm10: 41, ozone: 60, nitrogen_dioxide: 12 } })); }
     if (/^\/v1\/forecast/.test(req.url) && /latitude=10\.7/.test(req.url)) { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(answer)); }
     if (/^\/v1\/forecast/.test(req.url)) { res.statusCode = 500; return res.end('no'); }
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true, latitude: 21.03, longitude: 105.85, city: 'Hanoi' }));
@@ -38,7 +41,7 @@ srv.listen(0, '127.0.0.1', async () => {
     const st = JSON.parse(fs.readFileSync(path.join(dir, 'run', 'weather.json'), 'utf8'));
     assert.strictEqual(st.places.length, 2);
     const here = st.places[0], hcm = st.places[1];
-    assert.strictEqual(hcm.ok, true); assert.strictEqual(hcm.current.t, 31.2);
+    assert.strictEqual(hcm.ok, true); assert.strictEqual(hcm.current.t, 31.2); assert.strictEqual(hcm.air.aqi, 87);
     assert.strictEqual(here.ok, false); assert.ok(here.error);          // the here place used 21.03: the fake server fails it
     assert.strictEqual(here.name, 'Hanoi'); ok('end to end: a good place, a failing one, the place by address');
     // a failure keeps the last good forecast

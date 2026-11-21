@@ -26,6 +26,7 @@ const CFG = {
     retryMs: Number(env('TT_RETRY_MS', 60 * 1000)),
     host: env('TT_HOST', 'api.open-meteo.com'),
     ipHost: env('TT_IP_HOST', 'ipwho.is'),
+    airHost: env('TT_AIR_HOST', 'air-quality-api.open-meteo.com'),
     base: env('TT_BASE', ''),                                 // tests: http://127.0.0.1:port (no TLS)
 };
 const APP = /^thoi_tiet\d*$/;
@@ -77,6 +78,14 @@ const FORECAST = '/v1/forecast?current=temperature_2m,relative_humidity_2m,appar
     + '&hourly=temperature_2m,precipitation_probability,weather_code,is_day'
     + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset'
     + '&timezone=auto&forecast_days=6&wind_speed_unit=kmh';
+
+const AIR = '/v1/air-quality?current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide&timezone=auto';
+/** The air: { aqi (US scale 0..500), pm25, pm10, o3, no2 } or null when the answer has no index. */
+function parseAir(j) {
+    const c = j && j.current, num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+    if (!c || num(c.us_aqi) === null) return null;
+    return { aqi: num(c.us_aqi), pm25: num(c.pm2_5), pm10: num(c.pm10), o3: num(c.ozone), no2: num(c.nitrogen_dioxide) };
+}
 
 /**
  * What Open-Meteo answered, as the app uses it:
@@ -144,7 +153,9 @@ async function fetchPlace(p) {
         if (p.here) { const w = await whereIAm(); lat = w.lat; lon = w.lon; if (w.city) name = w.city; }
         const j = await getJson(CFG.host, FORECAST + '&latitude=' + lat.toFixed(3) + '&longitude=' + lon.toFixed(3));
         const w = parse(j);
-        S.data[p.key] = { key: p.key, name, ok: true, at: Date.now(), error: '', current: w.current, hourly: w.hourly, daily: w.daily, here: p.here };
+        let air = null;                                  // the air is a second request: without it the weather still shows
+        try { air = parseAir(await getJson(CFG.airHost, AIR + '&latitude=' + lat.toFixed(3) + '&longitude=' + lon.toFixed(3))); } catch (e) { log('air for ' + p.key + ': ' + e.message); air = prev.air || null; }
+        S.data[p.key] = { key: p.key, name, ok: true, at: Date.now(), error: '', current: w.current, hourly: w.hourly, daily: w.daily, air, here: p.here };
     } catch (e) {
         log('forecast for ' + p.key + ': ' + e.message);
         // the last good forecast stays on the screen, marked as old
@@ -195,7 +206,7 @@ function pollCommands() {
     else if (c.cmd === 'refresh' && !first) refreshAll();
 }
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     const saved = readJson(path.join(CFG.state, 'places.json'));
@@ -217,4 +228,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, parse, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };
+module.exports = { CFG, S, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };
