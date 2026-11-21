@@ -217,6 +217,63 @@ function opening(mw, mh) {
     return t;
 }
 /**
+ * The light that spreads out of a bright mark (opt.shine = { x, y, w, h }: the mark's box, in pixels) as the picture
+ * stands: returns shine(t) -> a copy of rgba with the mark lit at moment t (0..1; 0 and 1 are the picture as it is).
+ * Only the mark's surroundings change, so only their macroblocks have to be sent again.
+ */
+function shiner(rgba, w, h, box) {
+    const M = 64, x0 = Math.max(0, (box.x - M) | 0), y0 = Math.max(0, (box.y - M) | 0);
+    const x1 = Math.min(w, Math.ceil(box.x + box.w + M)), y1 = Math.min(h, Math.ceil(box.y + box.h + M)), rw = x1 - x0, rh = y1 - y0;
+    const n = rw * rh, src = new Float32Array(n * 3), cov = new Float32Array(n);
+    for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) {
+        const gx = x0 + x, gy = y0 + y, p = (gy * w + gx) * 4, i = y * rw + x;
+        const inside = gx >= box.x && gx < box.x + box.w && gy >= box.y && gy < box.y + box.h;
+        const lum = 0.3 * rgba[p] + 0.59 * rgba[p + 1] + 0.11 * rgba[p + 2];
+        const fe = Math.min(gx - box.x, box.x + box.w - 1 - gx, gy - box.y, box.y + box.h - 1 - gy), k = inside ? Math.min(1, lum / 90) * Math.min(1, fe / 14) : 0;                  // the mark itself: its bright pixels, not the dark around
+        cov[i] = k; for (let c = 0; c < 3; c++) src[i * 3 + c] = rgba[p + c] * k;
+    }
+    const blur = (a, ch, r) => {                                       // box blur, three passes, per channel
+        let cur = a;
+        for (let pass = 0; pass < 3; pass++) {
+            const tmp = new Float32Array(cur.length), out = new Float32Array(cur.length);
+            for (let y = 0; y < rh; y++) for (let c = 0; c < ch; c++) {
+                let acc = 0; for (let x = -r; x <= r; x++) acc += cur[(y * rw + Math.min(rw - 1, Math.max(0, x))) * ch + c];
+                for (let x = 0; x < rw; x++) {
+                    tmp[(y * rw + x) * ch + c] = acc / (2 * r + 1);
+                    acc += cur[(y * rw + Math.min(rw - 1, x + r + 1)) * ch + c] - cur[(y * rw + Math.max(0, x - r)) * ch + c];
+                }
+            }
+            for (let x = 0; x < rw; x++) for (let c = 0; c < ch; c++) {
+                let acc = 0; for (let y = -r; y <= r; y++) acc += tmp[(Math.min(rh - 1, Math.max(0, y)) * rw + x) * ch + c];
+                for (let y = 0; y < rh; y++) {
+                    out[(y * rw + x) * ch + c] = acc / (2 * r + 1);
+                    acc += tmp[(Math.min(rh - 1, y + r + 1) * rw + x) * ch + c] - tmp[(Math.max(0, y - r) * rw + x) * ch + c];
+                }
+            }
+            cur = out;
+        }
+        return cur;
+    };
+    const wide = blur(src, 3, 22), tight = blur(src, 3, 7);
+    // the light rises fast, then goes out slowly
+    const pulse = (t) => (t <= 0 || t >= 1 ? 0 : t < 0.3 ? Math.pow(t / 0.3, 2) : Math.pow((1 - t) / 0.7, 1.6));
+    return (t) => {
+        const out = Buffer.from(rgba), g = pulse(t), sweep = t * 1.5 - 0.25;   // a glint runs along the mark
+        if (g <= 0) return out;
+        for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) {
+            const gx = x0 + x, gy = y0 + y, p = (gy * w + gx) * 4, i = y * rw + x;
+            const e = Math.min(x, rw - 1 - x, y, rh - 1 - y), edge = Math.min(1, e / 28);      // the light dies out before the edge of what is sent again
+            const u = ((gx - box.x) + (gy - box.y) * 0.4) / (box.w + box.h * 0.4);     // along the mark, slanted like its letter
+            const glint = Math.exp(-Math.pow((u - sweep) / 0.09, 2)) * cov[i] * Math.sin(Math.PI * Math.min(1, Math.max(0, t))) * 110;
+            for (let c = 0; c < 3; c++) {
+                const lit = rgba[p + c] + edge * (rgba[p + c] * 0.12 * g * cov[i] + g * (1 - 0.75 * cov[i]) * (2.3 * wide[i * 3 + c] + 0.9 * tight[i * 3 + c]) + glint);
+                out[p + c] = lit > 255 ? 255 : lit;
+            }
+        }
+        return out;
+    };
+}
+/**
  * An H.264 stream of opt.frames pictures in which the RGBA picture opens out of black (or, opt.out, closes into it)
  * as opening() says, with a moment of the whole picture (or of black) at the end. Every part of the picture is sent
  * once, uncompressed, when its turn comes. opt: { frames (60), level (31), out }.
@@ -224,7 +281,10 @@ function opening(mw, mh) {
 function openingVideo(rgba, w, h, opt) {
     opt = opt || {};
     const z = sizes(rgba, w, h, opt), pl = planes(rgba, w, h, z.W, z.H), when = opening(z.mw, z.mh);
-    const moving = Math.max(1, Math.round((z.frames - 1) * 0.8));             // the last fifth stands still
+    const shine = opt.shine && !opt.out ? shiner(rgba, w, h, opt.shine) : null;
+    // with a light to show the opening takes the first 60%, the light the next 30%, the rest stands still
+    const moving = Math.max(1, Math.round((z.frames - 1) * (shine ? 0.6 : 0.8)));          // the last fifth stands still
+    const lit = shine ? Math.min(z.frames - 1 - moving, Math.round((z.frames - 1) * 0.3)) : 0;
     const ease = (x) => 1 - Math.pow(1 - x, 2.2);                           // fast at first, settling
     // the picture in which each macroblock changes: 1..moving
     const turn = new Int32Array(z.mbs), max = when.reduce((m, v) => Math.max(m, v), 0) || 1;
@@ -235,7 +295,21 @@ function openingVideo(rgba, w, h, opt) {
     }
     const mb = Buffer.alloc(384);
     const parts = headers(w, h, z.mw, z.mh, z.level).concat([firstPicture(opt.out ? pl : null, z.W, z.mw, z.mh)]);
+    // the light: the pictures moving+1 .. moving+lit send the macroblocks around the mark again, lit as that moment says
+    // (the last of them as the picture is), the opening itself needs nothing more by then
+    let near = [];
+    if (lit > 0) {
+        const bx0 = Math.max(0, Math.floor((opt.shine.x - 64) / 16)), bx1 = Math.min(z.mw - 1, Math.floor((opt.shine.x + opt.shine.w + 64) / 16));
+        const by0 = Math.max(0, Math.floor((opt.shine.y - 64) / 16)), by1 = Math.min(z.mh - 1, Math.floor((opt.shine.y + opt.shine.h + 64) / 16));
+        for (let my = by0; my <= by1; my++) for (let mx = bx0; mx <= bx1; mx++) near.push(my * z.mw + mx);
+    }
     for (let f = 1; f < z.frames; f++) {
+        const k = f - moving;
+        if (lit > 0 && k >= 1 && k <= lit) {
+            const lp = planes(shine(k === lit ? 0 : k / lit), w, h, z.W, z.H);
+            parts.push(nextPicture(f, z.mbs, near, (n) => samples(lp, z.W, n % z.mw, (n / z.mw) | 0, mb)));
+            continue;
+        }
         const list = [];
         for (let n = 0; n < z.mbs; n++) if (turn[n] === f) list.push(n);
         parts.push(nextPicture(f, z.mbs, list, (n) => (opt.out ? BLACK : samples(pl, z.W, n % z.mw, (n / z.mw) | 0, mb))));

@@ -48,7 +48,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.8.0';
+const VERSION = '0.9.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -554,7 +554,14 @@ function startThumb() {
     try { const p = BOOT.pngDecode(fs.readFileSync(best.file)); thumb(START, p.rgba, p.w, p.h); } catch (e) { thumb(START, Buffer.alloc(64 * 24 * 4, 0), 64, 24); }
 }
 
-async function setStart(slot, rgba) {
+/** "x,y,w,h" as fractions of the picture -> the same as numbers, or null. */
+function parseShine(s) {
+    if (!s) return null;
+    const v = String(s).split(',').map(Number);
+    if (v.length !== 4 || v.some((x) => !isFinite(x) || x < 0 || x > 1) || v[2] < 0.02 || v[3] < 0.02) return null;
+    return { x: v[0], y: v[1], w: Math.min(v[2], 1 - v[0]), h: Math.min(v[3], 1 - v[1]) };
+}
+async function setStart(slot, rgba, shine) {
     // the originals first, each copied once
     slot.files.forEach((f) => {
         const bk = startBackup(f);
@@ -569,8 +576,9 @@ async function setStart(slot, rgba) {
         // shorter than a third of a second, and what loops, is the still picture
         const move = f.kind !== 'h264' || f.frames < 20 ? '' : /^eva_hi_.*_noloop\./.test(f.name) ? 'in' : /^eva_bye_/.test(f.name) ? 'out' : '';
         const id = f.kind + f.w + 'x' + f.h + (f.kind === 'h264' ? '/' + f.level + '/' + f.frames + '/' + move : '');
+        const lit = move === 'in' && shine ? { x: Math.round(shine.x * f.w), y: Math.round(shine.y * f.h), w: Math.round(shine.w * f.w), h: Math.round(shine.h * f.h) } : null;
         if (!made[id]) {
-            const pic = W.fit(rgba, slot.w, slot.h, f.w, f.h), o = { level: f.level, frames: f.frames, out: move === 'out' };
+            const pic = W.fit(rgba, slot.w, slot.h, f.w, f.h), o = { level: f.level, frames: f.frames, out: move === 'out', shine: lit };
             made[id] = { buf: f.kind === 'png' ? W.png(pic, f.w, f.h) : move ? BOOT.openingVideo(pic, f.w, f.h, o) : BOOT.stillVideo(pic, f.w, f.h, o), first: '' };
             if (f.kind === 'h264') { const i = BOOT.h264Info(made[id].buf); if (i.w !== f.w || i.h !== f.h || i.frames !== f.frames) throw new Error('video made wrong'); }
         }
@@ -613,7 +621,7 @@ async function setPicture(n, topDownRgba, opt) {
             let rgba = Buffer.from(topDownRgba);
             if (slot.files) {
                 for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;
-                const count = await setStart(slot, rgba);
+                const count = await setStart(slot, rgba, opt && opt.shine);
                 S.rev++;
                 log('start-up screen replaced (' + count + ' files)');
                 say('go', 'Đã đổi màn hình khởi động. Khởi động lại màn hình xe để thấy.');
@@ -850,7 +858,7 @@ async function handle(req, res) {
         const slot = S.slots[Number(m[1])];
         let b;
         try { b = await body(req, (slot ? slot.w * slot.h * 4 : W.RAW) + 1); } catch (e) { return json(res, 413, { ok: false, error: 'Ảnh quá lớn.' }); }
-        try { await setPicture(Number(m[1]), b, { where: q.where }); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
+        try { await setPicture(Number(m[1]), b, { where: q.where, shine: parseShine(q.shine) }); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
     }
     m = /^\/api\/restore\/(all|\d+)$/.exec(p);
     if (req.method === 'POST' && m) {

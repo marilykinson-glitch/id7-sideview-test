@@ -123,6 +123,15 @@ const mk = makeBundle();
         assert.ok(size(ml[1]) > 384 && size(ml[29]) < 16 && size(ml[26]) < 16);
         const bye = B.openingVideo(pic, 100, 52, { frames: 30, out: true }), bl = B.nals(bye).filter((n) => n.type === 1 || n.type === 5);
         assert.strictEqual(bl.slice(1).reduce((t, n) => t + Math.floor(size(n) / 384), 0), mbs); assert.ok(size(bl[29]) < 16);   // too many macroblocks for 3.1
+        // with a light: same size and number of pictures; after the opening only the macroblocks around the mark are sent again
+        const bright = Buffer.alloc(160 * 96 * 4, 255); for (let i = 0; i < bright.length; i += 4) { bright[i] = 20; bright[i + 1] = 20; bright[i + 2] = 40; }
+        for (let y = 40; y < 56; y++) for (let x = 70; x < 90; x++) { const p = (y * 160 + x) * 4; bright[p] = 255; bright[p + 1] = 255; bright[p + 2] = 255; }
+        const sv = B.openingVideo(bright, 160, 96, { frames: 40, shine: { x: 70, y: 40, w: 20, h: 16 } }), sl = B.nals(sv).filter((n) => n.type === 1 || n.type === 5);
+        assert.strictEqual(B.h264Info(sv).frames, 40); assert.strictEqual(sl.length, 40);
+        const plain = B.nals(B.openingVideo(bright, 160, 96, { frames: 40 })).filter((n) => n.type === 1 || n.type === 5);
+        assert.ok(sl.slice(24, 35).every((n) => size(n) > 384 * 9), 'the light frames resend the macroblocks around the mark');
+        assert.ok(plain.slice(33).every((n) => size(n) < 16), 'without a light the end stands still');
+        assert.ok(sl[35].end - sl[35].start > 384 * 9 && size(sl[36]) < 16 && size(sl[39]) < 16, 'the last light frame brings the picture back');
         const png = W.png(pic, 100, 52), back = B.pngDecode(png);
         assert.strictEqual(back.w, 100); assert.strictEqual(Buffer.compare(back.rgba, pic), 0);
         assert.throws(() => B.pngInfo(Buffer.from('nope, not a picture at all, not a picture')), /not a PNG/);
