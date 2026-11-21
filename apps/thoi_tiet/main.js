@@ -27,12 +27,12 @@ mgu.run({
     async start(ctx) {
         const { ui, log } = ctx;
         // what the home-screen widget does, shown in the settings (the car has no log to read): the last lines the kit logs about it
-        const wlog = [], wstat = { frames: 0, ok: 0 };
+        const wlog = [], wstat = { frames: 0, ok: 0, warn: '', first: '', pushes: '' };
         ['info', 'warn', 'error'].forEach((k) => {
             const orig = log[k];
             if (typeof orig !== 'function') return;
             log[k] = function () {
-                try { const m = Array.prototype.map.call(arguments, (a) => (a && a.message) || String(a)).join(' '); if (/widget/i.test(m)) { wlog.push((k === 'info' ? '' : k + ': ') + m); if (wlog.length > 8) wlog.shift(); } } catch (e) { /* the log is not ours */ }
+                try { const m = Array.prototype.map.call(arguments, (a) => (a && a.message) || String(a)).join(' '); if (/widget/i.test(m)) { if (k !== 'info') wstat.warn = k + ': ' + m; else if (/first image/.test(m)) wstat.first = m; else if (/widget loop/.test(m)) wstat.pushes = m; wlog.push((k === 'info' ? '' : k + ': ') + m); if (wlog.length > 8) wlog.shift(); } } catch (e) { /* the log is not ours */ }
                 return orig.apply(this, arguments);
             };
         });
@@ -130,7 +130,7 @@ mgu.run({
                 updated: d && d.at ? hhmm(d.at, zoneOf(d)) + (d.ok ? '' : ' (cũ)') : '',
                 pick: { keys, page, pages: pagesOf(), region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
                 phone: { url: s && s.url, pin: s && s.pin, host: s && s.host, count: custom.length },
-                widget: { version: (mgu.SPEC && mgu.SPEC.version) || '', ready: !!(ctx.widget && ctx.widget.ready), n: ctx.widget && ctx.widget.instances ? ctx.widget.instances().length : 0, frames: wstat.frames, ok: wstat.ok, lines: wlog.slice(-3) },
+                widget: { version: (mgu.SPEC && mgu.SPEC.version) || '', ready: !!(ctx.widget && ctx.widget.ready), n: ctx.widget && ctx.widget.instances ? ctx.widget.instances().length : 0, frames: wstat.frames, ok: wstat.ok, lines: [wstat.warn || 'chưa có cảnh báo hay lỗi nào về widget', wstat.first || 'chưa đẩy được ảnh đầu tiên lên widget', wstat.pushes || wlog[wlog.length - 1] || ''] },
                 message, messageKind, time: (Date.now() - t0) / 1000,
             };
         }

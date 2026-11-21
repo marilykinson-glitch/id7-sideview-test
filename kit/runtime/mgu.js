@@ -404,12 +404,19 @@ class Widget {
             const rb = this.comp.getResourceBundle();
             const file = path.join(RHMI_RES, 'dyn_' + RUN_TAG + '_w' + spawnId + '_' + (st.n++ % 4) + '.png');
             const t0 = Date.now(), png = frame.png(), t1 = Date.now();
+            // until the first image is in: where it is, and a warning when a step never answers (the widget stays blank, nothing else says why)
+            const first = !st.lastPush;
+            let step = 'png ' + png.length + ' B';
+            const dog = first ? setTimeout(() => log.warn('widget ' + spawnId + ': stuck after ' + step + ' (cell ' + cell + ', ' + frame.w + 'x' + frame.h + ')'), 8000) : null;
             fs.writeFileSync(file + '.tmp', png);
             fs.renameSync(file + '.tmp', file);
+            step = 'file written';
             await rb.createResourceHandles([file]);
+            step = 'resource handle made';
             await this.comp.setValue(Number(spawnId), cell, rb.getResourceHandle(file), 'Asset');
+            if (dog) clearTimeout(dog);
             this.timing.png += t1 - t0; this.timing.push += Date.now() - t1;
-            if (!st.lastPush) log.info('widget ' + spawnId + ': first image in ' + (Date.now() - t0) + ' ms');
+            if (!st.lastPush) log.info('widget ' + spawnId + ': first image in ' + (Date.now() - t0) + ' ms (' + frame.w + 'x' + frame.h + ', cell ' + cell + ')');
             st.lastPx = Buffer.from(px); st.lastPush = Date.now();
             st.live = st.live.filter((f) => f !== file).concat([file]);
             while (st.live.length > 2) rb.destroyResourceHandles([st.live.shift()]).catch(() => {});

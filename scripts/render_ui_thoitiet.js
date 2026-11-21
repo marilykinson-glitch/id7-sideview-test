@@ -31,7 +31,7 @@ const base = { set: Wx.settingsOf(null), fx: true, time: 3.2, mode: 'main', stat
 const fxs = (name, o, extra) => Object.assign({}, base, { sel: 1, data: sample(Object.assign({ name: 'TP. Hồ Chí Minh' }, o)) }, extra || {});
 const withSet = (o, extra) => Object.assign({}, base, { set: Wx.settingsOf(o) }, extra || {});
 const states = {
-    '15-cai-dat': Object.assign({}, base, { mode: 'settings', widget: { version: '0.5.2', ready: true, n: 1, frames: 12, ok: 0, lines: ['widget initialized', 'widget ready: []', 'warn: widget image 1: TypeError: example error'] }, set: Wx.settingsOf({ tiles: ['wind', 'humidity', 'uv', 'aqi', 'vis', 'sun'], block: 'chart', days: true, tips: true, fx: true, unit: 'C' }) }),
+    '15-cai-dat': Object.assign({}, base, { mode: 'settings', widget: { version: '0.5.3', ready: true, n: 1, frames: 12, ok: 0, lines: ['widget initialized', 'widget ready: []', 'warn: widget image 1: TypeError: example error'] }, set: Wx.settingsOf({ tiles: ['wind', 'humidity', 'uv', 'aqi', 'vis', 'sun'], block: 'chart', days: true, tips: true, fx: true, unit: 'C' }) }),
     '16-bieu-do': withSet({ tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'chart' }, { time: 5 }),
     '17-cung-mat-troi': withSet({ tiles: ['wind', 'humidity', 'rain', 'uv', 'aqi'], block: 'sun' }),
     '18-8-o-nhieu-thong-so': withSet({ tiles: ['wind', 'gust', 'humidity', 'rain', 'uv', 'aqi', 'vis', 'pressure'], block: 'icons', unit: 'F' }),
