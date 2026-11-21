@@ -191,13 +191,10 @@ function drawMain(cv, G, t, v, act) {
     if (v.updated) cv.text('Cập nhật ' + v.updated, W - 56, G.TOP + 80, 15, d && d.ok ? t.dim : (t.warn || '#ffb020'), { literal: true, font: 'label', align: 'right' });
 
     if (!cur) {
-        const why = String(v.why || ''), msg = v.state === 'down' ? (why === 'missing' ? 'Chưa thấy trợ thủ thời tiết: vào Store cài "Trợ thủ Thời tiết" (thoi-tiet), rồi khởi động lại màn hình.' : why === 'denied' ? 'App không đọc được dữ liệu của trợ thủ (bị chặn quyền).' : why.indexOf('old') === 0 ? 'Trợ thủ thời tiết dừng từ ' + why.slice(4) + ' trước: khởi động lại màn hình xe.' : 'Trợ thủ thời tiết trả dữ liệu hỏng: khởi động lại màn hình xe.') : d && d.error ? (/EAI_AGAIN|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|EHOSTUNREACH|timeout|DNS/i.test(d.error + (v.netError || '')) ? 'Xe chưa ra được mạng internet (' + d.error + ').' : 'Chưa lấy được dự báo: ' + d.error) : 'Đang lấy dự báo…';
+        const why = String(v.why || ''), msg = v.state === 'down' ? (why === 'missing' ? 'Chưa thấy trợ thủ thời tiết: vào Store cài "Trợ thủ Thời tiết" (thoi-tiet), rồi khởi động lại màn hình.' : why === 'denied' ? 'App không đọc được dữ liệu của trợ thủ (bị chặn quyền).' : why.indexOf('old') === 0 ? 'Trợ thủ thời tiết dừng từ ' + why.slice(4) + ' trước: khởi động lại màn hình xe.' : 'Trợ thủ thời tiết trả dữ liệu hỏng: khởi động lại màn hình xe.') : d && d.error === 'chưa có dữ liệu' ? 'Đang lấy dự báo…' : d && d.error ? (/EAI_AGAIN|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|EHOSTUNREACH|timeout|DNS/i.test(d.error + (v.netError || '')) ? 'Xe chưa ra được mạng internet (' + d.error + '). Kiểm tra Wi-Fi của xe rồi bấm Làm mới.' : 'Chưa lấy được dự báo: ' + d.error) : 'Đang lấy dự báo…';
         Icons.draw(cv, 'partly', true, W / 2, G.TOP + 200, 150);
         cv.text(fit(cv, msg, 26, LAB, W - 160), W / 2, G.TOP + 320, 26, t.dim, { literal: true, font: 'label', align: 'center' });
-        if (d && d.error && !v.why) {
-            cv.text('Dùng điện thoại: bấm "+ Địa điểm" > "Tìm bằng điện thoại", quét mã QR,', W / 2, G.TOP + 362, 22, t.text, { literal: true, font: 'label', align: 'center' });
-            cv.text('rồi bấm "Gửi thời tiết cho xe": điện thoại lấy dự báo và gửi cho xe.', W / 2, G.TOP + 392, 22, t.text, { literal: true, font: 'label', align: 'center' });
-        }
+
         return;
     }
     const today = d.daily[0] || {};

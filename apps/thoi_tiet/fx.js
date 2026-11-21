@@ -36,16 +36,14 @@ function stars(cv, G, x, y, w, h, time) {
         const sx = x + rnd(i, 1) * w, sy = y + rnd(i, 2) * h * 0.7, tw = 0.5 + 0.5 * Math.sin(time * (1 + rnd(i, 3) * 2) + i * 2.1);
         cv.circle(sx, sy, 1 + rnd(i, 4) * 1.4, A(G, '#ffffff', 0.15 + 0.6 * tw));
     }
-    cv.circle(x + 150, y + 120, 130, A(G, '#bcd0ff', 0.05));          // the moon's halo
-    cv.circle(x + 150, y + 120, 90, A(G, '#bcd0ff', 0.05));
 }
-function clouds(cv, G, x, y, w, h, time, n, dark) {
+function clouds(cv, G, x, y, w, h, time, n, dark, day) {
+    // solid, low-contrast colours: see-through discs would show their seams where they overlap
+    const pal = !day ? ['#1b2748', '#222f57', '#2a3a68'] : dark ? ['#323c50', '#3d485f', '#485471'] : ['#35568a', '#41659c', '#4e73ad'];
     for (let i = 0; i < n; i++) {
         const sp = 6 + rnd(i, 5) * 10, cw = 150 + rnd(i, 6) * 130, cx = x + ((rnd(i, 7) * (w + cw) + time * sp) % (w + cw)) - cw / 2, cy = y + 34 + rnd(i, 8) * 130, ch = cw * 0.28;
         const body = (dx, dy, k, c) => { const ww = cw * k; cv.roundRect(cx - ww / 2 + dx, cy + dy, ww, ch * k, ch * k / 2, c); cv.circle(cx - cw * 0.12 + dx, cy + dy, ch * 0.7 * k, c); cv.circle(cx + cw * 0.12 + dx, cy - ch * 0.12 + dy, ch * 0.85 * k, c); };
-        body(0, 0, 1, A(G, dark ? '#4f5b72' : '#9fb0cc', 0.07));                         // the shaded underside
-        body(-cw * 0.006, -ch * 0.07, 0.94, A(G, dark ? '#8d98ab' : '#dfe6f2', dark ? 0.08 : 0.08));
-        cv.circle(cx + cw * 0.12 - cw * 0.02, cy - ch * 0.12 - ch * 0.2, ch * 0.5, A(G, '#ffffff', dark ? 0.05 : 0.07));   // the lit top
+        body(0, 0, 1, pal[0]); body(-cw * 0.006, -ch * 0.06, 0.93, pal[1]); body(-cw * 0.01, -ch * 0.14, 0.76, pal[2]);
     }
 }
 function rain(cv, G, x, y, w, h, time, n, wind, heavy) {
@@ -103,16 +101,16 @@ function draw(cv, G, kind, day, wind, x, y, w, h, time) {
     if (cv.clip) cv.clip(x, y, w, h);
     if (kind === 'clear') { if (day) sun(cv, G, x, y, w, h, time); else stars(cv, G, x, y, w, h, time); }
     if (kind === 'partly' || kind === 'mostly-clear') { if (day) sun(cv, G, x, y, w, h, time); else stars(cv, G, x, y, w, h, time); }
-    if (kind === 'mostly-clear') clouds(cv, G, x, y, w, h, time, 2, false);
-    else if (kind === 'partly') clouds(cv, G, x, y, w, h, time, 3, false);
-    else if (kind === 'cloudy' || kind === 'fog') clouds(cv, G, x, y, w, h, time, 5, true);
+    if (kind === 'mostly-clear') clouds(cv, G, x, y, w, h, time, 2, false, day);
+    else if (kind === 'partly') clouds(cv, G, x, y, w, h, time, 3, false, day);
+    else if (kind === 'cloudy' || kind === 'fog') clouds(cv, G, x, y, w, h, time, 5, true, day);
     if (kind === 'fog') fog(cv, G, x, y, w, h, time);
-    if (kind === 'drizzle') { clouds(cv, G, x, y, w, h, time, 4, true); rain(cv, G, x, y, w, h, time, 16, wind, false); }
-    if (kind === 'rain' || kind === 'showers') { clouds(cv, G, x, y, w, h, time, 4, true); rain(cv, G, x, y, w, h, time, 28, wind, false); }
-    if (kind === 'heavy-rain') { clouds(cv, G, x, y, w, h, time, 5, true); rain(cv, G, x, y, w, h, time, 44, wind, true); }
-    if (kind === 'sleet') { clouds(cv, G, x, y, w, h, time, 4, true); rain(cv, G, x, y, w, h, time, 14, wind, false); snow(cv, G, x, y, w, h, time, 12); }
-    if (kind === 'snow') { clouds(cv, G, x, y, w, h, time, 3, true); snow(cv, G, x, y, w, h, time, 34); }
-    if (kind === 'storm') { clouds(cv, G, x, y, w, h, time, 5, true); rain(cv, G, x, y, w, h, time, 40, Math.max(wind, 25), true); lightning(cv, G, x, y, w, h, time); }
+    if (kind === 'drizzle') { clouds(cv, G, x, y, w, h, time, 4, true, day); rain(cv, G, x, y, w, h, time, 16, wind, false); }
+    if (kind === 'rain' || kind === 'showers') { clouds(cv, G, x, y, w, h, time, 4, true, day); rain(cv, G, x, y, w, h, time, 28, wind, false); }
+    if (kind === 'heavy-rain') { clouds(cv, G, x, y, w, h, time, 5, true, day); rain(cv, G, x, y, w, h, time, 44, wind, true); }
+    if (kind === 'sleet') { clouds(cv, G, x, y, w, h, time, 4, true, day); rain(cv, G, x, y, w, h, time, 14, wind, false); snow(cv, G, x, y, w, h, time, 12); }
+    if (kind === 'snow') { clouds(cv, G, x, y, w, h, time, 3, true, day); snow(cv, G, x, y, w, h, time, 34); }
+    if (kind === 'storm') { clouds(cv, G, x, y, w, h, time, 5, true, day); rain(cv, G, x, y, w, h, time, 40, Math.max(wind, 25), true); lightning(cv, G, x, y, w, h, time); }
     if (wind >= 20) windy(cv, G, x, y, w, h, time, wind);
     if (cv.noclip) cv.noclip();
 }

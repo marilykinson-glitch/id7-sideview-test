@@ -39,7 +39,7 @@ Dự báo thời tiết trên màn hình xe, theo kiểu ứng dụng Thời ti�
 - Chế độ **Lái xe**: chữ rất to, chỉ giữ những gì cần liếc nhìn.
 - Địa điểm: tối đa 6; vị trí hiện tại (theo địa chỉ mạng của xe, chỉ gần đúng thành phố), 46 thành phố trong nước lọc theo vùng, 18 thành phố nước ngoài, và **tìm bằng điện thoại**: quét mã QR, gõ tên bất kỳ nơi nào trên thế giới (trang web do trợ thủ mở ở cổng 8138, có mã PIN như MGU Studio), bấm Thêm là hiện ngay trên xe.
 
-Dữ liệu từ Open-Meteo (không cần khoá), 20 phút lấy một lần. Nếu xe không ra được internet (ví dụ xe đang là điểm phát Wi-Fi cho Android Auto không dây), mở trang điện thoại và bấm **Gửi thời tiết cho xe**: điện thoại lấy dự báo rồi gửi cho xe (có thể bật tự gửi mỗi 10 phút khi giữ trang mở). Cần xe có mạng. Open-Meteo miễn phí chỉ dành cho dùng phi thương mại: lắp cho khách nên cân nhắc.
+Dữ liệu từ Open-Meteo (không cần khoá), 20 phút lấy một lần. Xe tự lấy dự báo qua Wi-Fi của chính nó (trang điện thoại chỉ để tìm và thêm địa điểm, không gửi dự báo). Cần xe có mạng. Open-Meteo miễn phí chỉ dành cho dùng phi thương mại: lắp cho khách nên cân nhắc.
 
 ## Mới trong 0.7.11 (trợ thủ 0.7.9)
 

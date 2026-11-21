@@ -6,11 +6,10 @@
  */
 const SUN = '#ffb81f', SUN_MID = '#ffc933', SUN_HI = '#ffeaa6', MOON = '#f6dc84', RAIN = '#4da6ff', RAIN_HI = '#bfe0ff', SNOW = '#ffffff', BOLT = '#ffc933', BOLT_HI = '#ffe9a0', FOG = '#b9c3d3';
 // clouds: shade (underside), mid (body) and highlight (the lit top)
-const CL_LIGHT = ['#8ea2c4', '#d4e0f3', '#ffffff'], CL_GREY = ['#7a8bab', '#b4c2da', '#e6edf8'], CL_DARK = ['#2f3b54', '#5d6e8c', '#8d9cb8'];
+const CL_LIGHT = ['#8ea2c4', '#d4e0f3', '#eef4fc'], CL_GREY = ['#7a8bab', '#b4c2da', '#d3deee'], CL_DARK = ['#2f3b54', '#58698a', '#7387a8'];
 
 function sun(cv, cx, cy, s) {
     // glow, rays, then a ball lit from the upper left
-    cv.circle(cx, cy, s * 0.34, '#ffb02e14');
     for (let i = 0; i < 8; i++) {
         const a = i * Math.PI / 4, r0 = s * 0.27, r1 = s * (i % 2 ? 0.37 : 0.42);
         cv.line(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, Math.max(2, s * 0.045), '#ffb02e');
@@ -20,9 +19,20 @@ function sun(cv, cx, cy, s) {
     cv.circle(cx - s * 0.06, cy - s * 0.07, s * 0.09, SUN_HI + 'cc');
 }
 function moon(cv, cx, cy, s) {
-    cv.circle(cx, cy, s * 0.28, MOON);
-    cv.circle(cx - s * 0.03, cy - s * 0.03, s * 0.24, '#fff0b0aa');
-    cv.circle(cx + s * 0.13, cy - s * 0.08, s * 0.25, '#111113');      // the bite (the screen is dark)
+    // a crescent as a strip of quads between the big circle's far arc and the bite circle's near arc (nothing "dark" is drawn: the sky shows through)
+    const R = s * 0.28, bx = cx + s * 0.13, by = cy - s * 0.08, rb = s * 0.25, dx = bx - cx, dy = by - cy, d = Math.sqrt(dx * dx + dy * dy), tu = Math.atan2(dy, dx);
+    const a = (R * R - rb * rb + d * d) / (2 * d), al = Math.acos(Math.max(-1, Math.min(1, a / R))), N = 22, O = [], I = [];
+    const px = cx + Math.cos(tu) * a, py = cy + Math.sin(tu) * a, h = Math.sqrt(Math.max(0, R * R - a * a)), nx = -Math.sin(tu), ny = Math.cos(tu);
+    const A = [px + nx * h, py + ny * h], B = [px - nx * h, py - ny * h];
+    const wrap = (x) => { while (x > Math.PI) x -= 2 * Math.PI; while (x <= -Math.PI) x += 2 * Math.PI; return x; };
+    const fa = Math.atan2(A[1] - by, A[0] - bx), fb = Math.atan2(B[1] - by, B[0] - bx), toward = tu + Math.PI;
+    let d1 = wrap(fb - fa); const d2 = d1 - (d1 > 0 ? 2 : -2) * Math.PI;
+    if (Math.cos(fa + d1 / 2 - toward) < Math.cos(fa + d2 / 2 - toward)) d1 = d2;
+    for (let i = 0; i <= N; i++) {
+        const t = i / N, to = tu + al + t * (2 * Math.PI - 2 * al), ti = fa + t * d1;
+        O.push([cx + Math.cos(to) * R, cy + Math.sin(to) * R]); I.push([bx + Math.cos(ti) * rb, by + Math.sin(ti) * rb]);
+    }
+    for (let i = 0; i < N; i++) cv.quad([O[i], O[i + 1], I[i + 1], I[i]], MOON);
     cv.circle(cx - s * 0.2, cy + s * 0.2, s * 0.025, '#ffffffcc'); cv.circle(cx + s * 0.28, cy + s * 0.18, s * 0.02, '#ffffffaa');
 }
 /** the cloud's outline pieces for a body centred at (cx, cy), width s*0.74; k shrinks it about the centre, (dx, dy) shifts it */
@@ -33,15 +43,11 @@ function shape(cv, cx, cy, s, c, k, dx, dy) {
     cv.circle(x0 + w * 0.58, y0 + h * 0.3, h * 0.68, c);
     cv.circle(x0 + w * 0.78, y0 + h * 0.58, h * 0.4, c);
 }
-/** A soft, puffy cloud whose body is centred at (cx, cy), width s*0.74: dark underside, lit top. pal: [shade, mid, highlight] */
+/** A soft, puffy cloud whose body is centred at (cx, cy), width s*0.74: dark underside, lit top. pal: [shade, mid, light] (opaque: no seams) */
 function cloud(cv, cx, cy, s, pal) {
-    const w = s * 0.74, h = s * 0.3, x0 = cx - w / 2, y0 = cy - h / 2;
     shape(cv, cx, cy, s, pal[0], 1, 0, 0);
-    shape(cv, cx, cy, s, pal[1], 0.94, -s * 0.004, -s * 0.014);
-    // the lit tops of the two big puffs
-    cv.circle(x0 + w * 0.56, y0 + h * 0.24, h * 0.46, pal[2] + '78');
-    cv.circle(x0 + w * 0.3, y0 + h * 0.36, h * 0.3, pal[2] + '50');
-    cv.circle(x0 + w * 0.77, y0 + h * 0.5, h * 0.2, pal[2] + '38');
+    shape(cv, cx, cy, s, pal[1], 0.95, -s * 0.004, -s * 0.012);
+    shape(cv, cx, cy, s, pal[2], 0.8, -s * 0.006, -s * 0.032);
 }
 function drop(cv, x, y, r, len) {
     // a tear: a point on top, a round bottom, a glint

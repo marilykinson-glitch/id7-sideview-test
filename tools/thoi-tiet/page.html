@@ -10,10 +10,6 @@ ul{list-style:none;margin:0;padding:0}li{display:flex;align-items:center;gap:10p
 #msg{min-height:22px;margin:10px 0 0;color:#8a93a3}#msg.ok{color:#2fd27a}#msg.err{color:#ff7a66}
 </style></head><body><main>
 <h1>Thời tiết cho xe</h1><p>Tìm một nơi bất kỳ trên thế giới, bấm để thêm vào app Thời tiết trên màn hình xe.</p>
-<h2>Xe không có mạng?</h2><p>Điện thoại lấy thời tiết rồi gửi cho xe (xe chỉ cần cùng Wi-Fi với điện thoại).</p>
-<div class="row"><button id="send" style="padding:13px 18px">Gửi thời tiết cho xe</button></div>
-<label style="display:block;margin:10px 0 0;color:#8a93a3"><input type="checkbox" id="auto" style="flex:none;width:auto;margin-right:8px">Tự gửi mỗi 10 phút (giữ trang này mở)</label>
-<div id="smsg" style="min-height:22px;margin:8px 0 0;color:#8a93a3"></div>
 <h2>Tìm địa điểm</h2>
 <div class="row"><input id="q" placeholder="Tên thành phố, huyện, địa danh…" autocomplete="off" enterkeyhint="search"><button id="go">Tìm</button></div>
 <div id="msg"></div>
@@ -32,24 +28,6 @@ function mine(list){
   $('mine').innerHTML=list.length?list.map(function(p){return '<li><div><b>'+esc(p.name)+'</b><small>'+p.lat.toFixed(2)+', '+p.lon.toFixed(2)+'</small></div><button class="ghost" data-k="'+esc(p.key)+'">Xoá</button></li>'}).join(''):'<p>Chưa có nơi nào.</p>';
 }
 $('mine').onclick=function(e){var k=e.target.getAttribute&&e.target.getAttribute('data-k');if(!k)return;api('remove',{key:k}).then(function(j){mine(j.custom);say('Đã xoá.','ok')}).catch(function(x){say(x.message,'err')})};
-function ssay(t,k){var m=$('smsg');m.textContent=t||'';m.style.color=k==='ok'?'#2fd27a':k==='err'?'#ff7a66':'#8a93a3'}
-function here(){return new Promise(function(res,rej){
-  function ip(){fetch('https://ipwho.is/').then(function(r){return r.json()}).then(function(j){if(j&&j.latitude!=null)res({lat:j.latitude,lon:j.longitude,name:j.city||''});else rej(new Error('Không biết điện thoại đang ở đâu'))}).catch(rej)}
-  if(navigator.geolocation)navigator.geolocation.getCurrentPosition(function(p){res({lat:p.coords.latitude,lon:p.coords.longitude,name:''})},ip,{timeout:4000});else ip()})}
-function getj(u){return fetch(u).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})}
-var sending=false;
-function sendAll(){ if(sending)return; sending=true; ssay('Đang lấy thời tiết…');
-  api('places').then(function(c){var n=0,fail=0;
-    return c.places.reduce(function(chain,pl){return chain.then(function(){
-      var p=pl.here?here().catch(function(){return null}):Promise.resolve({lat:pl.lat,lon:pl.lon,name:pl.name});
-      return p.then(function(pos){ if(!pos){fail++;return}
-        var q='&latitude='+pos.lat.toFixed(3)+'&longitude='+pos.lon.toFixed(3);
-        return Promise.all([getj('https://api.open-meteo.com'+c.forecast+q),getj('https://air-quality-api.open-meteo.com'+c.air+q).catch(function(){return null})]).then(function(r){
-          return api('push',{key:pl.key,name:pos.name||pl.name,forecast:r[0],air:r[1]}).then(function(){n++})})
-      }).catch(function(){fail++})})},Promise.resolve()).then(function(){ssay('Đã gửi '+n+' nơi cho xe'+(fail?' ('+fail+' nơi lỗi)':'')+'.',fail&&!n?'err':'ok')})
-  }).catch(function(x){ssay(x.message,'err')}).then(function(){sending=false})}
-$('send').onclick=sendAll;
-var timer=null;$('auto').onchange=function(){if(timer){clearInterval(timer);timer=null}if($('auto').checked){sendAll();timer=setInterval(sendAll,600000)}};
 var found=[];
 $('res').onclick=function(e){var b=e.target.closest&&e.target.closest('li');if(!b)return;var p=found[+b.getAttribute('data-i')];if(!p)return;
   api('add',{name:p.name,lat:p.lat,lon:p.lon}).then(function(j){mine(j.custom);say('Đã thêm '+j.added.name+'. Xem trên màn hình xe.','ok')}).catch(function(x){say(x.message,'err')})};

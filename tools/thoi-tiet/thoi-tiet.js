@@ -262,7 +262,7 @@ async function fetchPlace(p) {
         S.data[p.key] = { key: p.key, name, ok: true, at: Date.now(), error: '', current: w.current, hourly: w.hourly, daily: w.daily, air, here: p.here };
     } catch (e) {
         log('forecast for ' + p.key + ': ' + e.message);
-        // the last good forecast stays on the screen (marked as old after 45 minutes); one a phone sent a moment ago is simply kept
+        // the last good forecast stays on the screen (marked as old after 45 minutes)
         S.netError = String(e.message || e).slice(0, 120);
         if (prev.current && prev.at && Date.now() - prev.at < 45 * 60000) return;
         S.data[p.key] = Object.assign({ key: p.key, name, current: null, hourly: [], daily: [], here: p.here }, prev, { ok: false, error: String(e.message || e).slice(0, 80), at: prev.at || 0, name });
@@ -274,7 +274,9 @@ function refreshAll() {
     if (working) return working;
     S.busy = true; writeStatus();
     working = (async () => {
-        for (const p of S.places.slice()) await fetchPlace(p);
+        // all places at once (a few requests each): a place added a moment ago does not wait behind the others
+        const list = S.places.slice();
+        await Promise.all(list.map((p) => fetchPlace(p)));
     })().catch((e) => log('refresh: ' + e.message)).then(() => { working = null; S.busy = false; S.fetchedAt = Date.now(); writeStatus(); });
     return working;
 }
@@ -331,19 +333,6 @@ async function search(q) {
     }).filter((r) => r.name && isFinite(r.lat) && isFinite(r.lon));
 }
 
-/* ---------------- a forecast the phone fetched (when the car itself cannot reach the internet) ---------------- */
-function acceptPush(b) {
-    const pl = S.places.filter((x) => x.key === String(b && b.key))[0];
-    if (!pl) { const e = new Error('Địa điểm này không còn trong danh sách của xe.'); e.bad = true; throw e; }
-    let w, air = null;
-    try { w = parse(b.forecast); } catch (x) { const e = new Error('Dữ liệu thời tiết điện thoại gửi không đúng: ' + x.message); e.bad = true; throw e; }
-    try { air = parseAir(b.air); } catch (x) { air = null; }
-    const name = pl.here ? (plain(b.name) || pl.name) : pl.name;
-    S.data[pl.key] = { key: pl.key, name, ok: true, at: Date.now(), error: '', current: w.current, hourly: w.hourly, daily: w.daily, air, here: pl.here, via: 'phone' };
-    S.netError = ''; S.fetchedAt = Date.now(); writeStatus();
-    return pl.key;
-}
-
 /* ---------------- the phone's page ---------------- */
 const newPin = () => String(1000 + crypto.randomBytes(2).readUInt16BE(0) % 9000);
 const fails = {};
@@ -382,8 +371,6 @@ async function handle(req, res) {
     if (!pinOk(req, q, res)) return;
     try {
         if (req.method === 'GET' && p === '/api/state') return json(res, 200, { ok: true, version: VERSION, custom: S.custom, max: MAX_CUSTOM });
-        if (req.method === 'GET' && p === '/api/places') return json(res, 200, { ok: true, places: S.places, forecast: FORECAST, air: AIR, netError: S.netError });
-        if (req.method === 'POST' && p === '/api/push') { const b = JSON.parse((await readBody(req, 400000)).toString('utf8') || '{}'); return json(res, 200, { ok: true, accepted: acceptPush(b) }); }
         if (req.method === 'GET' && p === '/api/search') return json(res, 200, { ok: true, results: await search(q.q) });
         if (req.method === 'POST' && p === '/api/add') { const b = JSON.parse((await readBody(req, 4096)).toString('utf8') || '{}'); const c = addCustom(b); return json(res, 200, { ok: true, added: c, custom: S.custom }); }
         if (req.method === 'POST' && p === '/api/remove') { const b = JSON.parse((await readBody(req, 4096)).toString('utf8') || '{}'); removeCustom(String(b.key || '')); return json(res, 200, { ok: true, custom: S.custom }); }
@@ -487,7 +474,7 @@ function pollCommands() {
     else if (c.cmd === 'refresh' && !first) refreshAll();
 }
 
-const VERSION = '0.4.2';
+const VERSION = '0.4.3';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     S.pin = newPin(); loadCustom();
@@ -519,4 +506,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, Up, upOpts, uplinkUid, acceptPush, AIR, nameServers, resolveHost, handle, search, plain, addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };
+module.exports = { CFG, S, Up, upOpts, uplinkUid, AIR, nameServers, resolveHost, handle, search, plain, addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };
