@@ -49,7 +49,10 @@ function make(icon, day, w, h, size) {
             }
             if (a === 0) continue;
             const o = (dy * w + dx) * 4;
-            d[o] = Math.round(r / a); d[o + 1] = Math.round(g / a); d[o + 2] = Math.round(b / a); d[o + 3] = Math.round(a / (n * n));
+            d[o] = Math.round(r / a); d[o + 1] = Math.round(g / a); d[o + 2] = Math.round(b / a); let al8 = a / (n * n);
+            // the pictures carry a faint haze around the shape (alpha 8..24); the HMI shows it as a pale square, so fade it out
+            if (al8 < 20) al8 = 0; else if (al8 < 56) al8 = al8 * (al8 - 20) / 36;
+            d[o + 3] = Math.round(al8);
         }
     }
     return cv;
