@@ -67,7 +67,7 @@ function tile(cv, G, t, x, y, w, h, info, tall, windDir) {
 }
 function tiles(cv, G, t, ids, cur, today, d, y0) {
     const n = ids.length; if (!n) return;
-    const two = n > 5, per = two ? Math.ceil(n / 2) : n, gap = 6, tw = Math.min(two ? 150 : 108, (464 - (per - 1) * gap) / per), th = two ? 54 : 92;
+    const two = n > 5, per = two ? Math.ceil(n / 2) : n, gap = 6, tw = Math.min(two ? 150 : 108, (464 - (per - 1) * gap) / per), th = two ? 54 : Math.max(92, G.BOTTOM - 18 - y0);
     ids.forEach((id, i) => {
         const r = two ? Math.floor(i / per) : 0, c = two ? i % per : i;
         tile(cv, G, t, 56 + c * (tw + gap), y0 + r * (th + 6), tw, th, Wx.tileInfo(id, cur, today, d.daily, d.air), !two, id === 'wind' ? cur.windDir : null);
@@ -201,7 +201,7 @@ function drawMain(cv, G, t, v, act) {
         if (set.block === 'icons') hoursIcons(cv, G, t, d, R, rw); else if (set.block === 'chart') hoursChart(cv, G, t, d, R, rw); else sunArc(cv, G, t, cur, today, R, rw);
     }
     if (set.days) {
-        if (set.block !== 'off') { cv.fillRect(rx, G.TOP + 250, rw, 1, G.withAlpha('#ffffff', 0.12)); label(cv, t, '5 NGÀY TỚI', rx, G.TOP + 274); days(cv, G, t, d, rx, rw, G.TOP + 290, 34); }
+        if (set.block !== 'off') { cv.fillRect(rx, G.TOP + 250, rw, 1, G.withAlpha('#ffffff', 0.12)); label(cv, t, '5 NGÀY TỚI', rx, G.TOP + 274); days(cv, G, t, d, rx, rw, G.TOP + 290, 35); }
         else { label(cv, t, '5 NGÀY TỚI', rx, G.TOP + 100); days(cv, G, t, d, rx, rw, G.TOP + 120, 62); }
     }
 }

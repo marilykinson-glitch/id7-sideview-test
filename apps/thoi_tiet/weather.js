@@ -145,7 +145,7 @@ const hm = (m) => (m === null ? '–' : ('0' + Math.floor(m / 60)).slice(-2) + '
 /** One tile: { title, value, sub, bar } (bar: a colour for an accent under the value) from what the forecast knows. */
 function tileInfo(id, cur, today, daily, air) {
     const f = (v) => v !== null && v !== undefined && isFinite(v);
-    if (id === 'wind') return { title: 'Gió km/h', value: f(cur.wind) ? String(Math.round(cur.wind)) : '–', sub: compass(cur.windDir) };
+    if (id === 'wind') return { title: 'Gió', value: f(cur.wind) ? String(Math.round(cur.wind)) : '–', sub: 'km/h' };
     if (id === 'gust') return { title: 'Gió giật', value: f(cur.gust) ? String(Math.round(cur.gust)) : '–', sub: 'km/h' };
     if (id === 'humidity') return { title: 'Độ ẩm', value: pct(cur.humidity), sub: '' };
     if (id === 'rain') return { title: 'Mưa', value: pct(today.pop), sub: cur.rain > 0 ? cur.rain + ' mm' : '' };
