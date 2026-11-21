@@ -115,4 +115,19 @@ final class Store {
 
     String lastReport() { return sp.getString("lastReport", ""); }
     void lastReport(String uri) { sp.edit().putString("lastReport", uri).apply(); }
+
+    // ---- chế độ Claude điều khiển (relay qua GitHub) ----
+
+    String relayRepo() { return sp.getString("rrepo", "marilykinson-glitch/id7-sideview-test"); }
+    String relayBranch() { return sp.getString("rbranch", "relay"); }
+    String relayToken() { return Vault.dec(sp.getString("rtoken", "")); }
+    boolean relayOn() { return sp.getBoolean("ron", false); }
+
+    void relay(String repo, String branch, String token) {
+        SharedPreferences.Editor e = sp.edit().putString("rrepo", repo).putString("rbranch", branch);
+        if (token != null && !token.isEmpty()) e.putString("rtoken", Vault.enc(token));
+        e.apply();
+    }
+
+    void relayOn(boolean on) { sp.edit().putBoolean("ron", on).apply(); }
 }

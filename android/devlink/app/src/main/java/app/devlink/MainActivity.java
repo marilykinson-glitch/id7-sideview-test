@@ -32,7 +32,7 @@ public class MainActivity extends Activity {
     static final int REQ_KEY = 11;
     static final int REQ_UPLOAD = 12;
 
-    static final int TAB_CONNECT = 0, TAB_CMD = 1, TAB_SCAN = 2, TAB_FILES = 3;
+    static final int TAB_CONNECT = 0, TAB_CMD = 1, TAB_SCAN = 2, TAB_FILES = 3, TAB_RELAY = 4;
 
     interface Writer {
         void write(OutputStream os) throws Exception;
@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
 
     private FrameLayout content;
     private TextView status;
-    private final TextView[] tabViews = new TextView[4];
+    private final TextView[] tabViews = new TextView[5];
     private Screen[] screens;
     private int cur = -1;
 
@@ -52,6 +52,7 @@ public class MainActivity extends Activity {
     CmdScreen cmdScreen;
     ScanScreen scanScreen;
     FilesScreen filesScreen;
+    RelayScreen relayScreen;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -80,8 +81,8 @@ public class MainActivity extends Activity {
         // thanh dưới
         LinearLayout nav = Ui.row(this);
         nav.setBackgroundColor(0xFF111A29);
-        String[] names = {"🔌 Kết nối", "⌨ Lệnh", "🔎 Quét", "📁 Tệp"};
-        for (int i = 0; i < 4; i++) {
+        String[] names = {"🔌 Kết nối", "⌨ Lệnh", "🔎 Quét", "📁 Tệp", "🤖 Claude"};
+        for (int i = 0; i < 5; i++) {
             final int idx = i;
             TextView t = Ui.text(this, names[i], 13, Ui.DIM);
             t.setGravity(Gravity.CENTER);
@@ -102,9 +103,11 @@ public class MainActivity extends Activity {
         cmdScreen = new CmdScreen(this);
         scanScreen = new ScanScreen(this);
         filesScreen = new FilesScreen(this);
-        screens = new Screen[]{connectScreen, cmdScreen, scanScreen, filesScreen};
+        relayScreen = new RelayScreen(this);
+        screens = new Screen[]{connectScreen, cmdScreen, scanScreen, filesScreen, relayScreen};
         showTab(store.hasKey() || !store.password().isEmpty() ? TAB_CMD : TAB_CONNECT);
         refreshStatus();
+        if (store.relayOn()) RelayScreen.startService(this);
     }
 
     void showTab(int i) {
@@ -112,7 +115,7 @@ public class MainActivity extends Activity {
         cur = i;
         content.removeAllViews();
         content.addView(screens[i].view(), new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < 5; k++) {
             tabViews[k].setTextColor(k == i ? Ui.ACC : Ui.DIM);
             tabViews[k].setTypeface(k == i ? android.graphics.Typeface.DEFAULT_BOLD : android.graphics.Typeface.DEFAULT);
         }
