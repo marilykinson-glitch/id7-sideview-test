@@ -10,7 +10,14 @@ assert.strictEqual(Wx.describe(0).text, 'Trời quang'); assert.strictEqual(Wx.d
 assert.strictEqual(Wx.compass(0), 'Bắc'); assert.strictEqual(Wx.compass(200), 'Nam'); assert.strictEqual(Wx.compass(359), 'Bắc'); assert.strictEqual(Wx.compass(null), ''); ok('wind directions');
 assert.strictEqual(Wx.deg(28.6), '29°'); assert.strictEqual(Wx.deg(null), '–'); assert.strictEqual(Wx.uvText(9), 'Rất cao'); ok('numbers');
 assert.deepStrictEqual(Wx.placesFor(['hcm', 'zz', 'hcm', 'hanoi']).map((p) => p.key), ['hcm', 'hanoi']); assert.deepStrictEqual(Wx.placesFor([]).map((p) => p.key), Wx.DEFAULT_KEYS);
-assert.strictEqual(Wx.placesFor(Wx.CITIES.map((c) => c.key)).length, Wx.MAX_PLACES); assert.strictEqual(new Set(Wx.CITIES.map((c) => c.key)).size, Wx.CITIES.length); ok('places');
+assert.ok(Wx.REGIONS.every((r) => r[0] === 'all' || Wx.listFor(r[0]).length > 0)); assert.strictEqual(Wx.listFor('all')[0].key, 'here'); assert.ok(Wx.listFor('nn').some((c) => c.key === 'tokyo')); assert.ok(Wx.listFor('tn').length >= 3);
+assert.strictEqual(Wx.listFor('all').length, Wx.CITIES.length + 1); ok('regions');
+const hr = (code, pop, time) => ({ code, pop, time });
+assert.strictEqual(Wx.tip({ code: 61, t: 28, wind: 5, day: true }, {}, [], null).kind, 'warn'); assert.strictEqual(Wx.tip({ code: 95 }, {}, [], null).kind, 'crit');
+assert.strictEqual(Wx.tip({ code: 3, t: 28, wind: 5, day: true }, {}, [hr(3, 0, '14:00'), hr(3, 10, '15:00'), hr(61, 70, '16:00')], null).text, 'Mưa lúc 16:00');
+assert.strictEqual(Wx.tip({ code: 1, t: 28, wind: 5, day: true }, { uv: 3 }, [hr(1, 0, 'a'), hr(1, 0, 'b')], null), null);
+assert.ok(/Tuyết/.test(Wx.tip({ code: 73 }, {}, [], null).text)); ok('driver tips');
+assert.strictEqual(Wx.placesFor(Wx.CITIES.map((c) => c.key)).length, Wx.MAX_PLACES); assert.ok(Wx.CITIES.every((c) => isFinite(c.lat) && isFinite(c.lon) && c.region)); assert.strictEqual(new Set(Wx.CITIES.map((c) => c.key)).size, Wx.CITIES.length); ok('places');
 
 /* the tool */
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-'));
@@ -65,6 +72,9 @@ srv.listen(0, '127.0.0.1', async () => {
         const t = themes.theme(themes.ids ? (Array.isArray(themes.ids) ? themes.ids[0] : themes.ids()[0]) : undefined);
         const places = Wx.placesFor(['hcm']);
         const data = { name: 'HCM', ok: true, at: 1, current: p.current, hourly: p.hourly, daily: [].concat(p.daily, p.daily, p.daily) };
+        const Fx = require(path.join(ROOT, 'apps', 'thoi_tiet', 'fx.js'));
+        ['clear', 'mostly-clear', 'partly', 'cloudy', 'fog', 'drizzle', 'rain', 'heavy-rain', 'showers', 'sleet', 'snow', 'storm'].forEach((k) => [true, false].forEach((day) => [0, 0.05, 1.7, 99].forEach((tm) => Fx.draw(new Recorder(UI.W, UI.H, { textScale: 1 }), G, k, day, 30, 30, 48, 520, 460, tm))));
+        UI.draw(new Recorder(UI.W, UI.H, { textScale: 1 }), G, t, { fx: true, time: 2, mode: 'main', state: 'ok', places, sel: 0, data }, {});
         UI.draw(new Recorder(UI.W, UI.H, { textScale: 1 }), G, t, { mode: 'main', state: 'ok', places, sel: 0, data }, {}); UI.draw(new Recorder(UI.W, UI.H, { textScale: 1 }), G, t, { mode: 'main', state: 'down', places, sel: 0, data: null }, {});
         UI.draw(new Recorder(UI.W, UI.H, { textScale: 1 }), G, t, { mode: 'pick', places, sel: 0, pick: { keys: ['hcm'], page: 0, pages: 2, max: 6, items: Wx.CITIES.slice(0, 24) } }, {}); ok('the screens draw');
     } else console.log('skip - the screens (build dist/anh_dai_dien first)');

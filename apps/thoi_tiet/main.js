@@ -19,15 +19,19 @@ const Wx = require('./weather');
 const RUN = process.env.TT_RUN || '/run/thoi-tiet';
 const STALE_MS = 8000;
 const PER_PAGE = 24;
+const FPS = 8;                 // the moving weather
 
 mgu.run({
     async start(ctx) {
         const { ui, log } = ctx;
         let keys = Wx.DEFAULT_KEYS.slice(), status = null, readAt = 0, cmdId = Date.now(), lastKey = '', shown = false;
-        let mode = 'main', sel = 0, page = 0, message = '', messageKind = 'dim', refreshAt = 0;
+        let mode = 'main', sel = 0, page = 0, region = 'all', fx = true, message = '', messageKind = 'dim', refreshAt = 0;
         const file = path.join(ctx.dataDir, 'places.json');
         try { const k = JSON.parse(fs.readFileSync(file, 'utf8')); if (Array.isArray(k) && k.length) keys = Wx.placesFor(k).map((p) => p.key); } catch (e) { /* first start */ }
 
+        const fxFile = path.join(ctx.dataDir, 'fx.json');
+        try { fx = JSON.parse(fs.readFileSync(fxFile, 'utf8')).on !== false; } catch (e) { /* first start: on */ }
+        const t0 = Date.now();
         function send(cmd, extra) {
             try {
                 const f = path.join(ctx.dataDir, 'command.json');
@@ -48,7 +52,7 @@ mgu.run({
             status = s && typeof s.at === 'number' && Math.abs(now - s.at) < STALE_MS ? s : null;
         }
         const hhmm = (ms) => { const d = new Date(ms); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); };
-        const items = () => [Wx.HERE].concat(Wx.CITIES);
+        const items = () => Wx.listFor(region);
 
         const acts = {
             select: (i) => { sel = i; repaint(); },
@@ -61,7 +65,9 @@ mgu.run({
                 else { message = 'Tối đa ' + Wx.MAX_PLACES + ' địa điểm: bỏ bớt một nơi trước.'; messageKind = 'warn'; }
                 repaint();
             },
-            page: (d) => { const pages = Math.ceil(items().length / PER_PAGE); page = (page + d + pages) % pages; repaint(); },
+            region: (r) => { region = r; page = 0; repaint(); },
+            toggleFx: () => { fx = !fx; try { fs.writeFileSync(fxFile, JSON.stringify({ on: fx })); } catch (e) { /* ok */ } repaint(); },
+            page: (d) => { const pages = Math.max(1, Math.ceil(items().length / PER_PAGE)); page = (page + d + pages) % pages; repaint(); },
             refresh: () => { refreshAt = Date.now(); send('refresh'); repaint(); },
         };
 
@@ -70,25 +76,28 @@ mgu.run({
             const list = Wx.placesFor(keys), s = status;
             if (sel >= list.length) sel = 0;
             const d = s && s.places ? s.places.filter((p) => p.key === list[sel].key)[0] : null;
-            const pages = Math.ceil(items().length / PER_PAGE);
+            const pages = Math.max(1, Math.ceil(items().length / PER_PAGE));
             const busy = !!(s && s.busy) || Date.now() - refreshAt < 2500;
             return {
                 mode, state: !s ? 'down' : 'ok', places: list, sel, data: d || null, busy,
                 updated: d && d.at ? hhmm(d.at) + (d.ok ? '' : ' (cũ)') : '',
-                pick: { keys, page, pages, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
-                message, messageKind,
+                pick: { keys, page, pages, region, max: Wx.MAX_PLACES, items: items().slice(page * PER_PAGE, (page + 1) * PER_PAGE) },
+                message, messageKind, fx, time: (Date.now() - t0) / 1000,
             };
         }
         const render = async () => {
             const m = model(), vis = ui.isVisible('MAIN');
-            const key = JSON.stringify([m.mode, m.state, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick.keys, m.pick.page, m.message, vis]);
+            if (!vis && shown) return;                                // nobody looks: no drawing
+            const animated = m.fx && m.mode === 'main' && m.data && m.data.current;
+            const frame = animated ? Math.floor(m.time * FPS) : 0;
+            const key = JSON.stringify([frame, m.fx, m.pick.region, m.mode, m.state, m.sel, m.places.map((p) => p.key), m.data && [m.data.at, m.data.ok, m.data.error], m.busy, m.updated, m.pick.keys, m.pick.page, m.message, vis]);
             if (key === lastKey && shown) return;
             lastKey = key; shown = true;
             const cv = ctx.canvas(UI.W, UI.H) || new Canvas(UI.W, UI.H);
             UI.draw(cv, G, ctx.theme(), m, acts);
             await ui.image('MAIN_GFX', cv);
         };
-        const loop = ctx.loop('MAIN', 4, render);
+        const loop = ctx.loop('MAIN', FPS, render);
         function repaint() { lastKey = ''; return loop && loop.kick ? loop.kick() : render(); }
         pushPlaces();
         await render();

@@ -14,6 +14,7 @@
  */
 const Wx = require('./weather');
 const Icons = require('./icons');
+const Fx = require('./fx');
 const W = 1600, H = 520;
 const nop = () => {};
 const kindColor = (t, kind) => (kind === 'go' ? (t.go || '#2fd27a') : kind === 'warn' ? (t.warn || '#ffb020') : kind === 'crit' ? (t.crit || '#ef2b2d') : t.dim);
@@ -49,6 +50,9 @@ function tempColor(v) { return v < 18 ? '#5ab0ff' : v < 25 ? '#6fd3b0' : v < 30 
 function drawMain(cv, G, t, v, act) {
     const acc = t.accent2 || '#81c4ff';
     const places = v.places || [], d = v.data, cur = d && d.current;
+    const time = v.time || 0, wc = cur ? Wx.describe(cur.code) : null;
+    if (v.fx && cur) Fx.sky(cv, G, wc.icon, cur.day, 26, G.TOP + 2, W - 52, G.BOTTOM - G.TOP - 4);
+    if (v.fx && cur) Fx.draw(cv, G, wc.icon, cur.day, cur.wind || 0, 30, G.TOP + 4, 520, G.BOTTOM - G.TOP - 8, time);
     // tabs: the places, then the list of places; refresh at the right
     let x = 56; const y0 = G.TOP + 14, hh = 40;
     places.forEach((p, i) => {
@@ -59,6 +63,7 @@ function drawMain(cv, G, t, v, act) {
     });
     chip(cv, G, t, x, y0, 150, hh, '+ Địa điểm', false, () => act.openPick && act.openPick(), 'wxPick', 18);
     const rbw = 150;
+    chip(cv, G, t, W - 56 - rbw - 16 - 120 - 16 - 168, y0, 168, hh, 'Hiệu ứng: ' + (v.fx ? 'Bật' : 'Tắt'), !!v.fx, () => act.toggleFx && act.toggleFx(), 'wxFx', 18);
     G.button(cv, t, W - 56 - rbw, y0 - 2, rbw, hh + 4, v.busy ? 'Đang tải…' : 'Làm mới', act.refresh || nop, { key: 'wxRefresh', busy: !!v.busy });
     if (v.updated) cv.text('Cập nhật ' + v.updated, W - 56 - rbw - 16, y0 + 27, 16, d && d.ok ? t.dim : (t.warn || '#ffb020'), { literal: true, font: 'label', align: 'right' });
 
@@ -69,16 +74,31 @@ function drawMain(cv, G, t, v, act) {
         cv.text(msg, W / 2, G.TOP + 330, 26, t.dim, { literal: true, font: 'label', align: 'center' });
         return;
     }
-    const wc = Wx.describe(cur.code), today = d.daily[0] || {};
+    const today = d.daily[0] || {};
     // left: now
-    Icons.draw(cv, wc.icon, cur.day, 150, G.TOP + 170, 170);
+    Icons.draw(cv, wc.icon, cur.day, 150, G.TOP + 170 + (v.fx ? Math.sin(time * 1.5) * 4 : 0), 170);
     cv.text(Wx.deg(cur.t).replace('°', ''), 262, G.TOP + 218, 118, t.text, { literal: true, font: 'bold' });
     const tw = cv.textWidth(Wx.deg(cur.t).replace('°', ''), 118, { literal: true, font: 'bold' });
     cv.text('°C', 262 + tw + 6, G.TOP + 130, 34, t.dim, BOLD);
+    const wtw = cv.textWidth(wc.text, 32, BOLD), tp = Wx.tip(cur, today, d.hourly, d.air);
     cv.text(wc.text, 56, G.TOP + 292, 32, t.text, BOLD);
+    if (tp) {
+        const col = kindColor(t, tp.kind === 'info' ? 'go' : tp.kind), room = 520 - (56 + wtw + 24), tw3 = Math.min(room, cv.textWidth(tp.text, 17, BOLD) + 28);
+        if (tw3 > 120) {
+            const tx = 520 - tw3;
+            cv.roundRect(tx, G.TOP + 266, tw3, 34, 17, G.withAlpha(col, 0.2)); cv.strokeRoundRect(tx, G.TOP + 266, tw3, 34, 17, 1.3, G.withAlpha(col, 0.7));
+            cv.text(fit(cv, tp.text, 17, BOLD, tw3 - 24), tx + tw3 / 2, G.TOP + 289, 17, t.text, { literal: true, font: 'bold', align: 'center' });
+        }
+    }
     cv.text('Cảm giác như ' + Wx.deg(cur.feels) + '  ·  Cao ' + Wx.deg(today.hi) + '  ·  Thấp ' + Wx.deg(today.lo), 56, G.TOP + 324, 19, t.dim, LAB);
     const ty = G.TOP + 346, tw2 = 88, tg = 6, air = d.air, band = Wx.aqiBand(air && air.aqi);
     tile(cv, G, t, 56, ty, tw2, 92, 'Gió km/h', Wx.kmh(cur.wind).replace(' km/h', ''), Wx.compass(cur.windDir));
+    if (cur.windDir !== null && cur.windDir !== undefined) {                 // the arrow points where the wind blows to
+        const ax = 56 + tw2 - 22, ay = ty + 22, a = (cur.windDir + 180) * Math.PI / 180, dx = Math.sin(a), dy = -Math.cos(a), r = 11;
+        cv.line(ax - dx * r, ay - dy * r, ax + dx * r, ay + dy * r, 2.5, t.text);
+        cv.line(ax + dx * r, ay + dy * r, ax + dx * r * 0.2 + dy * 6, ay + dy * r * 0.2 - dx * 6, 2.5, t.text);
+        cv.line(ax + dx * r, ay + dy * r, ax + dx * r * 0.2 - dy * 6, ay + dy * r * 0.2 + dx * 6, 2.5, t.text);
+    }
     tile(cv, G, t, 56 + (tw2 + tg), ty, tw2, 92, 'Độ ẩm', Wx.pct(cur.humidity), '');
     tile(cv, G, t, 56 + 2 * (tw2 + tg), ty, tw2, 92, 'Mưa', Wx.pct(today.pop), cur.rain > 0 ? cur.rain + ' mm' : '');
     tile(cv, G, t, 56 + 3 * (tw2 + tg), ty, tw2, 92, 'UV', today.uv === null || today.uv === undefined ? '–' : String(Math.round(today.uv)), Wx.uvText(today.uv));
@@ -121,10 +141,12 @@ function drawPick(cv, G, t, v, act) {
     const p = v.pick || { keys: [], page: 0, pages: 1, items: [], max: 6 }, acc = t.accent2 || '#81c4ff';
     cv.text('CHỌN ĐỊA ĐIỂM', 56, G.TOP + 52, 28, t.text, { literal: true, font: 'bold', spacing: 2 });
     cv.text('Đã chọn ' + p.keys.length + '/' + p.max + '  ·  chạm để thêm hoặc bỏ', W - 56, G.TOP + 50, 19, t.dim, { literal: true, font: 'label', align: 'right' });
-    const cols = 6, gap = 12, cw = (W - 112 - (cols - 1) * gap) / cols, ch = 62;
+    let rx = 56;
+    Wx.REGIONS.forEach((r) => { const w2 = Math.max(120, cv.textWidth(r[1], 19, BOLD) + 36); chip(cv, G, t, rx, G.TOP + 68, w2, 38, r[1], (p.region || 'all') === r[0], () => act.region && act.region(r[0]), 'wxReg' + r[0], 19); rx += w2 + 10; });
+    const cols = 6, gap = 10, cw = (W - 112 - (cols - 1) * gap) / cols, ch = 52;
     p.items.forEach((it, i) => {
-        const cx = 56 + (i % cols) * (cw + gap), cy = G.TOP + 76 + Math.floor(i / cols) * (ch + gap), on = p.keys.indexOf(it.key) >= 0;
-        chip(cv, G, t, cx, cy, cw, ch, '' + it.name, on, () => act.togglePlace && act.togglePlace(it.key), 'wxCity' + it.key, 20);
+        const cx = 56 + (i % cols) * (cw + gap), cy = G.TOP + 120 + Math.floor(i / cols) * (ch + gap), on = p.keys.indexOf(it.key) >= 0;
+        chip(cv, G, t, cx, cy, cw, ch, '' + it.name, on, () => act.togglePlace && act.togglePlace(it.key), 'wxCity' + it.key, 19);
     });
     const by = G.pageBottom(cv) - (cv.own ? G.MARGIN : 0) - 54, bw = 220;
     if (v.message) cv.text(fit(cv, v.message, 19, LAB, 700), 56, by + 35, 19, kindColor(t, v.messageKind), LAB);
