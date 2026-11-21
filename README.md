@@ -27,7 +27,7 @@ Xe không có Connected Drive thì không đổi được ảnh đại diện c�
 
 ## Thời tiết 0.1.0 (app thứ ba trong nguồn này)
 
-Dự báo thời tiết ngay trên màn hình xe, theo kiểu ứng dụng Thời tiết của BMW Connected Drive (xe không cần Connected Drive): nhiệt độ, biểu tượng, gió, độ ẩm, khả năng mưa, UV, dự báo theo giờ và 5 ngày tới; chọn tối đa 6 địa điểm (vị trí hiện tại, 47 thành phố trong nước lọc theo vùng, 18 thành phố nước ngoài). Trợ thủ `thoi-tiet` lấy dữ liệu từ Open-Meteo (không cần khoá) 20 phút một lần, app chỉ vẽ. Cần xe có mạng. "Vị trí hiện tại" lấy theo địa chỉ mạng của xe (ipwho.is) nên chỉ gần đúng thành phố. Open-Meteo miễn phí chỉ dành cho dùng phi thương mại: lắp cho khách nên cân nhắc.
+Dự báo thời tiết ngay trên màn hình xe, theo kiểu ứng dụng Thời tiết của BMW Connected Drive (xe không cần Connected Drive): nhiệt độ, biểu tượng, gió, độ ẩm, khả năng mưa, UV, dự báo theo giờ và 5 ngày tới; chọn tối đa 6 địa điểm (vị trí hiện tại, 46 thành phố trong nước lọc theo vùng, 18 thành phố nước ngoài). Trợ thủ `thoi-tiet` lấy dữ liệu từ Open-Meteo (không cần khoá) 20 phút một lần, app chỉ vẽ. Cần xe có mạng. "Vị trí hiện tại" lấy theo địa chỉ mạng của xe (ipwho.is) nên chỉ gần đúng thành phố. Open-Meteo miễn phí chỉ dành cho dùng phi thương mại: lắp cho khách nên cân nhắc.
 
 ## Mới trong 0.7.11 (trợ thủ 0.7.9)
 
