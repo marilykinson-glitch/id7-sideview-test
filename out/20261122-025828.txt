@@ -1,1 +1,49 @@
-# đang chạy từ 09:58:34
+# rc=0 sec=0.5 host=root@172.16.222.97
+
+CREATE TABLE Appl(ID                   INTEGER       PRIMARY KEY AUTOINCREMENT,Name                 VARCHAR (256) UNIQUE NOT NULL);
+CREATE TABLE sqlite_sequence(name,seq);
+CREATE TABLE Crash(CrashKey             INTEGER PRIMARY KEY AUTOINCREMENT,Timestamp            DATETIME,AppID                INTEGER,UserID               VARCHAR (7),CrashID              VARCHAR (256),LC                   INTEGER);
+CREATE TABLE Stat(AppID                INTEGER,UserID               VARCHAR (7),RecoveryLevel        INTEGER,ErrorCount           INTEGER);
+CREATE UNIQUE INDEX tupple on Stat(AppID, UserID);
+CREATE TABLE Version(version              VARCHAR (200));
+Appl     Crash    Stat     Version
+== Appl
+ID|Name
+5|::devlink-wifilog.service
+4|SYSTEM
+3|mediaengine::mediaengine.service
+2|connmand::connman.service
+1|mediaddpserver::mediaddpserver.service
+== Crash
+CrashKey|Timestamp|AppID|UserID|CrashID|LC
+16||5|i125592|369073ed01e06420|8331
+15||5|i125592|369073ed01e06420|8330
+14||5|i125592|369073ed01e06420|8329
+13||4|i125592|NOT_AVAILABLE|8256
+12||3|i125592|B05A8EECCBF95336|8202
+== Stat
+AppID|UserID|RecoveryLevel|ErrorCount
+5|i125592|2|10
+4|i125592|2|0
+3|i125592|2|0
+2|i125592|2|0
+1|guest|3|0
+== Version
+version
+P18_23w44.2-1-3
+---J
+-- Logs begin at Sun 2026-11-22 02:54:06 UTC, end at Sun 2026-11-22 02:58:37 UTC. --
+2026-11-22T02:54:06+0000 mgu NavigationPositioning[1769]: 1769 writeQueuedOutput : writev error Success (0) : wrote -1 of 70
+2026-11-22T02:54:06+0000 mgu NavigationPositioning[1769]: 1769 writeQueuedOutput : writev error Success (0) : wrote -1 of 34
+---CD
+drwxrwx---   12 sin_chd  sin_chd       4096 Nov 20 14:33 .
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:33 20261120143147_000_NavController
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:33 20261120143157_000_AudioManager
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:32 20261120143136_000_GeniviAdapter
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:32 20261120143136_000_carplay
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:32 20261120143136_000_necemad
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:32 20261120143140_000_AlsaRoutingAdapters
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:32 20261120143143_000_mediaindexer
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:32 20261120143145_000_natp
+drwxrwx---    2 sin_chd  sin_chd       4096 Nov 20 14:32 20261120143147_000_NarrowbandWidebandController
+{"names":["aapd","aapd (deleted)","cluster-render","cluster-render (deleted)","cluster-render-idrive7","cluster-render-idrive7 (deleted)","cluster-render-idrive8","cluster-render-idrive8 (deleted)","hmictl","hmictl (deleted)","mgu-inputgate.so","mgu-inputgate.so (deleted)","mgu-render","mgu-render (deleted)","mgu-renderd","mgu-renderd (deleted)","mgu-sidecam","mgu-sidecam (deleted)","mgu-uplink","mgu-uplink (deleted)","mgu-wpa","mgu-wpa (deleted)","python3","python3 (deleted)","runas","runas (deleted)","tailscaled","tailscaled (deleted)","waze-on-cluster","waze-on-cluster (deleted)","ytdec","ytdec (deleted)"]}
