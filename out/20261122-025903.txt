@@ -1,1 +1,9 @@
-# đang chạy từ 09:59:08
+# rc=0 sec=0.8 host=root@172.16.222.97
+
+safe mode is on since 2026-11-22T02:53:53Z: 3 failed starts in a row, each within 300 s
+safe mode off: our tools start at the next start
+ls: /var/opt/mgu-deploy/safe-mode: No such file or directory
+0 361cd22b-3497-415c-ac2c-a0acb229f14d 0
+20-devlink-wait-car-wifi.conf
+zz-mgu-deploy-limits.conf
+317.25 683.93
