@@ -21,7 +21,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Chấp nhận giấy phép Android SDK (SDK có sẵn trên runner)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+
 
       - uses: gradle/actions/setup-gradle@v4
         with:
