@@ -1,0 +1,1 @@
+cd /var/opt/mgu-deploy/current; sh mgu-deploy.sh safe-mode 2>&1 | head -8; sh mgu-deploy.sh safe-mode off --yes 2>&1 | head -8; ls /var/opt/mgu-deploy/safe-mode 2>&1; cat /var/opt/mgu-deploy/safe-mode-count; find /etc/systemd -name "*devlink-wifilog*"; ls /etc/systemd/system/mgu-uplink.service.d/; cat /proc/uptime
