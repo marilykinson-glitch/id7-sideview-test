@@ -1,0 +1,1 @@
+cat /proc/uptime; cat /var/opt/mgu-deploy/safe-mode; echo; sed -n 1,50p /var/opt/mgu-deploy/current/safe_mode.sh | cut -c1-210; grep -n -i -E "lift|safe-mode-lifted|rm -f .*FLAG" /var/opt/mgu-deploy/current/safe_mode.sh | head -20 | cut -c1-200
