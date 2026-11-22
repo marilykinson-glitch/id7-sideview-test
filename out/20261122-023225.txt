@@ -1,1 +1,11 @@
-# đang chạy từ 09:32:28
+# rc=0 sec=0.3 host=root@172.16.222.97
+
+---
+#!/bin/sh
+# mgu-deploy on the head unit: sh mgu-deploy.sh check|install|status|rollback|restore|backups|fallback ...
+# (mgu-deploy.js, run by the unit's Node 8; usage: sh mgu-deploy.sh help)
+exec "${MGU_DEPLOY_NODE:-/usr/bin/node}" "$(cd "$(dirname "$0")" && pwd)/mgu-deploy.js" "$@"
+drwxr-xr-x    2 root     root          4096 Nov 22 02:31 .
+drwxr-xr-x   32 root     root          4096 Nov 22 02:31 ..
+-rwxr-xr-x    1 root     root          1323 Nov 22 02:31 bootlog.sh
+-rwxr-xr-x    1 root     root           305 Nov 22 02:31 wait-car-wifi.sh
