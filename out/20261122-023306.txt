@@ -1,1 +1,27 @@
-# đang chạy từ 09:33:13
+# rc=0 sec=8.7 host=root@172.16.222.97
+
+write=0/0/0 remount_ro=0 now=ro
+wait rc=0
+enabled
+active
+active
+TimeoutStartUSec=2min 30s
+ExecStartPre={ path=/bin/sh ; argv[]=/bin/sh /var/opt/devlink-wifi/wait-car-wifi.sh ; ignore_errors=yes ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(nul
+== t=3629.80 02:33:17
+wlan0=up p2p-wlan0-0=up p2p-wlan0-1=up wlan_bridge=up 
+string "P2P" boolean true boolean false string "WiFi" boolean true boolean false 
+uplink=active wpa=active aapd=active
+uplink_state=online link=online freq=2412
+
+== t=3632.89 02:33:20
+wlan0=up p2p-wlan0-0=up p2p-wlan0-1=up wlan_bridge=up 
+string "P2P" boolean true boolean false string "WiFi" boolean true boolean false 
+uplink=active wpa=active aapd=active
+uplink_state=online link=online freq=2412
+
+== t=3635.96 02:33:23
+wlan0=up p2p-wlan0-0=up p2p-wlan0-1=up wlan_bridge=up 
+string "P2P" boolean true boolean false string "WiFi" boolean true boolean false 
+uplink=active wpa=active aapd=active
+uplink_state=online link=online freq=2412
+
