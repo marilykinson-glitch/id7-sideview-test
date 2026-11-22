@@ -1,0 +1,1 @@
+mount | grep -E " on (/|/etc[^ ]*|/var/opt|/var) " ; echo ---; ls -la /var/opt/mgu-deploy/ /var/opt/mgu-deploy/current/ 2>&1 | head -40; echo ---; grep -n -i -E "remount|mount " /var/opt/mgu-deploy/current/*.sh 2>/dev/null | head -30; echo ---; ls -la /etc/systemd/system/ | grep -v "^l" | head -50; ls /run/systemd/system 2>/dev/null | head
