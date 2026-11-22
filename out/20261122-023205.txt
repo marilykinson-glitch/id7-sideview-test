@@ -1,1 +1,95 @@
-# đang chạy từ 09:32:08
+# rc=0 sec=0.0 host=root@172.16.222.97
+
+/dev/mmcblk0p7 on / type ext4 (ro,noatime,nodiratime,discard,data=ordered)
+/dev/mmcblk0p10 on /var/opt type ext4 (rw,noatime,nodiratime,discard,nodelalloc,data=ordered,jqfmt=vfsv1,usrjquota=aquota.user,grpjquota=aquota.group,x-systemd.onfailure)
+---
+/var/opt/mgu-deploy/:
+drwxr-xr-x    6 root     root          4096 Nov 22 02:22 .
+drwxr-xr-x   32 root     root          4096 Nov 22 02:31 ..
+-rwxr-xr-x    1 root     root         64315 Nov  2 05:43 CertificateManager.js
+drwx------   13 root     root          4096 Nov 22 00:24 backups
+-rw-r--r--    1 root     root           618 Nov 21 03:09 crash-names.json
+lrwxrwxrwx    1 root     root            15 Nov 20 00:25 current -> versions/0.8.27
+drwxr-xr-x    2 root     root          4096 Nov 22 00:24 inplace
+drwxr-xr-x   39 root     root          4096 Nov 21 04:53 kept
+-rw-r--r--    1 root     root            48 Nov 22 01:38 last-shutdown
+-rw-r--r--    1 root     root           146 Nov 22 00:27 last-verify.json
+-rw-r--r--    1 root     root       2127759 Aug 18  2023 main.js
+-rwxr-xr-x    1 root     root           135 Nov  2 05:43 mgu-deploy.sh
+-rw-r--r--    1 root     root          2566 Nov 21 04:52 recmgr-at-boot.json
+-rw-r--r--    1 root     root           211 Nov 21 04:52 recmgr-names.json
+-rw-r--r--    1 root     root            37 Nov 22 01:32 restart-requested
+-rw-r--r--    1 root     root            41 Nov 22 01:38 safe-mode-count
+-rw-r--r--    1 root     root            40 Aug 18  2023 safe-mode-crashes
+-rw-r--r--    1 root     root          4272 Nov 22 00:24 state.json
+drwxr-xr-x    4 root     root          4096 Nov 20 00:25 versions
+
+/var/opt/mgu-deploy/current/:
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 .
+drwxr-xr-x    4 root     root          4096 Nov 20 00:25 ..
+-rw-r--r--    1 root     root          2333 Nov 20 00:25 component.json
+-rw-r--r--    1 root     root         25634 Nov 20 00:25 fallback_build.js
+-rw-r--r--    1 root     root          1251 Nov 20 00:25 mgu-app-fallback-id8.service
+-rw-r--r--    1 root     root          1191 Nov 20 00:25 mgu-app-fallback.service
+-rw-r--r--    1 root     root           379 Nov 20 00:25 mgu-deploy-apply.service
+-rw-r--r--    1 root     root           453 Nov 20 00:25 mgu-deploy-cleanup.service
+-rw-r--r--    1 root     root          1279 Nov 20 00:25 mgu-deploy-safe-mode.service
+-rw-r--r--    1 root     root           325 Nov 20 00:25 mgu-deploy-verify.service
+-rw-r--r--    1 root     root        503654 Nov 20 00:25 mgu-deploy.js
+-rwxr-xr-x    1 root     root           284 Nov 20 00:25 mgu-deploy.sh
+-rw-r--r--    1 root     root         43106 Nov 20 00:25 oap_link.js
+-rw-r--r--    1 root     root          4330 Nov 20 00:25 oap_pack.js
+-rwxr-xr-x    1 root     root         10999 Nov 20 00:25 safe_mode.sh
+-rw-r--r--    1 root     root           259 Nov 20 00:25 var-opt-ro-safe-mode.conf
+---
+---
+drwxr-xr-x   58 root     root          4096 Nov 22 00:20 .
+drwxr-xr-x    5 root     root          4096 Oct 31  2023 ..
+drwxr-xr-x    2 root     root          4096 Nov 22 00:20 aapd.service.d
+-rw-r--r--    1 root     root          1115 Nov 20 14:30 anh-dai-dien.service
+drwxr-xr-x    2 root     root          4096 Nov 20 11:53 anh-dai-dien.service.d
+-rw-r--r--    1 root     root           467 Nov  2 05:43 app-privacy.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 app-privacy.service.d
+drwxr-xr-x    2 root     root          4096 Oct 31  2023 basic.target.wants
+drwxr-xr-x    2 root     root          4096 Nov 21 02:11 carplay.service.d
+-rw-r--r--    1 root     root          1610 Nov 16 13:11 cluster-render.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 cluster-render.service.d
+-rw-r--r--    1 root     root           474 Nov  7 01:25 cluster-render.socket
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 cluster-render.socket.d
+drwxr-xr-x    2 root     root          4096 Oct 31  2023 debug.target.wants
+drwx------    2 root     root          4096 Nov  5 08:45 display-bridge-hmi.service.d
+drwx------    2 root     root          4096 Nov  5 08:45 display-bridge.service.d
+drwx------    2 root     root          4096 Nov  5 08:45 display-bridge.socket.d
+drwxr-xr-x    2 root     root          4096 Oct 31  2023 early.target.wants
+drwxr-xr-x    2 root     root          4096 Oct 31  2023 ethernet-device-ready.target.wants
+drwxr-xr-x    2 root     root          4096 Nov 14 02:24 hmi.service.d
+drwx------    2 root     root          4096 Nov  5 08:45 hmi.service.wants
+drwxr-xr-x    2 root     root          4096 Nov 14 02:24 hmi8.service.d
+-rw-r--r--    1 root     root           991 Nov  5 08:45 idrive7-renderd-hmi.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 idrive7-renderd-hmi.service.d
+-rw-r--r--    1 root     root          1209 Nov 14 02:24 idrive7-renderd.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 idrive7-renderd.service.d
+-rw-r--r--    1 root     root           871 Nov 19 01:16 iteriodev-comfort.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 iteriodev-comfort.service.d
+-rw-r--r--    1 root     root           722 Nov 21 02:13 iteriodev-screencast.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 iteriodev-screencast.service.d
+-rw-r--r--    1 root     root          1208 Nov  5 08:46 iteriodev-tailscale.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 iteriodev-tailscale.service.d
+-rw-r--r--    1 root     root          1470 Nov 20 07:24 jap-ridetube-d.service
+drwxr-xr-x    2 root     root          4096 Nov 20 07:24 jap-ridetube-d.service.d
+drwxr-xr-x    2 root     root          4096 Oct 31  2023 large-data-fs.target.wants
+drwxr-xr-x    2 root     root          4096 Nov  5 07:59 late.target.wants
+drwxr-xr-x    2 root     root          4096 Oct 31  2023 local-fs.target.wants
+-rw-r--r--    1 root     root          1191 Nov 20 00:29 mgu-app-fallback.service
+-rw-r--r--    1 root     root           453 Nov  5 07:59 mgu-deploy-cleanup.service
+-rw-r--r--    1 root     root          1279 Nov 20 00:25 mgu-deploy-safe-mode.service
+-rw-r--r--    1 root     root           325 Nov  2 05:44 mgu-deploy-verify.service
+-rw-r--r--    1 root     root           385 Nov 14 02:24 mgu-inputgate-check.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 mgu-inputgate-check.service.d
+-rw-r--r--    1 root     root           496 Nov 14 02:24 mgu-inputgate-guard.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 mgu-inputgate-guard.service.d
+-rw-r--r--    1 root     root          1067 Nov 11 01:44 mgu-render-hmi.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 mgu-render-hmi.service.d
+-rw-r--r--    1 root     root          1003 Nov 16 00:33 mgu-render.service
+drwxr-xr-x    2 root     root          4096 Nov 20 00:25 mgu-render.service.d
+-rw-r--r--    1 root     root          1007 Nov  2 05:44 mgu-render.socket
