@@ -1,1 +1,38 @@
-# đang chạy từ 09:58:49
+# rc=0 sec=0.4 host=root@172.16.222.97
+
+usage: mgu-deploy.sh <command> ...
+  check [--artifact <file>...]     read-only checks; exits 2 on a hard problem
+  install [--artifact <file>...] [--skip-older] [--leave <id>...] [--keep-safe-mode] [--yes]
+                                    install tools/apps (default: ./artifacts/*.tgz); --keep-safe-mode: safe mode stays on
+  status [--json]                  installed components and pending reboots
+  status --read-only [--json]      the same, its upkeep left undone: changes nothing
+  relay [<id>...] [--keep-safe-mode] --yes
+                                    lay a stale tool's files again from the copy kept here, without its install step
+  setup <id> --yes                 a tool laid again from the copy kept here, its install step included
+  uninstall <id> [--yes]           remove one tool or app
+  remove-all [--json]              what the Store setup put on this unit
+  remove-all --yes                 remove all of it, this tool last
+  rollback <id> [--keep-safe-mode] [--yes]
+                                    a tool back to its other kept version, an app to its kept older package
+  restore [name] [--yes]           restore a backup (default stock); verified
+  backups                          list backups (stock marked)
+  fallback <on|off|status>         provisioning fallback for our apps
+  fallback migrate                 move our apps off the retired installer's leftovers onto the fallback
+  updater-token                    store a token for the updater from stdin
+--
+  verify                           check the tools updated for this start; roll back one that does not work (at boot)
+  remove-unused                    remove the files tools handed over that no process runs (at boot)
+  safe-mode [--json]               whether safe mode keeps our tools' units off
+  safe-mode off --yes              leave safe mode: our tools start at the next start
+  appmanager [--json]              IterioDev's App Manager on this unit: its service and what was adopted
+  appmanager adopt [--yes]         take over what it installed; uninstall oap-appmanager removes it
+  help                             this text
+exit codes: 0 done, 1 failed (rolled back), 2 preflight refused
+mgu-deploy.js:1298:var SAFE_MODE_LIFTED = path.join(CFG.run, 'safe-mode-lifted');
+mgu-deploy.js:1306:var SAFE_MODE_CONDITIONS = ['ConditionPathExists=|!/var/opt/mgu-deploy/safe-mode', 'ConditionPathExists=|/run/mgu-deploy/safe-mode-lifted',
+mgu-deploy.js:1370:/* Safe mode lifted for an install (installRun): left with an install that
+mgu-deploy.js:1371: * went through, else on again. A run cut short leaves it lifted until the
+mgu-deploy.js:1374:    if (!lstatOrNull(SAFE_MODE_LIFTED)) return;
+mgu-deploy.js:1376:        rmrf(SAFE_MODE_LIFTED);
+mgu-deploy.js:7946:        /* lifted before the first artifact, so what it starts runs (asOuterInstall settles it) */
+mgu-deploy.js:7949:            fs.writeFileSync(SAFE_MODE_LIFTED, process.pid + '\n');
