@@ -32,7 +32,7 @@ mgu.run({
             const orig = log[k];
             if (typeof orig !== 'function') return;
             log[k] = function () {
-                try { const m = Array.prototype.map.call(arguments, (a) => (a && a.message) || String(a)).join(' '); if (/widget/i.test(m)) { if (k !== 'info') wstat.warn = k + ': ' + m; else if (/first image/.test(m)) wstat.first = m; else if (/widget cell /.test(m)) wstat.cells.push(m.replace('widget cell ', '').slice(0, 40)); else if (/widget loop/.test(m)) wstat.pushes = m; wlog.push((k === 'info' ? '' : k + ': ') + m); if (wlog.length > 8) wlog.shift(); } } catch (e) { /* the log is not ours */ }
+                try { const m = Array.prototype.map.call(arguments, (a) => (a && a.message) || String(a)).join(' '); if (/widget/i.test(m)) { if (k !== 'info') wstat.warn = k + ': ' + m; else if (/first image/.test(m)) wstat.first = m; else if (/widget cell /.test(m)) { wstat.cells.push(m.replace('widget cell ', '').slice(0, 40)); if (wstat.cells.length > 24) wstat.cells.shift(); } else if (/widget loop/.test(m)) wstat.pushes = m; wlog.push((k === 'info' ? '' : k + ': ') + m); if (wlog.length > 8) wlog.shift(); } } catch (e) { /* the log is not ours */ }
                 return orig.apply(this, arguments);
             };
         });
@@ -62,9 +62,20 @@ mgu.run({
             let s = null; why = '';
             try { s = JSON.parse(fs.readFileSync(path.join(RUN, 'weather.json'), 'utf8')); } catch (e) { s = null; why = e && e.code === 'ENOENT' ? 'missing' : e && (e.code === 'EACCES' || e.code === 'EPERM') ? 'denied' : 'bad'; }
             if (s && !(typeof s.at === 'number' && Math.abs(now - s.at) < STALE_MS)) { why = 'old ' + Math.round(Math.abs(now - (s.at || 0)) / 1000) + 's'; s = null; }
+            if (s && !Array.isArray(s.places)) { s = null; why = 'bad'; }
+            if (s && Array.isArray(s.places)) s.places = s.places.filter((p) => p && typeof p.key === 'string');
             if (s && Array.isArray(s.places)) s.places.forEach((p) => { if (p && p.here && p.name) p.name = Wx.viName(p.name); });
             status = s;
-            if (status && Array.isArray(status.custom) && JSON.stringify(status.custom) !== JSON.stringify(custom)) { custom = status.custom.slice(0, 30); save('custom.json', custom); }
+            if (status && Array.isArray(status.custom) && JSON.stringify(status.custom) !== JSON.stringify(custom)) {
+                const selected = keys[sel];
+                custom = status.custom.filter((c) => c && typeof c.key === 'string' && typeof c.name === 'string' && typeof c.lat === 'number' && typeof c.lon === 'number' && isFinite(c.lat) && isFinite(c.lon) && Math.abs(c.lat) <= 90 && Math.abs(c.lon) <= 180).slice(0, 30);
+                save('custom.json', custom);
+                const valid = Wx.placesFor(keys, custom).map((p) => p.key);
+                if (JSON.stringify(valid) !== JSON.stringify(keys)) {
+                    keys = valid; sel = Math.max(0, keys.indexOf(selected)); pushPlaces(); lastKey = '';
+                }
+                page = Math.min(page, pagesOf() - 1);
+            }
             if (status && typeof status.seq === 'number') {
                 if (seenSeq >= 0 && status.seq !== seenSeq && status.lastAdded && keys.indexOf(status.lastAdded) < 0 && custom.some((c) => c.key === status.lastAdded)) {
                     // a place was just added on the phone: it goes in the list now (the oldest of them leaves when it is full)
@@ -100,7 +111,7 @@ mgu.run({
             },
             region: (r) => { region = r; page = 0; repaint(); },
             page: (d) => { const pages = pagesOf(); page = (page + d + pages) % pages; repaint(); },
-            refresh: () => { refreshAt = Date.now(); send('refresh'); repaint(); },
+            refresh: () => { refreshAt = Date.now(); send('refresh', { places: Wx.placesFor(keys, custom) }); repaint(); },
             openSettings: () => { mode = 'settings'; message = ''; repaint(); },
             closeSettings: () => { mode = 'main'; repaint(); },
             toggleTile: (id) => {
@@ -150,36 +161,49 @@ mgu.run({
         // the home-screen widget: BMW's own weather widget layout (LT_Table_OnlineApps_WeatherWidget, big and small), filled cell by
         // cell: the place "Vị trí hiện tại" if it has a forecast, else the first place that has one. Only what changed is sent.
         const wsent = {}, wicons = {};
+        let widgetRetryAt = 0;
         // size: a number (square) or [w, h, icon size]: the car shows the picture as it is, from the cell's corner
         const iconCanvas = (icon, day, size) => {
             const k = icon + '|' + (day ? 1 : 0) + '|' + size;
             if (!wicons[k]) {
                 const w = size[0] || size, h = size[1] || size, sz = size[2] || Math.round(size * 0.98);
-                wicons[k] = Icons3d.make(icon, day, w, h, sz);
+                wicons[k] = icon === 'empty' ? new Canvas(w, h) : Icons3d.make(icon, day, w, h, sz);
             }
             return { cv: wicons[k], key: k };
         };
         const widgetCells = (d) => {
             const c = {}, T = (cell, v) => { c[cell] = ['Text', String(v)]; }, B = (cell, v) => { c[cell] = ['Bool', !!v]; }, A = (cell, icon, day, size) => { c[cell] = ['Asset', icon, day, size]; };
-            if (!d || !d.current) { T('Title', 'Thời tiết'); T('Text1stRow', 'Đang chờ dữ liệu'); T('Text2ndRow', ''); T('TextTemp', ''); T('TextTempUnit', ''); B('IsAQI_Visible', false); B('IsAQI_Asia_Visible', false); return c; }
+            if (!d || !d.current) {
+                T('Title', 'Thời tiết'); T('Text1stRow', 'Đang chờ dữ liệu');
+                ['Text2ndRow', 'TextTemp', 'TextTempUnit', 'TextRainProbability', 'TextRainProbabilityUnit', 'TextAQI_Asia'].forEach((k) => T(k, ''));
+                A('IllustrationActualWeather', 'empty', true, [200, 150, 160]); A('IconRaindrops', 'empty', true, 48);
+                [1, 2, 3].forEach((n) => { T('TextDayliDetail' + n, ''); T('TextTempDayDetail' + n, ''); T('TextTempDayDetailUnit' + n, ''); A('IconDayliDetail' + n, 'empty', true, 44); });
+                B('IsAQI_Visible', false); B('IsAQI_Asia_Visible', false); return c;
+            }
             const cur = d.current, today = (d.daily && d.daily[0]) || {}, wc = Wx.describe(cur.code), num = (v) => Wx.deg(v).replace('°', '');
             T('Title', d.name || 'Thời tiết');
             A('IllustrationActualWeather', wc.icon, cur.day, [200, 150, 160]);
             T('TextTemp', num(cur.t)); T('TextTempUnit', '°' + Wx.getUnit());
             // the layout shows no title: the place is the first row, the weather (or the rain that is coming) the second
             T('Text1stRow', d.name || 'Thời tiết');
-            T('Text2ndRow', typeof cur.rainIn === 'number' ? (cur.rainIn === 0 ? 'Đang mưa' : 'Mưa sau ' + cur.rainIn + ' phút') : wc.text + '  ·  ' + Wx.deg(today.hi) + ' / ' + Wx.deg(today.lo));
+            T('Text2ndRow', d.ok === false ? 'Dữ liệu cũ · ' + wc.text : typeof cur.rainIn === 'number' ? (cur.rainIn === 0 ? 'Đang mưa' : 'Mưa sau ' + cur.rainIn + ' phút') : wc.text + '  ·  ' + Wx.deg(today.hi) + ' / ' + Wx.deg(today.lo));
             A('IconRaindrops', 'rain', true, 48);
             T('TextRainProbability', today.pop === null || today.pop === undefined ? '–' : String(Math.round(today.pop))); T('TextRainProbabilityUnit', '%');
-            (d.daily || []).slice(1, 4).forEach((dy, i) => {
-                const n = i + 1;
+            [1, 2, 3].forEach((n) => {
+                const dy = (d.daily || [])[n], i = n - 1;
+                if (!dy) {
+                    T('TextDayliDetail' + n, '');
+                    A('IconDayliDetail' + n, 'empty', true, 44);
+                    T('TextTempDayDetail' + n, ''); T('TextTempDayDetailUnit' + n, '');
+                    return;
+                }
                 T('TextDayliDetail' + n, i === 0 ? 'Mai' : (dy.dow === 0 ? 'CN' : 'T' + (dy.dow + 1)));
                 A('IconDayliDetail' + n, Wx.describe(dy.code).icon, true, 44);
-                T('TextTempDayDetail' + n, num(dy.hi) + '°'); T('TextTempDayDetailUnit' + n, '');
+                T('TextTempDayDetail' + n, Wx.deg(dy.hi)); T('TextTempDayDetailUnit' + n, '');
             });
-            const air = d.air && typeof d.air.aqi === 'number';
+            const air = d.air && typeof d.air.aqi === 'number' && isFinite(d.air.aqi);
             B('IsAQI_Visible', false); B('IsAQI_Asia_Visible', air);
-            if (air) T('TextAQI_Asia', 'AQI ' + Math.round(d.air.aqi));
+            T('TextAQI_Asia', air ? 'AQI ' + Math.round(d.air.aqi) : '');
             return c;
         };
         if (ctx.widget && ctx.widget.loop) {
@@ -190,14 +214,15 @@ mgu.run({
                 const d = list.filter((p) => p.here && p.current)[0] || list.filter((p) => p.current)[0] || null;
                 wstat.frames++;
                 Wx.setUnit(set.unit);
+                if (Date.now() - widgetRetryAt >= 30000) { Object.keys(wsent).forEach((k) => delete wsent[k]); widgetRetryAt = Date.now(); }
                 const cells = widgetCells(d), sent = wsent[inst.spawnId] || (wsent[inst.spawnId] = {});
-                Object.keys(cells).forEach((cell) => {
+                await Promise.all(Object.keys(cells).map(async (cell) => {
                     const v = cells[cell], sig = JSON.stringify(v);
                     if (sent[cell] === sig) return;
+                    if (v[0] === 'Asset') { const ic = iconCanvas(v[1], v[2], v[3]); await ctx.widget.asset(inst.spawnId, cell, ic.cv, ic.key); }
+                    else await ctx.widget.set(inst.spawnId, cell, v[1], v[0]);
                     sent[cell] = sig;
-                    if (v[0] === 'Asset') { const ic = iconCanvas(v[1], v[2], v[3]); ctx.widget.asset(inst.spawnId, cell, ic.cv, ic.key); }
-                    else ctx.widget.set(inst.spawnId, cell, v[1], v[0]);
-                });
+                }));
                 wstat.ok++;
                 return null;
             });

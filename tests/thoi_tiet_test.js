@@ -6,6 +6,7 @@ const Wx = require(path.join(ROOT, 'apps', 'thoi_tiet', 'weather.js'));
 let n = 0; const ok = (m) => { n++; console.log('ok ' + n + ' - ' + m); };
 
 /* words and places */
+assert.strictEqual(Wx.describe(null).icon, 'cloudy'); assert.strictEqual(Wx.describe(undefined).icon, 'cloudy'); assert.strictEqual(Wx.tileInfo('aqi', {}, {}, [], { aqi: null }).value, '–');
 assert.strictEqual(Wx.describe(0).text, 'Trời quang'); assert.strictEqual(Wx.describe(95).icon, 'storm'); assert.strictEqual(Wx.describe(999).icon, 'cloudy'); ok('weather codes');
 assert.strictEqual(Wx.compass(0), 'Bắc'); assert.strictEqual(Wx.compass(200), 'Nam'); assert.strictEqual(Wx.compass(359), 'Bắc'); assert.strictEqual(Wx.compass(null), ''); ok('wind directions');
 assert.strictEqual(Wx.deg(28.6), '29°'); assert.strictEqual(Wx.deg(null), '–'); assert.strictEqual(Wx.uvText(9), 'Rất cao'); ok('numbers');
@@ -45,17 +46,28 @@ const p = T.parse(answer);
 assert.strictEqual(p.current.t, 31.2); assert.strictEqual(p.current.day, true); assert.strictEqual(p.hourly.length, 24); assert.strictEqual(p.hourly[0].time, '14:00'); assert.strictEqual(p.daily[0].dow, 6); assert.strictEqual(p.daily[0].sunrise, '06:02'); ok('parse');
 const rain = (pr) => T.parse(Object.assign({}, answer, { minutely_15: { time: ['2026-11-21T14:00', '2026-11-21T14:15', '2026-11-21T14:30', '2026-11-21T14:45'], precipitation: pr } })).current;
 assert.strictEqual(rain([0, 0, 0.4, 1]).rainIn, 30); assert.strictEqual(rain([0.5, 0, 0, 0]).rainIn, 0); assert.strictEqual(rain([0, 0, 0, 0.05]).rainIn, null); assert.strictEqual(p.current.rainIn, undefined); ok('rain soon');
-assert.throws(() => T.parse({}), /unexpected/); assert.throws(() => T.parse({ current: {}, hourly: {}, daily: {} }), /temperature/); ok('parse refuses junk');
+assert.throws(() => T.parse({}), /unexpected/); assert.throws(() => T.parse({ current: {}, hourly: {}, daily: {} }), /unexpected/); ok('parse refuses junk');
 assert.deepStrictEqual(T.parseAir({ current: { us_aqi: 87, pm2_5: 29.1, pm10: 41, ozone: 60, nitrogen_dioxide: 12 } }), { aqi: 87, pm25: 29.1, pm10: 41, o3: 60, no2: 12 }); assert.strictEqual(T.parseAir({ current: {} }), null); assert.strictEqual(T.parseAir(null), null);
 assert.strictEqual(Wx.aqiBand(30).text, 'Tốt'); assert.strictEqual(Wx.aqiBand(168).text, 'Xấu'); assert.strictEqual(Wx.aqiBand(null).text, ''); ok('air quality');
 assert.ok(!T.setPlaces([{ key: 'a', name: 'A', lat: 999, lon: 0 }])); assert.ok(T.setPlaces([{ key: 'here', name: 'Đây', here: true }, { key: 'hcm', name: 'HCM', lat: 10.7, lon: 106.7 }])); ok('places are checked');
 
+// Midnight, expired hours and malformed arrays must not revive yesterday's forecast.
+const midnight = Object.assign({}, answer, { current: Object.assign({}, answer.current, { time: '2026-11-22T00:05' }), minutely_15: { time: ['2026-11-21T23:45', '2026-11-22T00:15'], precipitation: [1, 0.3] } });
+assert.strictEqual(T.parse(midnight).current.rainIn, 10);
+assert.strictEqual(T.parse(Object.assign({}, answer, { current: Object.assign({}, answer.current, { time: '2026-11-25T10:00' }) })).hourly.length, 0);
+assert.throws(() => T.parse(Object.assign({}, answer, { hourly: { time: ['2026-11-21T14:00'] } })), /unexpected answer/);
+assert.throws(() => T.addCustom({ name: 'Bad', lat: null, lon: null }), /không hợp lệ/);
+assert.ok(!T.setPlaces([{ key: 'bad', name: 'Bad', lat: null, lon: null }]));
+ok('midnight, expired hours and malformed data');
+
+let forecastGate = null, failAir = false;
 const hits = [];
 const srv = http.createServer((req, res) => {
     hits.push(req.url);
+    if (req.url === '/broken') { res.writeHead(200, { 'Content-Length': 100 }); res.write('{'); return setImmediate(() => res.destroy()); }
     if (/^\/v1\/search/.test(req.url)) { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ results: [{ name: 'Düsseldorf', latitude: 51.22, longitude: 6.78, admin1: 'Nordrhein-Westfalen', country: 'Đức' }, { name: 'Bad', latitude: 'x', longitude: 1 }] })); }
-    if (/^\/v1\/air-quality/.test(req.url)) { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ current: { us_aqi: 87, pm2_5: 29, pm10: 41, ozone: 60, nitrogen_dioxide: 12 } })); }
-    if (/^\/v1\/forecast/.test(req.url) && /latitude=10\.7/.test(req.url)) { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(answer)); }
+    if (/^\/v1\/air-quality/.test(req.url)) { if (failAir) { res.statusCode = 500; return res.end('air failed'); } res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ current: { us_aqi: 87, pm2_5: 29, pm10: 41, ozone: 60, nitrogen_dioxide: 12 } })); }
+    if (/^\/v1\/forecast/.test(req.url) && /latitude=10\.7/.test(req.url)) { if (forecastGate) return forecastGate(res); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(answer)); }
     if (/^\/v1\/forecast/.test(req.url)) { res.statusCode = 500; return res.end('no'); }
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ success: true, latitude: 21.03, longitude: 105.85, city: 'Hanoi' }));
 });
@@ -79,6 +91,27 @@ srv.listen(0, '127.0.0.1', async () => {
     fs.writeFileSync(path.join(root, 'data', 'command.json'), JSON.stringify({ id: 1, cmd: 'places', places: [{ key: 'hcm', name: 'HCM', lat: 10.7, lon: 106.7 }] }));
     T.pollCommands(); await T.refreshAll();
     assert.deepStrictEqual(T.S.places.map((q) => q.key), ['hcm']); assert.strictEqual(T.S.data.hcm.ok, true); ok('the app\'s command changes the places');
+    // Queue a place change while the first forecast is still in flight.
+    let release, arrived;
+    const waiting = new Promise((resolve) => { arrived = resolve; });
+    forecastGate = (res) => { release = () => res.end(JSON.stringify(answer)); arrived(); };
+    const active = T.refreshAll(); await waiting;
+    T.setPlaces([{ key: 'new', name: 'New', lat: 10.7, lon: 106.7 }]);
+    T.refreshAll(true); forecastGate = null; release(); await active;
+    assert.strictEqual(T.S.data.new.ok, true); assert.strictEqual(T.S.data.hcm, undefined);
+    T.setPlaces([{ key: 'hcm', name: 'HCM', lat: 50, lon: 5 }]);
+    T.S.data.hcm = Object.assign({}, hcm, { at: Date.now(), ok: true });
+    await T.refreshAll();
+    assert.strictEqual(T.S.data.hcm.ok, false, 'a recent failed refresh must retry after one minute');
+    assert.strictEqual(T.S.data.hcm.current.t, 31.2);
+    await assert.rejects(T.getJson('unused', '/broken'), /interrupted|aborted|reset/i);
+    ok('queued place change, immediate stale marker and interrupted response');
+    fs.writeFileSync(path.join(root, 'data', 'command.json'), JSON.stringify({ id: 2, cmd: 'refresh', places: [{ key: 'hcm', name: 'HCM', lat: 10.7, lon: 106.7 }] }));
+    T.S.lastCmd = null; // A helper restart must still honor the latest selection carried by refresh.
+    T.pollCommands(); await T.refreshAll(); assert.strictEqual(T.S.data.hcm.ok, true);
+    failAir = true; await T.refreshAll(); failAir = false;
+    assert.strictEqual(T.S.data.hcm.ok, true); assert.strictEqual(T.S.data.hcm.air, null, 'an unavailable AQI must not silently retain the old value');
+    ok('AQI outage keeps the weather without showing an old AQI');
     /* names: the servers asked when the system's resolver fails */
     const rt = path.join(dir, 'route'); fs.writeFileSync(rt, 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\nwlan0\t00000000\t012BA8C0\t0003\t0\t0\t0\t00000000\n');
     T.CFG.route = rt; T.CFG.dns = '10.1.1.1, 127.0.0.1, nonsense';
@@ -101,7 +134,7 @@ srv.listen(0, '127.0.0.1', async () => {
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'state', 'custom.json'), 'utf8')).length, 1);
     const st2 = T.writeStatus(); assert.strictEqual(st2.custom.length, 1); assert.ok(st2.seq >= 1); assert.strictEqual(st2.pin, '4321');
     assert.strictEqual((await call('GET', '/api/search?q=dus')).json.results.length, 1);
-    assert.strictEqual((await call('POST', '/api/remove', { key: add.json.added.key })).json.custom.length, 0); ok('add, remove, keep');
+    assert.strictEqual((await call('POST', '/api/remove', { key: add.json.added.key })).json.custom.length, 0); assert.strictEqual(T.S.lastAdded, ''); ok('add, remove, keep');
     assert.strictEqual((await call('POST', '/api/push', { key: 'hcm', forecast: answer })).code, 404); ok('the phone no longer sends forecasts (the car fetches them itself)');
     for (let i = 0; i < 6; i++) await call('GET', '/api/state', null, '9999'); assert.strictEqual((await call('GET', '/api/state', null, '9999')).code, 429); ok('wrong PINs are slowed down');
     web.close();
@@ -146,6 +179,10 @@ srv.listen(0, '127.0.0.1', async () => {
         const UI = require(path.join(ROOT, 'apps', 'thoi_tiet', 'ui.js'));
         const t = themes.theme(themes.ids ? (Array.isArray(themes.ids) ? themes.ids[0] : themes.ids()[0]) : undefined);
         const places = Wx.placesFor(['hcm']);
+        const header = new Recorder(UI.W, UI.H, { textScale: 1 }); header.own = true;
+        UI.draw(header, G, t, { mode: 'main', places: Array.from({ length: 6 }, (_, i) => ({ key: 'c' + i, name: 'Địa điểm có tên rất dài số ' + i })), sel: 0, data: null, set: Wx.settingsOf(null) }, {});
+        const pick = header.targets.filter((x) => x.key === 'wxPick')[0], drive = header.targets.filter((x) => x.key === 'wxDrive')[0];
+        assert.ok(pick.x + pick.w + 16 <= drive.x, 'six long place names retain a safe button gap');
         const data = { name: 'HCM', ok: true, at: 1, current: p.current, hourly: p.hourly, daily: [].concat(p.daily, p.daily, p.daily) };
         const Fx = require(path.join(ROOT, 'apps', 'thoi_tiet', 'fx.js'));
         ['clear', 'mostly-clear', 'partly', 'cloudy', 'fog', 'drizzle', 'rain', 'heavy-rain', 'showers', 'sleet', 'snow', 'storm'].forEach((k) => [true, false].forEach((day) => [0, 0.05, 1.7, 99].forEach((tm) => Fx.draw(new Recorder(UI.W, UI.H, { textScale: 1 }), G, k, day, 30, 30, 48, 520, 460, tm))));

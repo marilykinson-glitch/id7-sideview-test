@@ -25,7 +25,9 @@ Xe không có Connected Drive thì không đổi được ảnh đại diện c�
 
 **Đã kiểm tra gì:** trên máy, với bản sao các gói thật của một đầu G20 trên bench (ảnh đại diện 3 gói, bìa Bluetooth, người gọi, hình xe G20 to và nhỏ, ảnh và video khởi động 1440x540; video làm ra được ffmpeg giải mã đúng ảnh): đọc, ghi lại giống từng byte, đổi hình, khôi phục về đúng file gốc. Trên xe: một gói ảnh đại diện ghi tay vẫn còn nguyên sau khi khởi động lại (xe không tự khôi phục). **Chưa kiểm tra trên xe:** app và trợ thủ chạy thật, bộ giải mã của đầu xe có phát được video đứng hình không (nếu không: khôi phục từ app), điện thoại nối vào cổng 8137 (tường lửa), chiều ảnh khi hiện, hình chiếc xe 3D (shader đã sửa biên dịch được và vẽ đúng trong một trình biên dịch GLSL thật trên máy, nhưng chưa biết đầu xe có dùng bản shader đã biên dịch sẵn không, tấm bóng đổ có được vẽ ở mọi màn hình không), các gói hình mặc định ngoài hai gói kể trên (cùng tên hình và cỡ thì dùng, khác thì bỏ qua).
 
-## Thời tiết 0.7.14 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.4.3)
+## Thời tiết 0.7.16 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.4.4)
+
+Bản 0.7.16 sửa nền nâu vuông của mặt trời trên widget, thu gọn lề phải, xoá ô widget khi mất dữ liệu và khi thiếu ngày dự báo. Trợ thủ 0.4.4 giữ lệnh đổi địa điểm trong lúc tải, tính mưa đúng khi qua nửa đêm, đánh dấu dữ liệu cũ và thử lại sau một phút khi tải lỗi. Đồng bộ xoá địa điểm từ điện thoại, xử lý kết nối bị ngắt và dữ liệu thiếu; AQI không lấy được hiện chưa có thay vì giữ chỉ số cũ. Bộ kiểm tra có các ca hồi quy tương ứng và kiểm tra cú pháp ES2017/Node 8. Bản sửa đã kiểm tra trên máy; cần xác nhận hình và lề trên xe thật trước khi coi là đã nghiệm thu trên xe.
 
 Trợ thủ ra mạng qua uplink của Store (`mgu-uplink`) bằng uid riêng + DNS trong `/run/mgu-uplink/lease.json`, giống RideTube (root không được uplink cho ra mạng).
 

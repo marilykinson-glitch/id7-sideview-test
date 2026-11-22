@@ -7,7 +7,7 @@
 
 /** WMO weather code -> { icon, text }; icon names are drawn by icons.js. */
 function describe(code) {
-    const c = Number(code);
+    const c = code === null || code === undefined || code === '' ? NaN : Number(code);
     if (c === 0) return { icon: 'clear', text: 'Trời quang' };
     if (c === 1) return { icon: 'mostly-clear', text: 'Ít mây' };
     if (c === 2) return { icon: 'partly', text: 'Có mây' };
@@ -159,7 +159,7 @@ function tileInfo(id, cur, today, daily, air) {
     if (id === 'humidity') return { title: 'Độ ẩm', value: pct(cur.humidity), sub: '' };
     if (id === 'rain') return { title: 'Mưa', value: pct(today.pop), sub: cur.rain > 0 ? cur.rain + ' mm' : '' };
     if (id === 'uv') return { title: 'UV', value: f(today.uv) ? String(Math.round(today.uv)) : '–', sub: uvText(today.uv) };
-    if (id === 'aqi') { const b = aqiBand(air && air.aqi); return { title: 'AQI', value: air ? String(Math.round(air.aqi)) : '–', sub: air ? b.text : 'chưa có', bar: air ? b.color : '' }; }
+    if (id === 'aqi') { const has = air && f(air.aqi), b = aqiBand(has ? air.aqi : null); return { title: 'AQI', value: has ? String(Math.round(air.aqi)) : '–', sub: has ? b.text : 'chưa có', bar: has ? b.color : '' }; }
     if (id === 'vis') return { title: 'Tầm nhìn', value: f(cur.vis) ? (cur.vis >= 10000 ? String(Math.round(cur.vis / 1000)) : (cur.vis / 1000).toFixed(1)) : '–', sub: 'km' };
     if (id === 'pressure') return { title: 'Áp suất', value: f(cur.pressure) ? String(Math.round(cur.pressure)) : '–', sub: 'hPa' };
     if (id === 'sun') {

@@ -113,7 +113,7 @@ function hoursIcons(cv, G, t, d, rx, rw) {
 function hoursChart(cv, G, t, d, rx, rw) {
     const TOP = rx.top, hs = (d.hourly || []).slice(0, 24).filter((h) => h.t !== null);
     if (hs.length < 3) return;
-    const lo = Math.min.apply(null, hs.map((h) => h.t)), hi = Math.max.apply(null, hs.map((h) => h.t)), x0 = rx.x + 30, x1 = rx.x + rw - 30, ytop = TOP + 140, ybot = TOP + 196;
+    const lo = Math.min.apply(null, hs.map((h) => h.t)), hi = Math.max.apply(null, hs.map((h) => h.t)), x0 = rx.x + 30, x1 = rx.x + rw - 16, ytop = TOP + 140, ybot = TOP + 196;
     const px = (i) => x0 + (x1 - x0) * i / (hs.length - 1), py = (v) => (hi > lo ? ybot - (ybot - ytop) * (v - lo) / (hi - lo) : (ytop + ybot) / 2);
     const pts = hs.map((h, i) => [px(i), py(h.t)]);
     cv.fillUnder(pts, ybot + 6, G.withAlpha(tempColor((lo + hi) / 2), 0.16));
@@ -149,7 +149,7 @@ function sunArc(cv, G, t, cur, today, rx, rw) {
 function days(cv, G, t, d, rx, rw, y0, step) {
     const ds = (d.daily || []).slice(1, 6);
     const lo = Math.min.apply(null, ds.map((x) => (x.lo === null ? 99 : x.lo)).concat([99])), hi = Math.max.apply(null, ds.map((x) => (x.hi === null ? -99 : x.hi)).concat([-99]));
-    const bx = rx + 330, bw = rw - 330 - 150;
+    const bx = rx + 330, bw = rw - 330 - 56;
     ds.forEach((dy, i) => {
         const yy = y0 + i * step, di = Wx.describe(dy.code);
         cv.text(i === 0 ? 'Ngày mai' : Wx.DOW[dy.dow], rx, yy + 20, 20, t.text, LAB);
@@ -168,6 +168,7 @@ function days(cv, G, t, d, rx, rw, y0, step) {
 function message(cv, t, v, x, y) { if (v.message) cv.text(fit(cv, v.message, 19, LAB, 650), x, y, 19, kindColor(t, v.messageKind), LAB); }
 
 function drawMain(cv, G, t, v, act) {
+    const right = W - 32;
     const set = v.set, places = v.places || [], d = v.data, cur = d && d.current;
     const time = v.time || 0, wc = cur ? Wx.describe(cur.code) : null, fx = set.fx && !!cur;
     // the room the car's screen has under the page (the panel reaches down into it): the page's lower parts stretch into it
@@ -176,19 +177,19 @@ function drawMain(cv, G, t, v, act) {
     if (fx) Fx.draw(cv, G, wc.icon, cur.day, cur.wind || 0, 30, G.TOP + 4, 520, G.BOTTOM + ex - G.TOP - 8, time);
     // top row: the places, the list of places | settings, drive, refresh
     const y0 = G.TOP + 14, hh = 40, rbw = 150, sbw = 130, dbw = 120;
-    const rightStart = W - 56 - rbw - 10 - sbw - 10 - dbw - 16;
+    const rightStart = right - rbw - 10 - sbw - 10 - dbw - 16;
     let x = 56; const avail = rightStart - 56 - 160;
     // the place the car is at keeps its own label (its town is written under the row): a town of the list may be there too
     const names = places.map((p, i) => '' + (i === v.sel && d && d.name && !p.here ? d.name : p.name));
     if (cur && places[v.sel] && places[v.sel].here && d.name && d.name !== places[v.sel].name) cv.text(fit(cv, d.name, 17, BOLD, 440), 58, G.TOP + 78, 17, t.dim, BOLD);
     const want = names.map((n) => Math.max(110, Math.min(240, cv.textWidth(n, 20, BOLD) + 40)));
-    const sum = want.reduce((a, b) => a + b + 10, 0), k = sum > avail ? avail / sum : 1;
+    const sum = want.reduce((a, b) => a + b, 0), room = avail - names.length * 10, k = sum > room ? room / sum : 1;
     names.forEach((n, i) => { const w = Math.floor(want[i] * k); chip(cv, G, t, x, y0, w, hh, n, i === v.sel, () => act.select && act.select(i), 'wxTab' + i); x += w + 10; });
     chip(cv, G, t, x, y0, 150, hh, '+ Địa điểm', false, () => act.openPick && act.openPick(), 'wxPick', 18);
-    G.button(cv, t, W - 56 - rbw, y0 - 2, rbw, hh + 4, v.busy ? 'Đang tải…' : 'Làm mới', act.refresh || nop, { key: 'wxRefresh', busy: !!v.busy });
-    G.button(cv, t, W - 56 - rbw - 10 - sbw, y0 - 2, sbw, hh + 4, 'Cài đặt', act.openSettings || nop, { key: 'wxSettings' });
-    G.button(cv, t, W - 56 - rbw - 10 - sbw - 10 - dbw, y0 - 2, dbw, hh + 4, 'Lái xe', () => act.drive && act.drive(true), { key: 'wxDrive' });
-    if (v.updated) cv.text('Cập nhật ' + v.updated, W - 56, G.TOP + 80, 15, d && d.ok ? t.dim : (t.warn || '#ffb020'), { literal: true, font: 'label', align: 'right' });
+    G.button(cv, t, right - rbw, y0 - 2, rbw, hh + 4, v.busy ? 'Đang tải…' : 'Làm mới', act.refresh || nop, { key: 'wxRefresh', busy: !!v.busy });
+    G.button(cv, t, right - rbw - 10 - sbw, y0 - 2, sbw, hh + 4, 'Cài đặt', act.openSettings || nop, { key: 'wxSettings' });
+    G.button(cv, t, right - rbw - 10 - sbw - 10 - dbw, y0 - 2, dbw, hh + 4, 'Lái xe', () => act.drive && act.drive(true), { key: 'wxDrive' });
+    if (v.updated) cv.text('Cập nhật ' + v.updated, right, G.TOP + 80, 15, d && d.ok ? t.dim : (t.warn || '#ffb020'), { literal: true, font: 'label', align: 'right' });
 
     if (!cur) {
         const why = String(v.why || ''), msg = v.state === 'down' ? (why === 'missing' ? 'Chưa thấy trợ thủ thời tiết: vào Store cài "Trợ thủ Thời tiết" (thoi-tiet), rồi khởi động lại màn hình.' : why === 'denied' ? 'App không đọc được dữ liệu của trợ thủ (bị chặn quyền).' : why.indexOf('old') === 0 ? 'Trợ thủ thời tiết dừng từ ' + why.slice(4) + ' trước: khởi động lại màn hình xe.' : 'Trợ thủ thời tiết trả dữ liệu hỏng: khởi động lại màn hình xe.') : d && d.error === 'chưa có dữ liệu' ? 'Đang lấy dự báo…' : d && d.error ? (/EAI_AGAIN|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|EHOSTUNREACH|timeout|DNS/i.test(d.error + (v.netError || '')) ? 'Xe chưa ra được mạng internet (' + d.error + '). Kiểm tra Wi-Fi của xe rồi bấm Làm mới.' : 'Chưa lấy được dự báo: ' + d.error) : 'Đang lấy dự báo…';
@@ -211,7 +212,7 @@ function drawMain(cv, G, t, v, act) {
     rainChip(cv, G, t, cur, 520, G.TOP + 226, 34, 18);
 
     // right: the middle block, the next days
-    const rx = 560, rw = W - 56 - rx, R = { x: rx, top: G.TOP };
+    const rx = 560, rw = right - rx, R = { x: rx, top: G.TOP };
     if (set.block !== 'off') {
         label(cv, t, set.block === 'chart' ? 'NHIỆT ĐỘ 24 GIỜ' : set.block === 'sun' ? 'MẶT TRỜI' : 'THEO GIỜ', rx, G.TOP + 100);
         if (set.block === 'icons') hoursIcons(cv, G, t, d, R, rw); else if (set.block === 'chart') hoursChart(cv, G, t, d, R, rw); else sunArc(cv, G, t, cur, today, R, rw);
@@ -242,7 +243,7 @@ function drawDrive(cv, G, t, v, act) {
     rainChip(cv, G, t, cur, 1530, G.TOP + 62, 30, 19);
     const tp = Wx.tip(cur, today, d.hourly, d.air);
     if (tp) tipChip(cv, G, t, tp, 1060, G.TOP + 392, 56, 28, 620);
-    const stats = [['Cao / Thấp', Wx.deg(today.hi) + ' / ' + Wx.deg(today.lo), ''], ['Mưa', Wx.pct(today.pop), cur.rain > 0 ? cur.rain + ' mm' : ''], ['Gió km/h', cur.wind === null ? '–' : String(Math.round(cur.wind)), Wx.compass(cur.windDir)], ['AQI', d.air ? String(Math.round(d.air.aqi)) : '–', d.air ? Wx.aqiBand(d.air.aqi).text : '']];
+    const stats = [['Cao / Thấp', Wx.deg(today.hi) + ' / ' + Wx.deg(today.lo), ''], ['Mưa', Wx.pct(today.pop), cur.rain > 0 ? cur.rain + ' mm' : ''], ['Gió km/h', cur.wind === null ? '–' : String(Math.round(cur.wind)), Wx.compass(cur.windDir)], ['AQI', Wx.tileInfo('aqi', cur, today, d.daily, d.air).value, Wx.aqiBand(d.air && d.air.aqi).text]];
     stats.forEach((s, i) => {
         const sx = 1130, sy = G.TOP + 96 + i * (92 + sg), sh = 80 + sg;
         cv.roundRect(sx, sy, 400, sh, 14, G.withAlpha('#000000', 0.28)); cv.roundRect(sx, sy, 400, sh, 14, G.withAlpha('#ffffff', 0.05));
@@ -297,7 +298,7 @@ function drawPhone(cv, G, t, v, act) {
 function drawSettings(cv, G, t, v, act) {
     const set = v.set, onChip = (x, y, w, text, on, run, key) => chip(cv, G, t, x, y, w, 46, text, on, run, key, 19);
     cv.text('CÀI ĐẶT', 56, G.TOP + 52, 28, t.text, { literal: true, font: 'bold', spacing: 2 });
-    cv.text('Chạm để bật hoặc tắt, nhớ lại cho lần sau.', W - 56, G.TOP + 50, 19, t.dim, { literal: true, font: 'label', align: 'right' });
+    cv.text(v.message || 'Chạm để bật hoặc tắt, nhớ lại cho lần sau.', W - 56, G.TOP + 50, 19, v.message ? kindColor(t, v.messageKind) : t.dim, { literal: true, font: 'label', align: 'right' });
     label(cv, t, 'THÔNG SỐ HIỆN TRONG Ô NHỎ (TỐI ĐA ' + Wx.MAX_TILES + ')', 56, G.TOP + 90);
     const cols = 5, gap = 10, cw = (W - 112 - (cols - 1) * gap) / cols;
     Wx.TILES.forEach((tl, i) => onChip(56 + (i % cols) * (cw + gap), G.TOP + 102 + Math.floor(i / cols) * 56, cw, tl[1], set.tiles.indexOf(tl[0]) >= 0, () => act.toggleTile && act.toggleTile(tl[0]), 'wxT' + tl[0]));
@@ -314,7 +315,6 @@ function drawSettings(cv, G, t, v, act) {
         (wd.lines || []).forEach((l, i) => cv.text(fit(cv, l, 14, LAB, 1000), 56, G.TOP + 430 + i * 16, 14, t.dim, LAB));
     }
     const by = G.pageBottom(cv) - (cv.own ? G.MARGIN : 0) - 54, bw = 220;
-    message(cv, t, v, 56, by + 35);
     G.button(cv, t, W - 56 - bw, by, bw, 54, 'Xong', act.closeSettings || nop, { key: 'wxSetDone', primary: true });
     G.button(cv, t, W - 56 - 2 * bw - 14, by, bw, 54, 'Về mặc định', act.resetSettings || nop, { key: 'wxReset' });
 }

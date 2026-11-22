@@ -123,6 +123,8 @@ function getJsonDirect(host, pathAndQuery, strict, ip) {
             if (res.statusCode !== 200) { res.resume(); return fin(new Error('HTTP ' + res.statusCode)); }
             const chunks = []; let n = 0;
             res.on('data', (c) => { n += c.length; if (n > 2e6) { req.abort(); return fin(new Error('answer too large')); } chunks.push(c); });
+            res.on('error', fin);
+            res.on('aborted', () => fin(new Error('answer interrupted')));
             res.on('end', () => { try { fin(null, JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (e) { fin(new Error('answer is not JSON')); } });
         });
         req.setTimeout(15000, () => { req.abort(); fin(new Error('timeout')); });
@@ -184,7 +186,9 @@ function parseAir(j) {
  *     daily:  [{ date 'YYYY-MM-DD', dow 0..6 (0 = Sunday), code, hi, lo, pop, uv, sunrise, sunset }] }
  */
 function parse(j) {
-    if (!j || !j.current || !j.hourly || !j.daily) throw new Error('unexpected answer');
+    if (!j || !j.current || !j.hourly || !j.daily ||
+        !['time', 'temperature_2m'].every((k) => Array.isArray(j.hourly[k])) ||
+        !['time', 'weather_code', 'temperature_2m_max', 'temperature_2m_min'].every((k) => Array.isArray(j.daily[k]))) throw new Error('unexpected answer');
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
     const c = j.current;
     const current = {
@@ -194,10 +198,11 @@ function parse(j) {
     // rain in the next 2 hours from the 15-minute steps: minutes until the first one with rain (0: raining now), null: none / unknown
     const m15 = j.minutely_15;
     if (m15 && Array.isArray(m15.time) && Array.isArray(m15.precipitation)) {
-        const at = (s) => { const m = /T(\d\d):(\d\d)/.exec(String(s || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+        // Compare full local dates on a common UTC axis: minutes-of-day lose the date at midnight.
+        const at = (s) => { const v = Date.parse(String(s || '') + 'Z'); return isFinite(v) ? v / 60000 : null; };
         const nowM = at(c.time); let first = null, mm = 0;
         if (nowM !== null) for (let i = 0; i < m15.time.length && first === null; i++) {
-            let t0 = at(m15.time[i]); if (t0 === null) continue; if (t0 < nowM - 720) t0 += 1440;
+            const t0 = at(m15.time[i]); if (t0 === null || t0 - nowM > 120) continue;
             if (t0 + 15 <= nowM) continue;
             const v = m15.precipitation[i];
             if (typeof v === 'number' && v >= 0.1) { first = Math.max(0, t0 - nowM); mm = v; }
@@ -206,7 +211,7 @@ function parse(j) {
     }
     const h = j.hourly, hourly = [];
     const now = String(c.time || '').slice(0, 13);                           // YYYY-MM-DDTHH
-    let from = (h.time || []).findIndex((s) => String(s).slice(0, 13) >= now); if (from < 0) from = 0;
+    let from = h.time.findIndex((s) => String(s).slice(0, 13) >= now); if (from < 0) from = h.time.length;
     for (let i = from; i < Math.min((h.time || []).length, from + 24); i++) {
         hourly.push({ time: String(h.time[i]).slice(11, 16), t: num(h.temperature_2m[i]), pop: num((h.precipitation_probability || [])[i]), code: num((h.weather_code || [])[i]), day: (h.is_day || [])[i] === 1 });
     }
@@ -228,7 +233,9 @@ const clean = (p) => {
     if (!p || typeof p !== 'object') return null;
     const key = String(p.key || '').slice(0, 40), name = String(p.name || '').slice(0, 60);
     if (!key || !name) return null;
-    const lat = Number(p.lat), lon = Number(p.lon), here = !!p.here;
+    const here = !!p.here;
+    if (!here && (typeof p.lat !== 'number' || typeof p.lon !== 'number')) return null;
+    const lat = Number(p.lat), lon = Number(p.lon);
     if (!here && !(isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return null;
     return { key, name, lat: isFinite(lat) ? lat : 0, lon: isFinite(lon) ? lon : 0, here };
 };
@@ -243,8 +250,8 @@ function setPlaces(list) {
 async function whereIAm() {
     if (S.ipPlace && Date.now() - S.ipAt < 6 * 3600 * 1000) return S.ipPlace;
     const j = await getJson(CFG.ipHost, '/');
-    const lat = Number(j && j.latitude), lon = Number(j && j.longitude);
-    if (!(j && j.success !== false && isFinite(lat) && isFinite(lon))) throw new Error('chưa biết xe đang ở đâu');
+    const lat = j && j.latitude, lon = j && j.longitude;
+    if (!(j && j.success !== false && typeof lat === 'number' && typeof lon === 'number' && isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) throw new Error('chưa biết xe đang ở đâu');
     S.ipPlace = { lat, lon, city: String(j.city || '') }; S.ipAt = Date.now();
     return S.ipPlace;
 }
@@ -257,26 +264,30 @@ async function fetchPlace(p) {
         const j = await getJson(CFG.host, FORECAST + '&latitude=' + lat.toFixed(3) + '&longitude=' + lon.toFixed(3));
         const w = parse(j);
         let air = null;                                  // the air is a second request: without it the weather still shows
-        try { air = parseAir(await getJson(CFG.airHost, AIR + '&latitude=' + lat.toFixed(3) + '&longitude=' + lon.toFixed(3))); } catch (e) { log('air for ' + p.key + ': ' + e.message); air = prev.air || null; }
+        try { air = parseAir(await getJson(CFG.airHost, AIR + '&latitude=' + lat.toFixed(3) + '&longitude=' + lon.toFixed(3))); } catch (e) { log('air for ' + p.key + ': ' + e.message); /* Do not present an old AQI as a fresh observation. */ }
         S.netError = '';
         S.data[p.key] = { key: p.key, name, ok: true, at: Date.now(), error: '', current: w.current, hourly: w.hourly, daily: w.daily, air, here: p.here };
     } catch (e) {
         log('forecast for ' + p.key + ': ' + e.message);
-        // the last good forecast stays on the screen (marked as old after 45 minutes)
+        // Keep the last good forecast, mark it stale immediately, and retry after retryMs.
         S.netError = String(e.message || e).slice(0, 120);
-        if (prev.current && prev.at && Date.now() - prev.at < 45 * 60000) return;
         S.data[p.key] = Object.assign({ key: p.key, name, current: null, hourly: [], daily: [], here: p.here }, prev, { ok: false, error: String(e.message || e).slice(0, 80), at: prev.at || 0, name });
     }
 }
 
-let working = null;
-function refreshAll() {
-    if (working) return working;
+let working = null, pendingRefresh = false;
+function refreshAll(queue) {
+    if (working) { if (queue) pendingRefresh = true; return working; }
     S.busy = true; writeStatus();
     working = (async () => {
-        // all places at once (a few requests each): a place added a moment ago does not wait behind the others
-        const list = S.places.slice();
-        await Promise.all(list.map((p) => fetchPlace(p)));
+        do {
+            pendingRefresh = false;
+            const list = S.places.slice();
+            await Promise.all(list.map((p) => fetchPlace(p)));
+            // A places/refresh command received during this pass gets a fresh pass.
+        } while (pendingRefresh);
+        const keys = S.places.map((p) => p.key);
+        Object.keys(S.data).forEach((k) => { if (keys.indexOf(k) < 0) delete S.data[k]; });
     })().catch((e) => log('refresh: ' + e.message)).then(() => { working = null; S.busy = false; S.fetchedAt = Date.now(); writeStatus(); });
     return working;
 }
@@ -304,7 +315,7 @@ function plain(str) {
 const customKey = (lat, lon) => 'c' + Math.round(lat * 100) + '_' + Math.round(lon * 100);
 function loadCustom() { const c = readJson(path.join(CFG.state, 'custom.json')); S.custom = Array.isArray(c) ? c.map(cleanCustom).filter(Boolean).slice(0, MAX_CUSTOM) : []; }
 function cleanCustom(p) {
-    if (!p) return null;
+    if (!p || typeof p !== 'object' || typeof p.lat !== 'number' || typeof p.lon !== 'number') return null;
     const lat = Number(p.lat), lon = Number(p.lon), name = plain(p.name).slice(0, 40);
     if (!name || !(isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return null;
     return { key: customKey(lat, lon), name, lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000 };
@@ -320,7 +331,7 @@ function addCustom(p) {
     S.seq++; S.lastAdded = c.key; writeStatus();
     return c;
 }
-function removeCustom(key) { S.custom = S.custom.filter((x) => x.key !== key); saveCustom(); S.seq++; writeStatus(); }
+function removeCustom(key) { S.custom = S.custom.filter((x) => x.key !== key); saveCustom(); S.seq++; S.lastAdded = ''; writeStatus(); }
 
 /** Search a place by name (Open-Meteo's geocoding): up to 8 answers, names the car can draw. */
 async function search(q) {
@@ -466,15 +477,15 @@ function pollCommands() {
     const c = readJson(path.join(app.root, 'data', 'command.json'));
     if (!c || typeof c.id !== 'number') return;
     if (c.id === S.lastCmd) return;
-    const first = S.lastCmd === null; S.lastCmd = c.id;
+    S.lastCmd = c.id;
     log('command ' + c.cmd);
     if (c.cmd === 'new_pin') { S.pin = newPin(); writeStatus(); }
     else if (c.cmd === 'next_ip') { S.ipIndex++; fwLast = ''; fwCheck(); writeStatus(); }
-    else if (c.cmd === 'places' && setPlaces(c.places)) { for (const k of Object.keys(S.data)) if (!S.places.some((p) => p.key === k)) delete S.data[k]; refreshAll(); }
-    else if (c.cmd === 'refresh' && !first) refreshAll();
+    else if (c.cmd === 'places' && setPlaces(c.places)) { for (const k of Object.keys(S.data)) if (!S.places.some((p) => p.key === k)) delete S.data[k]; refreshAll(true); }
+    else if (c.cmd === 'refresh') { if (c.places) setPlaces(c.places); refreshAll(true); }
 }
 
-const VERSION = '0.4.3';
+const VERSION = '0.4.4';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     S.pin = newPin(); loadCustom();

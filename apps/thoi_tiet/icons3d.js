@@ -28,7 +28,20 @@ const DATA = {
 };
 const NIGHT = { 'clear': 'n-clear', 'mostly-clear': 'n-mostly-clear', 'partly': 'n-partly', 'cloudy': 'n-cloudy', 'showers': 'rain' };
 const raw = {};
-function pic(name) { return raw[name] || (raw[name] = zlib.inflateSync(Buffer.from(DATA[name], 'base64'))); }
+function pic(name) {
+    if (raw[name]) return raw[name];
+    const pixels = zlib.inflateSync(Buffer.from(DATA[name], 'base64'));
+    // The daylight sun has an opaque brown matte, not merely a low-alpha halo.
+    // Remove that dark matte before resampling so it cannot bleed into the rays.
+    if (name === 'clear') {
+        for (let k = 0; k < pixels.length; k += 4) {
+            const edge = Math.max(0, Math.min(1, (pixels[k] - 80) / 90));
+            pixels[k + 3] = Math.round(pixels[k + 3] * edge * edge * (3 - 2 * edge));
+            if (!pixels[k + 3]) pixels[k] = pixels[k + 1] = pixels[k + 2] = 0;
+        }
+    }
+    return (raw[name] = pixels);
+}
 
 /** the picture scaled to s x s (area average over premultiplied colour), into a w x h canvas, centred */
 function make(icon, day, w, h, size) {

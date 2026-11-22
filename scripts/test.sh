@@ -11,4 +11,5 @@ node tests/nav_read_test.js
 python3 tests/system_test.py
 node tests/anh_dai_dien_test.js
 node tests/thoi_tiet_test.js
+node tests/thoi_tiet_widget_test.js
 node scripts/check_node8.js
