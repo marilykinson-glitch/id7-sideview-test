@@ -168,7 +168,8 @@ function days(cv, G, t, d, rx, rw, y0, step) {
 function message(cv, t, v, x, y) { if (v.message) cv.text(fit(cv, v.message, 19, LAB, 650), x, y, 19, kindColor(t, v.messageKind), LAB); }
 
 function drawMain(cv, G, t, v, act) {
-    const right = W - 32;
+    // Match the 56px left content inset, leaving 32px inside the panel on both sides.
+    const right = W - 56;
     const set = v.set, places = v.places || [], d = v.data, cur = d && d.current;
     const time = v.time || 0, wc = cur ? Wx.describe(cur.code) : null, fx = set.fx && !!cur;
     // the room the car's screen has under the page (the panel reaches down into it): the page's lower parts stretch into it
