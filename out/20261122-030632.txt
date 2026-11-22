@@ -1,1 +1,27 @@
-# đang chạy từ 10:06:37
+# rc=0 sec=0.3 host=root@172.16.222.97
+
+341.16 398.65
+361cd22b-3497-415c-ac2c-a0acb229f14d normal 421
+0 8033bdc0-4d89-471f-8b55-473f3f456692 0
+ls: /var/opt/mgu-deploy/safe-mode: No such file or directory
+---
+active
+active
+active
+active
+   Active: active (running) since Sun 2026-11-22 03:01:35 UTC; 5min ago
+  Process: 824 ExecStartPre=/bin/sh /var/opt/devlink-wifi/wait-car-wifi.sh (code=exited, status=0/SUCCESS)
+0 loaded units listed. Pass --all to see loaded but inactive units, too.
+To show all installed unit files use 'systemctl list-unit-files'.
+---
+19
+ro
+---
+uplink: online, wifi Xiaomi 15 Ultra
+phones over USB: on
+wifi: online "Xiaomi 15 Ultra" -44 dBm, 2 saved, 1 seen
+online: wlan0 10.51.97.110/24 via 10.51.97.229, dns 10.51.97.229, lease 3600s from 2026-11-22T03:06:08Z
+16
+wlan0=up
+p2p-wlan0-0=up
+wlan_bridge=up
