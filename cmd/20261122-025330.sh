@@ -1,0 +1,1 @@
+uptime; grep -n -B3 -A12 "last-shutdown" /var/opt/mgu-deploy/current/safe_mode.sh | cut -c1-200 | head -90; echo ---; F=/var/opt/devlink-wifi/boot-20230818-073646.log; grep -n "^== t=" $F | awk -F"[= ]" "{t=\$5+0; if (t<p) print \"boot kết thúc ở t=\" p \" (dòng \" NR \")\"; p=t} END{print \"hiện tại t=\" p}"; systemctl is-active devlink-wifilog
