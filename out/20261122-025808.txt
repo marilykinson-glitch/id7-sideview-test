@@ -1,1 +1,51 @@
-# đang chạy từ 09:58:15
+# rc=0 sec=0.8 host=root@172.16.222.97
+
+261.85 547.25
+/var/opt/public/sin/crashhandler:
+drwxrwx---    6 sin_chd  sin_chd       4096 2026-11-18 10:33:23 +0000 .
+drwxrwx--x   18 sps_8000 mgu_pers      4096 2021-05-11 14:27:22 +0000 ..
+drwxrwx---   12 sin_chd  sin_chd       4096 2026-11-20 14:33:00 +0000 coredumps
+drwxrwx---    3 sin_chd  sin_chd       4096 2023-08-18 07:36:47 +0000 gpu_hangs
+drwxrwx---    4 sin_logm sin_logm      4096 2021-05-11 13:05:43 +0000 iDLT
+drwxrwx---    4 sin_chd  sin_chd       4096 2026-09-08 00:21:10 +0000 transfer
+
+/var/opt/public/sin/recmgr:
+drwxr-xr-x    2 sin_recm sin_recm      4096 2026-11-22 02:54:00 +0000 .
+drwxrwx--x   18 sps_8000 mgu_pers      4096 2021-05-11 14:27:22 +0000 ..
+-rw-r--r--    1 sin_recm sin_recm     32768 2026-11-22 02:53:53 +0000 recmgr_stats.db
+/usr/bin/sqlite3
+16||5|i125592|369073ed01e06420|8331
+15||5|i125592|369073ed01e06420|8330
+14||5|i125592|369073ed01e06420|8329
+13||4|i125592|NOT_AVAILABLE|8256
+12||3|i125592|B05A8EECCBF95336|8202
+11||2|i125592|FE667BA3DB61B118|8185
+10||1|guest|80CFB25F427E41A0|8006
+9||1|guest|80CFB25F427E41A0|8005
+---
+i125592369073ed01e06420 
+i125592NOT_AVAILABLE @!
+i125592B05A8EECCBF95336 
+i125592FE667BA3DB61B118
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+guest80CFB25F427E41A0
+i125592
+i125592
+i125592
+i125592
+guest
+i125592
+i125592
+i125592
+i125592
+	guest
++P18_23w44.2-1-3
+---
