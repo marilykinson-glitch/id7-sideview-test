@@ -1,0 +1,1 @@
+cat /proc/uptime; cat /var/opt/mgu-deploy/last-shutdown /var/opt/mgu-deploy/safe-mode-count; ls /var/opt/mgu-deploy/safe-mode 2>&1; ps | grep bootlog | grep -v grep; systemctl is-active mgu-uplink aapd
