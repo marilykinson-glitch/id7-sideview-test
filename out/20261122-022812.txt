@@ -1,1 +1,98 @@
-# đang chạy từ 09:28:18
+# rc=0 sec=0.4 host=root@172.16.222.97
+
+uplink: online, wifi Xiaomi 15 Ultra
+phones over USB: on
+wifi: online "Xiaomi 15 Ultra" -45 dBm, 2 saved, 1 seen
+online: wlan0 10.51.97.110/24 via 10.51.97.229, dns 10.51.97.229, lease 3599s from 2026-11-22T02:21:50Z
+rules:
+  1100: uid 3910 lookup main suppress_prefixlength 0
+  1100: uid 12707 lookup main suppress_prefixlength 0
+  1100: uid 12709 lookup main suppress_prefixlength 0
+  1100: uid 12710 lookup main suppress_prefixlength 0
+  1101: uid 3910 lookup 110
+  1101: uid 12707 lookup 110
+  1101: uid 12709 lookup 110
+  1101: uid 12710 lookup 110
+  1102: from 10.51.97.110 lookup 110
+table 110:
+  default via 10.51.97.229 dev wlan0 src 10.51.97.110
+  10.51.97.0/24 dev wlan0 src 10.51.97.110
+firewall: table inet mgu_uplink present, 2 accept rule(s) in ip filter output
+route to 1.1.1.1:
+  uid 0: network is unreachable
+  uid 3910: 1.1.1.1/32 via 10.51.97.229 dev wlan0 src 10.51.97.110
+  uid 12707: 1.1.1.1/32 via 10.51.97.229 dev wlan0 src 10.51.97.110
+  uid 12709: 1.1.1.1/32 via 10.51.97.229 dev wlan0 src 10.51.97.110
+  uid 12710: 1.1.1.1/32 via 10.51.97.229 dev wlan0 src 10.51.97.110
+---KEYS
+carrier
+wait
+waiter
+waiters
+waiting
+waitlink
+waitlock
+waitreason
+waitsema
+waittail
+waitunlockf
+wifi
+wifi_5gh
+	cannot3:04PMZ07:00headerAnswerLengthrdtscppopcntAES-NI\.//^\secretSTREET want cmd/gocryptosha256sha512avx512rdrandrdseedcdc_ncmcdc_eemAP VLANmonitorWPA-PSKPrivacyEnabled2.4 GHzCarPlaynetdev:/uids.d/a
+(N)tags don't match (%d vs %+v) %+v %s @%dasn1: Unmarshal recipient value is nil ed25519: bad Ed25519ph context length: fips140: no verification checksum foundmlkem: invalid encapsulation key lengthth
+8p2p-
+MarshalTextClassHESIODauthoritiesadditionalsSHA-512/224SHA-512/256BLAKE2s-256BLAKE2b-256BLAKE2b-384BLAKE2b-512psk_id_hashrandseednopend of filegocachehashgocachetesthttp2clienthttp2serverarchive/tarcr
+RequestServiceproductCommandcarplaymgu-wpaoffline, %s %s %d dBmpresent uid %difindextype %drfkill*allowednl80211cmdlinehostapdfloat32float64 (trap fstatatTuesdayJanuaryOctoberrunningconnectlookup writ
+invalid scalar lengthsimulated PCT failure/fi/w1/wpa_supplicant1the car's Wi-Fi is off	ssid=%s
+main.p2pReceived
+math/randtlsrsakexcSHAKE128cdc_subsetrndis_hostP2P clientP2P devicePropertiesmgu-uplinkAddNetworkDisconnectCurrentBSS/hook.sock/link.json/wifi.jsonmgu_uplink</string>
+pacer: assist ratio=workbuf is not emptybad use of bucket.mpbad use of bucket.bpruntime: double waitpreempt off reason: " set to old value "forcegc: phase errorgopark: bad g statusgo of nil func value
+stopm spinningruntime: p id  nmidlelocked= needspinning= schedticks=[ randinit twicestore64 failedsemaRoot queuebad allocCountbad span statestack overflow untyped args  out of range no module data in 
+---DBUS
+/usr/bin/dbus-send
+/usr/bin/busctl
+               string "Name"
+               variant                   string "P2P"
+               string "Powered"
+               variant                   boolean true
+               string "Connected"
+               variant                   boolean false
+               string "Tethering"
+               variant                   boolean false
+               string "PeerName"
+               variant                   string "BMW 37906"
+               string "Name"
+               variant                   string "WiFi"
+               string "Powered"
+               variant                   boolean true
+               string "Connected"
+               variant                   boolean false
+               string "Tethering"
+               variant                   boolean false
+---UNITS
+  sys-devices-virtual-net-p2p\x2dwlan0\x2d0.device                                                           loaded active plugged   /sys/devices/virt
+  sys-devices-virtual-net-p2p\x2dwlan0\x2d1.device                                                           loaded active plugged   /sys/devices/virt
+  sys-devices-virtual-net-wlan0.device                                                                       loaded active plugged   /sys/devices/virt
+  sys-devices-virtual-net-wlan_bridge.device                                                                 loaded active plugged   /sys/devices/virt
+  sys-subsystem-net-devices-p2p\x2dwlan0\x2d0.device                                                         loaded active plugged   /sys/subsystem/ne
+  sys-subsystem-net-devices-p2p\x2dwlan0\x2d1.device                                                         loaded active plugged   /sys/subsystem/ne
+  sys-subsystem-net-devices-wlan0.device                                                                     loaded active plugged   /sys/subsystem/ne
+  sys-subsystem-net-devices-wlan_bridge.device                                                               loaded active plugged   /sys/subsystem/ne
+  var-lib-connman.mount                                                                                      loaded active mounted   /var/lib/connman 
+  aapd.service                                                                                               loaded active running   Android Auto Proj
+  carplay.service                                                                                            loaded active running   Apple CarPlay Ser
+  connman.service                                                                                            loaded active running   Connection servic
+  mediaapp.service                                                                                           loaded active running   MediaApp         
+  mgu-uplink.service                                                                                         loaded active running   Internet for sele
+  sdip-ar.service                                                                                            loaded active running   Smart Device Inte
+  sdip-cegateway.service                                                                                     loaded active running   Smart Device Inte
+  sdip-connman.service                                                                                       loaded active running   Smart Device Inte
+  sdip-touchcommand.service                                                                                  loaded active running   Smart Device Inte
+  sdipd.service                                                                                              loaded active running   Smart Device Inte
+  var-volatile-connman.service                                                                               loaded active exited    Bind mount volati
+  waze-on-cluster-aa-boot.service                                                                            loaded active exited    waze-on-cluster b
+  waze-on-cluster-boot.service                                                                               loaded active exited    waze-on-cluster b
+  waze-on-cluster-patchd.service                                                                             loaded active running   waze-on-cluster p
+  waze-on-cluster-recovery.service                                                                           loaded active running   waze-on-cluster b
+  waze-on-cluster.service                                                                                    loaded active running   waze-on-cluster: 
+  wpa_supplicant.service                                                                                     loaded active running   WPA supplicant   
