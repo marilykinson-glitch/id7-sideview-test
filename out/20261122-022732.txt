@@ -1,1 +1,107 @@
-# đang chạy từ 09:27:36
+# rc=0 sec=0.1 host=root@172.16.222.97
+
+/var/opt/mgu-uplink:
+drwxr-xr-x    5 root     root          4096 Nov 20 15:38 .
+drwxr-xr-x   31 root     root          4096 Nov 21 04:52 ..
+lrwxrwxrwx    1 root     root            15 Nov 20 00:26 current -> versions/0.7.13
+-rw-r--r--    1 root     root            26 Nov 20 15:38 mgu-uplink.settings.conf
+drwxr-xr-x    2 root     root          4096 Nov 21 05:12 uids.d
+drwxr-xr-x    4 root     root          4096 Nov 20 00:27 versions
+drwx------    2 root     root          4096 Nov 22 01:03 wifi
+
+/var/opt/mgu-uplink/current/:
+drwxr-xr-x    2 root     root          4096 Nov 20 00:26 .
+drwxr-xr-x    4 root     root          4096 Nov 20 00:27 ..
+-rw-r--r--    1 root     root         61991 Nov 20 00:26 LICENSES.txt
+-rw-r--r--    1 root     root          1127 Nov 20 00:26 component.json
+-rwxr-xr-x    1 root     root       7729312 Nov 20 00:26 mgu-uplink
+-rw-r--r--    1 root     root          2064 Nov 20 00:26 mgu-uplink.conf
+-rwxr-xr-x    1 root     root        803648 Nov 20 00:26 mgu-wpa
+[Unit]
+Description=Internet for selected apps through a USB adapter, LTE stick, phone or Wi-Fi (mgu-uplink)
+RequiresMountsFor=/var/opt
+After=local-fs.target
+# IterioDev's iPhone tether drives the same phone: never both at once
+Conflicts=ipheth-tether.service
+
+[Service]
+ExecStart=/var/opt/mgu-uplink/current/mgu-uplink run -c /var/opt/mgu-uplink/current/mgu-uplink.conf
+Restart=always
+RestartSec=5
+# The unit's system.conf sends stdout to null by default; mgu-uplink logs there.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+# Written by mgu-deploy for every service a tool installs: a crash leaves no core dump for the
+# crash handler, which would restart the head unit, a service that keeps failing stops, and
+# it does not start in safe mode.
+[Unit]
+StartLimitIntervalSec=600
+StartLimitBurst=20
+ConditionPathExists=|!/var/opt/mgu-deploy/safe-mode
+ConditionPathExists=|/run/mgu-deploy/safe-mode-lifted
+ConditionPathExists=|!/var/opt/mgu-deploy/current/safe_mode.sh
+After=mgu-deploy-safe-mode.service
+
+[Service]
+LimitCORE=1
+---CFG
+  854 root     1237m S    /var/opt/mgu-uplink/current/mgu-uplink run -c /var/o
+== /var/opt/mgu-uplink/current/component.json
+{
+  "id": "mgu-uplink",
+  "kind": "tool",
+  "version": "0.7.13",
+  "title": "Internet uplink",
+  "description": "Internet for selected apps through a USB network adapter, an LTE stick, a USB-tethered phone or Wi-Fi",
+  "files": [
+    {
+      "path": "mgu-uplink",
+      "mode": "0755",
+      "sha256": "649589e7cdd47311afedde3c63c01e1921ca463db493e1145ff7a854be684d2e"
+    },
+    {
+      "path": "mgu-wpa",
+      "mode": "0755",
+      "sha256": "164cf1b515f1b2866bd3e7f30ce8864ce0dd151f374b8ba9ce6cdbcfc20afaa2"
+    },
+    {
+      "path": "mgu-uplink.conf",
+      "mode": "0644",
+      "sha256": "9cb3f75e46910fd7c91cbeac16e458c36d6820b48c195af6e09b2f3ddf9a700c"
+    },
+    {
+      "path": "LICENSES.txt",
+      "mode": "0644",
+      "sha256": "edb58dc12d352a4499a3c45a8c39ff6a31ac060b26e2d116675f95a1a11e07d2"
+    }
+  ],
+  "units": [
+    {
+      "name": "mgu-uplink.service"
+    }
+  ],
+  "enable": [
+    {
+      "unit": "mgu-uplink.service",
+      "target": "multi-user.target"
+    }
+  ],
+  "recmgr": [
+    "mgu-uplink"
+  ],
+  "restart": [
+    "mgu-uplink.service"
+  ],
+  "crashNames": [
+    "mgu-uplink",
+    "mgu-wpa"
+  ]
+}
+---UPTIME
+ 02:27:39 up 54 min,  load average: 3.52, 3.80, 2.72
+---LOG
+-- Logs begin at Sun 2026-11-22 02:23:13 UTC, end at Sun 2026-11-22 02:27:39 UTC. --
+-- No entries --
