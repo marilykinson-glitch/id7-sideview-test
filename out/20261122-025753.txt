@@ -1,1 +1,55 @@
-# đang chạy từ 09:57:55
+# rc=0 sec=0.0 host=root@172.16.222.97
+
+242.52 497.67
+{"at": "2026-11-22T02:53:53Z", "reason": "3 failed starts in a row, each within 300 s"}
+
+#!/bin/sh
+# safe_mode.sh: the deploy tool's boot-loop guard (deploy/README.md, "Safe
+# mode"). While /var/opt/mgu-deploy/safe-mode exists, our tools' units do
+# not start (ConditionPathExists=! in their drop-in zz-mgu-deploy-limits.conf,
+# which also orders them after this guard's start step).
+#
+#   safe_mode.sh start  first at each start (mgu-deploy-safe-mode.service,
+#                       before any of our units): this start counts as failed
+#                       until it shows otherwise, and when the starts before
+#                       it failed THRESHOLD times in a row the flag is
+#                       written, so our units stay off from this start on
+#   safe_mode.sh stats  the same service: recmgr's last crash key, the
+#                       baseline for the mark
+#   safe_mode.sh boot   start, then stats (the step the guard's unit of an
+#                       earlier deploy tool runs)
+#   safe_mode.sh up     the same service: a start up UP_S clears the count
+#   safe_mode.sh stop   the same service's stop: an orderly stop of the
+#                       system (systemctl reboot or poweroff) counts as a
+#                       shutdown without a restart record
+#   safe_mode.sh mark   at each shutdown through the NodeStateManager
+#                       (var-opt-ro.service, drop-in
+#                       40-mgu-deploy-safe-mode.conf), before /var/opt goes
+#                       read-only: how this start ends, the count, and at
+#                       the THRESHOLD-th failed start in a row the flag
+#
+# A failed start ends within UP_S of the start, by a restart recmgr or
+# crashhandler asked for or with no shutdown mark at all, and none of our
+# tools asked for that restart (restart-requested, written by them before
+# they ask, names the start). crashhandler restarts the head unit about a
+# minute and a half after the crash it restarts it for, so a program that
+# crashes early in every start ends each start some 2 to 3 minutes in. The
+# start step counts each start as failed; what follows decides:
+#   - the start stays up UP_S: the count goes back to zero;
+#   - a mark at its shutdown: a restart recmgr or crashhandler asked for
+#     counts, on either record of it: the restartInfo.xml each writes when it
+#     asks (written in this start), or a row recmgr added to its crash
+#     statistics (recmgr_stats.db, table Crash, whose keys only grow; a row
+#     only for a failure it restarts the head unit for, written just before
+#     it asks) since this start's stats step, the statistics written within
+#     STATS_RESTART_S of the shutdown (a row has no time of its own:
+#     Timestamp stays empty); recmgr's startup, some 10 s into a start,
+#     deletes its restartInfo.xml, also one of that same start. A shutdown
+#     without either record (a switch-off, the HMI's or the Store's restart)
+#     neither counts nor clears;
+#   - an orderly stop of the system (stop) is a shutdown without a record;
+#   - no mark, no stop (a power cut, a reset that skipped var-opt-ro.service,
+#     a head unit that hangs and is reset): the start counts.
+# A state file that is missing or does not read as written counts nothing.
+#
+# Files in /var/opt/mgu-deploy, each written whole (renamed into place; the
