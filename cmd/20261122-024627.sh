@@ -1,0 +1,1 @@
+cd /var/opt/devlink-wifi; ls -la; for f in $(ls -t boot-*.log | head -6); do echo "#### $f"; grep -A4 "^== t=" $f | grep -E "^== t=|wlan0=|uplink_state" | paste - - - | awk "{print \$2,\$4,\$5,\$6,\$7,\$8,\$9,\$10}" | uniq -f1 | head -14; done
