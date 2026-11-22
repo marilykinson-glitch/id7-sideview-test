@@ -1,0 +1,1 @@
+grep -o -E ".{100}(\"rw\"|,rw|rw,|-o\", ?\"[a-z,]*).{140}" /var/opt/mgu-deploy/current/mgu-deploy.js | grep -i mount | head -6; echo ---; grep -c "" /var/opt/mgu-deploy/current/mgu-deploy.js; grep -o -E "function [a-zA-Z]*([Rr]ootRw|[Ww]ritable|[Rr]emount|[Mm]ountRw|[Rr]w)[a-zA-Z]*\([^)]*\) *\{.{0,400}" /var/opt/mgu-deploy/current/mgu-deploy.js | head -4
