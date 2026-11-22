@@ -1,0 +1,1 @@
+cd /var/opt/mgu-deploy/current; sh mgu-deploy.sh help 2>&1 | grep -i -B2 -A6 "safe" | cut -c1-220 | head -60; grep -n -i "safe-mode-lifted\|safe.mode.*lift\|lifted" mgu-deploy.js safe_mode.sh *.service | cut -c1-220 | head -20
