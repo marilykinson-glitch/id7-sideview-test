@@ -1,1 +1,129 @@
-# đang chạy từ 09:24:46
+# rc=0 sec=0.1 host=root@172.16.222.97
+
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue qlen 1000
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+2: socnet0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc htb qlen 1000
+    inet 169.254.1.62/16 brd 169.254.255.255 scope link socnet0
+       valid_lft forever preferred_lft forever
+3: wlan_bridge: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue qlen 1000
+    inet 172.16.222.97/27 brd 172.16.222.127 scope global wlan_bridge
+       valid_lft forever preferred_lft forever
+5: vlan80@socnet0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue qlen 1000
+    inet 160.48.199.185/29 brd 160.48.199.191 scope global vlan80
+       valid_lft forever preferred_lft forever
+6: vlan144@socnet0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue qlen 1000
+    inet 160.48.199.161/29 brd 160.48.199.167 scope global vlan144
+       valid_lft forever preferred_lft forever
+8: vlan73@socnet0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue qlen 1000
+    inet 160.48.199.99/25 brd 160.48.199.127 scope global vlan73
+       valid_lft forever preferred_lft forever
+    inet 160.48.199.119/25 brd 160.48.199.127 scope global secondary vlan73
+       valid_lft forever preferred_lft forever
+10: vlan77@socnet0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue qlen 1000
+    inet 160.48.199.225/29 brd 160.48.199.231 scope global vlan77
+       valid_lft forever preferred_lft forever
+14: wlan0: <BROADCAST,MULTICAST,UP,LOWER_UP8000> mtu 1500 qdisc pfifo_fast qlen 1000
+    inet 10.51.97.110/24 brd 10.51.97.255 scope global wlan0
+       valid_lft forever preferred_lft forever
+---
+sh: iw: not found
+---
+---
+drwxr-xr-x    2 root     root           160 Nov 22 02:21 .
+drwxr-xr-x   47 root     root          1200 Nov 22 01:32 ..
+srw-------    1 root     root             0 Aug 18  2023 ctl.sock
+srw-------    1 root     root             0 Aug 18  2023 hook.sock
+-rw-r--r--    1 root     root           191 Nov 22 02:21 lease.json
+-rw-r--r--    1 root     root             0 Aug 18  2023 lock
+-rw-r--r--    1 root     root           625 Nov 22 02:21 status.json
+-rw-r--r--    1 root     root           140 Nov 22 02:21 wifi.json
+{
+  "interface": "wlan0",
+  "ip": "10.51.97.110",
+  "prefix": 24,
+  "router": "10.51.97.229",
+  "dns": [
+    "10.51.97.229"
+  ],
+  "leaseSeconds": 3599,
+  "updated": "2026-11-22T02:21:50Z"
+}
+{
+  "device": {
+    "kind": "wifi",
+    "name": "Xiaomi 15 Ultra"
+  },
+  "state": "online",
+  "error": null,
+  "usbPhone": true,
+  "wifi": {
+    "enabled": true,
+    "link": "online",
+    "ssid": "Xiaomi 15 Ultra",
+    "ip": "10.51.97.110",
+    "signal": -45,
+    "networks": [
+      {
+        "ssid": "Xiaomi 15 Ultra",
+        "signal": -45,
+        "secure": true,
+        "saved": true,
+        "current": true
+      }
+    ],
+    "saved": [
+      "Drag0n’s iPhone",
+      "Xiaomi 15 Ultra"
+    ],
+    "scanning": false,
+    "error": null,
+    "backend": "car-supplicant",
+    "freq": 2412,
+    "allow5ghz": false
+  }
+}
+{
+  "link": {
+    "index": 14,
+    "name": "wlan0",
+    "origName": "wlan0",
+    "ipv6": "1",
+    "wasUp": true
+  },
+  "givenBack": false
+}
+---
+lo
+p2p-wlan0-0
+p2p-wlan0-1
+socnet0
+vlan144
+vlan65
+vlan67
+vlan73
+vlan77
+vlan80
+vlan86
+wlan0
+wlan_bridge
+/sys/class/net/lo unknown
+/sys/class/net/p2p-wlan0-0 up
+/sys/class/net/p2p-wlan0-1 up
+/sys/class/net/socnet0 up
+/sys/class/net/vlan144 up
+/sys/class/net/vlan65 up
+/sys/class/net/vlan67 up
+/sys/class/net/vlan73 up
+/sys/class/net/vlan77 up
+/sys/class/net/vlan80 up
+/sys/class/net/vlan86 up
+/sys/class/net/wlan0 up
+/sys/class/net/wlan_bridge up
+---
+2: phy1: wlan
+	Soft blocked: no
+	Hard blocked: no
+3: brcmfmac-wifi: wlan
+	Soft blocked: no
+	Hard blocked: no
