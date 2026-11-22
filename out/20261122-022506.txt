@@ -1,1 +1,68 @@
-# đang chạy từ 09:25:10
+# rc=0 sec=0.3 host=root@172.16.222.97
+
+  276 sin_nsm   587m S    /usr/bin/NodeStateManager
+  277 sin_nsc   392m S    /usr/bin/nodestartupcontroller --uid=10009 --gid=100
+  780 root     41440 S    /usr/sbin/connmand -n -d src/technology.c:src/main.c
+  783 root      869m SN   /usr/bin/node /var/opt/thoi-tiet/current/thoi-tiet.j
+  795 root      835m S    /usr/bin/node /var/opt/waze-on-cluster/current/patch
+  815 root      876m SN   /usr/bin/node /var/opt/anh-dai-dien/current/anh-dai-
+  822 root      838m SN   /usr/bin/node /var/opt/mgu-updater/current/updater.j
+  826 root     31080 S    /usr/sbin/wpa_supplicant -u -s -d
+  854 root     1237m S    /var/opt/mgu-uplink/current/mgu-uplink run -c /var/o
+  858 os_7011   824m S    /usr/bin/node /var/opt/iteriodev-screencast/current/
+  877 root      833m SN   /usr/bin/node /var/opt/xinhan-cam/current/xinhan-cam
+  880 root      828m S    /usr/bin/node /var/opt/iteriodev-comfort/current/com
+  904 root      930m S    /usr/bin/node --max-http-header-size=65536 /var/opt/
+ 1352 root      828m S    /usr/bin/node /var/opt/waze-on-cluster/current/recov
+ 1353 root     39472 S    journalctl -u carplay.service -f -o short-iso -n 0
+ 1477 12708     896m SN   /usr/bin/node /var/opt/mgu-updater/versions/0.8.51/w
+ 1832 root      824m S    /usr/bin/node /var/opt/waze-on-cluster/current/dlt_c
+ 2370 ent_mapp 1523m S    /usr/bin/mediaapp -v /etc/mediaconfig/mediaapp_varia
+ 2505 63044     829m SN   /usr/bin/node /var/opt/waze-on-cluster/current/journ
+ 2551 cia_1300  735m S    /usr/bin/aapd
+ 2554 cia_1301  389m S    /usr/bin/sdip-connman
+ 2563 root      935m S    /usr/bin/node /var/opt/vietmap-signs/current/vietmap
+ 2610 nobody    6604 S    /usr/bin/dnsmasq -x /run/dnsmasq.pid -7 /etc/dnsmasq
+ 2623 cia_1300  587m S    /usr/bin/carplay -c /etc/cinemo/cinemo_options.xml
+ 2682 root      8412 S    sh -c /usr/bin/node /var/opt/idrive7-renderd/version
+ 2686 root      942m S    /usr/bin/node /var/opt/idrive7-renderd/versions/2.1.
+ 3972 12201    2212m S<   /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 4578 12203    1382m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 4721 12205    1623m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 4775 12219    1577m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 4858 12204    1667m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 4978 12218    1576m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 5013 root      946m SN   /usr/bin/node /var/opt/xinhan-cam/versions/0.7.9/nav
+ 5036 12221    1640m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 5098 12225    1638m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 5144 12226    1615m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 5253 12227    1613m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 5306 12206    1708m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 6357 12216    1671m S    /usr/bin/node --expose-gc --serialize_eager --max_ol
+ 6398 root      8412 S    sh -c /usr/bin/node /var/opt/mgu-render/current/fore
+ 6399 root      942m S    /usr/bin/node /var/opt/mgu-render/current/foreground
+ 7356 root      8412 R    /sbin/udhcpc -i socnet0 -x hostname:DIAGADR80BMWVINW
+ 8437 root      8412 S    /sbin/udhcpc -f -R -i wlan0 -s /var/opt/mgu-uplink/c
+---
+== wlan0
+sh: wpa_cli: not found
+== p2p-wlan0-0
+sh: wpa_cli: not found
+== p2p-wlan0-1
+sh: wpa_cli: not found
+---
+---
+bridge name	bridge id		STP enabled	interfaces
+wlan_bridge		8000.ba11c212907b	no		p2p-wlan0-0
+							p2p-wlan0-1
+							vlan67
+---
+ls: /var/run/wpa_supplicant: No such file or directory
+ls: /run/wpa_supplicant: No such file or directory
+ls: /var/run/hostapd: No such file or directory
+---
+drwxr-xr-x    2 root     root           160 Nov 22 02:21 mgu-uplink
+/etc/systemd/system/mgu-uplink.service
+/etc/systemd/system/multi-user.target.wants/mgu-uplink.service
+/etc/systemd/system/mgu-uplink.service.d
+/usr/bin/nv_uplink_info
