@@ -1,0 +1,1 @@
+cat /var/opt/mgu-uplink/current/mgu-uplink.conf; echo ---SET; cat /var/opt/mgu-uplink/mgu-uplink.settings.conf; echo; ls -la /var/opt/mgu-uplink/wifi; echo ---HELP; /var/opt/mgu-uplink/current/mgu-uplink --help 2>&1 | head -40; echo ---DMESG; dmesg | grep -i -E "brcm|wlan|p2p|cfg80211|ieee80211" | tail -60 | cut -c1-220
