@@ -1,1 +1,45 @@
-# đang chạy từ 09:53:08
+# rc=0 sec=0.5 host=root@172.16.222.97
+
+ 02:53:11 up 2 min,  load average: 8.04, 4.51, 1.80
+== last-shutdown 2026-11-22 02:50:39
+0ea0ae9c-a80a-441c-9f50-efe173bf615f crash 191 recmgr recmgr_stats
+
+== safe-mode-count 2023-08-18 07:36:46
+2 333d18ee-4f37-4a71-9a3a-68582af5fc97 3
+
+== restart-requested 2026-11-22 02:42:21
+1c286c43-5e7e-4041-99cd-5a15d4ff3432
+
+== safe-mode-crashes 2023-08-18 07:36:46
+333d18ee-4f37-4a71-9a3a-68582af5fc97 15
+
+ls: /var/opt/mgu-deploy/safe-mode: No such file or directory
+---
+drwxr-xr-x    2 root     root          4096 Aug 18  2023 .
+drwxr-xr-x   32 root     root          4096 Nov 22 02:31 ..
+-rw-r--r--    1 root     root        119232 Nov 22 02:53 boot-20230818-073646.log
+-rw-r--r--    1 root     root         13092 Nov 22 02:35 boot-20261122-023317.log
+-rwxr-xr-x    1 root     root          1323 Nov 22 02:31 bootlog.sh
+-rwxr-xr-x    1 root     root           305 Nov 22 02:31 wait-car-wifi.sh
+---
+active
+active
+Warning: The unit file, source configuration file or drop-ins of mgu-uplink.service changed on disk. Run 'systemctl daemon-reload' to reload units.
+● mgu-uplink.service - Internet for selected apps through a USB adapter, LTE stick, phone or Wi-Fi (mgu-uplink)
+   Loaded: loaded (/etc/systemd/system/mgu-uplink.service; enabled; vendor preset: enabled)
+  Drop-In: /etc/systemd/system/mgu-uplink.service.d
+           └─20-devlink-wait-car-wifi.conf, zz-mgu-deploy-limits.conf
+   Active: active (running) since Sun 2026-11-22 02:51:15 UTC; 1min 56s ago
+  Process: 822 ExecStartPre=/bin/sh /var/opt/devlink-wifi/wait-car-wifi.sh (code=exited, status=0/SUCCESS)
+ Main PID: 4681 (mgu-uplink)
+   Memory: 15.1M
+   CGroup: /system.slice/mgu-uplink.service
+           ├─4681 /var/opt/mgu-uplink/current/mgu-uplink run -c /var/opt/mgu-uplink/current/mgu-uplink.conf
+           └─5860 /sbin/udhcpc -f -R -i wlan0 -s /var/opt/mgu-uplink/current/mgu-uplink -t 5 -T 3 -A 5
+---
+0 loaded units listed. Pass --all to see loaded but inactive units, too.
+To show all installed unit files use 'systemctl list-unit-files'.
+---
+2026-11-22T02:51:10+0000 mgu libschedconfig[2155]: [AdasMgu] Notice in function: findThreadByName, Reason: Thread "63f1_shutdown" not found. No thread information in scheduler config file
+2026-11-22T02:51:15+0000 mgu NavigationBasic[4274]: [NavigationBasic] Notice in function: findThreadByName, Reason: Could not find thread name "6309_shutdown" in scheduler config file
+2026-11-22T02:51:15+0000 mgu NavigationBasic[4274]: [NavigationBasic] Notice in function: findThreadByName, Reason: Could not find thread name "6308_shutdown" in scheduler config file
