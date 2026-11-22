@@ -29,7 +29,7 @@ const CFG = {
     state: env('TT_STATE', '/var/opt/thoi-tiet'),
     oap: env('TT_OAP', '/var/opt/public/oap'),
     scanMs: Number(env('TT_SCAN_MS', 5000)),
-    everyMs: Number(env('TT_EVERY_MS', 20 * 60 * 1000)),      // a new forecast this often while the app is there
+    everyMs: Number(env('TT_EVERY_MS', 15 * 60 * 1000)),      // a new forecast this often while the app is there
     retryMs: Number(env('TT_RETRY_MS', 60 * 1000)),
     host: env('TT_HOST', 'api.open-meteo.com'),
     ipHost: env('TT_IP_HOST', 'ipwho.is'),
@@ -485,7 +485,7 @@ function pollCommands() {
     else if (c.cmd === 'refresh') { if (c.places) setPlaces(c.places); refreshAll(true); }
 }
 
-const VERSION = '0.4.4';
+const VERSION = '0.4.5';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     S.pin = newPin(); loadCustom();
