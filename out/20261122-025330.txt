@@ -1,1 +1,46 @@
-# đang chạy từ 09:53:36
+# rc=0 sec=0.0 host=root@172.16.222.97
+
+ 02:53:39 up 2 min,  load average: 6.48, 4.47, 1.88
+51-# count and the flag on disk before the start step returns):
+52-#   safe-mode-count     "<failed starts in a row before the start> <boot id> <with it>"
+53-#   safe-mode-crashes   "<boot id> <recmgr's last crash key at its stats step>"
+54:#   last-shutdown       "<boot id> crash|normal <uptime s> [recmgr] [crashhandler] [recmgr_stats]"
+55-#   restart-requested   "<boot id>": a restart our tools asked for in that start
+56-#   safe-mode           {"at": "<UTC time>", "reason": "<why>"}
+57-#
+58-# Always exits 0, and writes nothing without /var/opt/mgu-deploy.
+59-VAR_OPT=${MGU_DEPLOY_VAR_OPT:-/var/opt}
+60-DIR=$VAR_OPT/mgu-deploy
+61-SIN=$VAR_OPT/public/sin
+62-BOOT_ID=${MGU_DEPLOY_BOOT_ID:-/proc/sys/kernel/random/boot_id}
+63-UPTIME=${MGU_DEPLOY_PROC:-/proc}/uptime
+64-PROC_STAT=${MGU_DEPLOY_PROC_STAT:-/proc/stat}
+65-SYSTEMCTL=${MGU_DEPLOY_SYSTEMCTL:-systemctl}
+66-THRESHOLD=3
+--
+72-# recmgr's restart follows its statistics' write within this
+73-STATS_RESTART_S=60
+74-
+75:LAST=$DIR/last-shutdown
+76-COUNT=$DIR/safe-mode-count
+77-CRASHES=$DIR/safe-mode-crashes
+78-REQUESTED=$DIR/restart-requested
+79-FLAG=$DIR/safe-mode
+80-STATS=$SIN/recmgr/recmgr_stats.db
+81-
+82-say() { echo "safe mode: $*"; }
+83-
+84-first_line() { [ -f "$1" ] && head -n 1 "$1" 2>/dev/null; }
+85-
+86-# Whole seconds of uptime; empty when unreadable.
+87-uptime_s() {
+---
+boot kết thúc ở t=96.36 (dòng 32)
+boot kết thúc ở t=106.81 (dòng 66)
+boot kết thúc ở t=106.49 (dòng 100)
+boot kết thúc ở t=111.22 (dòng 135)
+boot kết thúc ở t=100.86 (dòng 167)
+boot kết thúc ở t=187.14 (dòng 227)
+boot kết thúc ở t=185.84 (dòng 287)
+hiện tại t=177.63
+active
