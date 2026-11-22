@@ -1,0 +1,1 @@
+uptime; cat /proc/uptime; systemctl is-active devlink-wifilog; cat /var/opt/mgu-deploy/last-shutdown; F=/var/opt/devlink-wifi/boot-20230818-073646.log; grep -c "^== t=" $F; grep "^== t=" $F | tail -2; grep -n -A3 "^== t=18[5-9]" $F | head -30 | cut -c1-200
