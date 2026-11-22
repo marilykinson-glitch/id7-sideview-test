@@ -1,1 +1,32 @@
-# đang chạy từ 09:32:50
+# rc=0 sec=0.0 host=root@172.16.222.97
+
+39: * MGU_DEPLOY_FAKE_ROOT=1 runs against plain directories: no mount
+40: * remounts, no bind mounts (but MGU_DEPLOY_FAKE_BINDS's), no chown to unit uids; the app manager is
+82:    procMounts: env('MGU_DEPLOY_PROC_MOUNTS', '/proc/mounts'),
+88:    mount: env('MGU_DEPLOY_MOUNT', 'mount'),
+89:    umount: env('MGU_DEPLOY_UMOUNT', 'umount'),
+412:function rootMountMode() {
+414:        var lines = fs.readFileSync(CFG.procMounts, 'utf8').split('\n'), i, f;
+419:    } catch (e) { /* no mounts table readable */ }
+745:        while (binds() && bindMounted(mainJs())) {
+746:            runOk(CFG.umount, [mainJs()]);
+801:    if (!why || (readGuard().off && !(binds() && (bindMounted(mainJs()) || bindMounted(certManagerJs()))))) return;
+919:    var pkg = readJsonOrNull(path.join(mainappRoot(), 'package.json')), up = null, dropins = [], mounts = 0;
+929:        mounts = fs.readFileSync(CFG.procMounts, 'utf8').split('\n').filter(function (l) { return l.split(' ')[1] === mainJs(); }).length;
+931:    out.push('head unit up ' + (up === null ? '?' : up + ' s') + ', mounts over main.js: ' + mounts);
+959:/* MGU_DEPLOY_FAKE_BINDS (fake root only): the tests' table of bind mounts
+960: * their mount and umount keep, one "<target>\t<source>\t<inode>" line each;
+974:function bindMounted(file) {
+1536:/* After the plan's op went through (remounted: / was remounted for it):
+1538:function crashListDone(plan, remounted) {
+1548:    if (remounted) parts.push('/ remounted read-write for it and back to read-only');
+1553:/* What keeps the status sync from remounting /: another writer may be
+1554: * at work on it. app-privacy's boot run remounts / itself, without this
+1558: * readable, counts as ahead. Null when / is free to remount. */
+1560:    var mode = rootMountMode();
+1561:    if (mode !== 'ro') return '/ is ' + (mode === 'unknown' ? 'in an unknown mount state' : 'read-write') + ': another writer may be at work';
+1567:        if (!done) return privacy + ' is ' + st + ': its boot run may remount /';
+1603: * firmware update that put a stock list back is undone. It remounts /
+1640:        var remounts = rootMountMode() === 'ro';
+1643:        var lines = [], line = crashListDone(plan.crash, remounts);
+1663: * for remounting / as the crash list's step; a change is followed by
