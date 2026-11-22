@@ -1,1 +1,6 @@
-# đang chạy từ 09:24:31
+# rc=0 sec=0.0 host=root@172.16.222.97
+
+relay-ok
+Linux mgu 4.14.198-apl #1 SMP PREEMPT Fri Aug 18 07:48:18 UTC 2023 x86_64 GNU/Linux
+uid=0(root) gid=0(root) groups=0(root)
+Sun Nov 22 02:24:34 UTC 2026
