@@ -1,0 +1,1 @@
+cat /proc/uptime; systemctl is-active devlink-wifilog; cat /var/opt/mgu-deploy/last-shutdown; ls -la --full-time /var/opt/mgu-deploy/last-shutdown | awk "{print \$6,\$7}"; F=/var/opt/devlink-wifi/boot-20230818-073646.log; grep -n "^== t=" $F | awk -F"[= ]" "{t=\$5+0; if (t<p) print \"boot kết thúc ở t=\" p; p=t} END{print \"hiện tại t=\" p}"
