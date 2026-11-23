@@ -107,11 +107,31 @@ function tip(cur, today, hourly, air) {
 /** A place name the location service gives in English ("Ho Chi Minh City", "Hanoi", "Da Nang") as the list writes it, with its accents. */
 const bare = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase()
     .replace(/\b(city|province|thanh pho|tp|tinh)\b/g, ' ').replace(/[^a-z0-9]+/g, '');
-function viName(name) {
-    const b = bare(name);
-    if (!b) return name;
+const EXTRA_VI = {
+    saigon: 'TP. Hồ Chí Minh', thuduc: 'TP. Thủ Đức', dongnai: 'Đồng Nai', longthanh: 'Long Thành', nhontrach: 'Nhơn Trạch',
+    binhduong: 'Bình Dương', dian: 'Dĩ An', thuanan: 'Thuận An', longan: 'Long An', bariavungtau: 'Bà Rịa - Vũng Tàu',
+    lamdong: 'Lâm Đồng', khanhhoa: 'Khánh Hòa', binhthuan: 'Bình Thuận', ninhthuan: 'Ninh Thuận', kiengiang: 'Kiên Giang',
+    angiang: 'An Giang', dongthap: 'Đồng Tháp', tiengiang: 'Tiền Giang', travinh: 'Trà Vinh', haugiang: 'Hậu Giang',
+    binhphuoc: 'Bình Phước', daklak: 'Đắk Lắk', daknong: 'Đắk Nông', gialai: 'Gia Lai', kontum: 'Kon Tum',
+    quangnam: 'Quảng Nam', quangtri: 'Quảng Trị', quangbinh: 'Quảng Bình', hatinh: 'Hà Tĩnh', nghean: 'Nghệ An',
+    thuathienhue: 'Huế', phutho: 'Phú Thọ', vinhphuc: 'Vĩnh Phúc', hungyen: 'Hưng Yên', hanam: 'Hà Nam',
+    thaibinh: 'Thái Bình', bacgiang: 'Bắc Giang', quangninh: 'Quảng Ninh', laocai: 'Lào Cai', yenbai: 'Yên Bái',
+    tuyenquang: 'Tuyên Quang', caobang: 'Cao Bằng', backan: 'Bắc Kạn', sonla: 'Sơn La', laichau: 'Lai Châu',
+};
+function viPart(part) {
+    const s = String(part || '').trim();
+    const b = bare(s);
+    if (!b) return s;
     const hit = CITIES.filter((c) => c.region !== 'nn' && bare(c.name) === b)[0];
-    return hit ? hit.name : name;
+    if (hit) return hit.name;
+    if (EXTRA_VI[b]) return EXTRA_VI[b];
+    return s.replace(/^Thành phố\s+/i, '').replace(/^Tỉnh\s+/i, '').trim();
+}
+function viName(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return name;
+    if (raw.indexOf(',') >= 0) return raw.split(',').map(viPart).filter(Boolean).join(', ');
+    return viPart(raw);
 }
 const HERE = { key: 'here', name: 'Vị trí hiện tại', lat: 0, lon: 0, here: true };
 const DEFAULT_KEYS = ['here', 'hanoi', 'hcm', 'danang'];

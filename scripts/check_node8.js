@@ -10,7 +10,7 @@ const acorn = require('acorn');
 const ROOT = path.join(__dirname, '..');
 const FILES = ['apps/xinhan_cam/main.js', 'apps/xinhan_cam/logic.js', 'apps/xinhan_cam/camera.js', 'apps/xinhan_cam/ui.js', 'tools/xinhan-cam/xinhan-cam.js', 'tools/xinhan-cam/nav.js', 'tools/xinhan-cam-log/print-log.js', 'tools/xinhan-cam/oapgen-gen.js',
     'apps/anh_dai_dien/main.js', 'apps/anh_dai_dien/ui.js', 'apps/anh_dai_dien/preview.js', 'tools/anh-dai-dien/anh-dai-dien.js', 'tools/anh-dai-dien/wbm.js', 'tools/anh-dai-dien/boot.js', 'tools/anh-dai-dien/res.js', 'tools/anh-dai-dien/car3d.js',
-    'apps/thoi_tiet/main.js', 'apps/thoi_tiet/ui.js', 'apps/thoi_tiet/weather.js', 'apps/thoi_tiet/icons.js', 'apps/thoi_tiet/icons3d.js', 'apps/thoi_tiet/fx.js', 'tools/thoi-tiet/thoi-tiet.js', 'tools/thoi-tiet/uplink.js'];
+    'apps/thoi_tiet/main.js', 'apps/thoi_tiet/ui.js', 'apps/thoi_tiet/weather.js', 'apps/thoi_tiet/icons.js', 'apps/thoi_tiet/icons3d.js', 'apps/thoi_tiet/fx.js', 'tools/thoi-tiet/thoi-tiet.js', 'tools/thoi-tiet/pos.js', 'tools/thoi-tiet/uplink.js'];
 // newer than Node 8: optional catch binding and spread are syntax (the parser finds them); these are library
 const NEWER = [/\.finally\(/, /\.flat\(/, /\.flatMap\(/, /Object\.fromEntries/, /recursive:\s*true/, /\.matchAll\(/, /\.trimStart\(|\.trimEnd\(/,
     /globalThis/, /\bBigInt\b/, /\.allSettled\(/, /\.replaceAll\(/, /\.at\(-?\d/, /fs\.promises|require\('fs\/promises'\)/, /\.rmSync\(/, /queueMicrotask/,

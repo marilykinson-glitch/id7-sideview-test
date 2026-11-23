@@ -9,8 +9,9 @@
  *   (kept)   -> /var/opt/thoi-tiet/places.json   the last list, so that a start without the app still has places
  *   the phone -> http://<head unit>:8138/?pin=NNNN  a page to search any place in the world and add it (custom.json keeps them)
  *
- * Forecasts come from Open-Meteo (no key). A place with `here: true` is placed by the address the head unit reaches
- * the internet from (ipwho.is): near the right city, not at the car's own position.
+ * Forecasts come from Open-Meteo (no key). A place with `here: true` is placed at the car's own GPS / navigation
+ * position (`pos.js`, SOME/IP `Positioning`), or when the unit has no fix yet, by the network address it reaches the
+ * internet from.
  * Node 8, no dependencies.
  */
 const fs = require('fs');
@@ -33,8 +34,11 @@ const CFG = {
     retryMs: Number(env('TT_RETRY_MS', 60 * 1000)),
     host: env('TT_HOST', 'api.open-meteo.com'),
     ipHost: env('TT_IP_HOST', 'ipwho.is'),
+    revHost: env('TT_REV_HOST', 'api.bigdatacloud.net'),
     airHost: env('TT_AIR_HOST', 'air-quality-api.open-meteo.com'),
     geoHost: env('TT_GEO_HOST', 'geocoding-api.open-meteo.com'),
+    pos: env('TT_POS', path.join(__dirname, 'pos.js')),
+    noPos: env('TT_NO_POS', '') === '1',
     port: Number(env('TT_PORT', 8138)),
     nft: env('TT_NFT', 'nft'),
     route: env('TT_ROUTE', '/proc/net/route'),
@@ -228,7 +232,22 @@ function parse(j) {
 }
 
 /* ---------------- state ---------------- */
-const S = { netError: '', places: [], custom: [], seq: 0, lastAdded: '', pin: '', port: 0, ipIndex: 0, data: {}, ipPlace: null, ipAt: 0, startedAt: Date.now(), lastCmd: null, busy: false };
+const VI = 'àáâãèéêìíòóôõùúýăđĩũơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐĨŨƠƯẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼẾỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỴỶỸ';
+/** A name the car's font can draw: Vietnamese letters stay, other accents go (ü -> u), what is left outside plain ASCII goes. */
+function plain(str) {
+    let out = '';
+    for (const ch of String(str || '').normalize('NFC')) {
+        if (VI.indexOf(ch) >= 0 || (ch >= ' ' && ch <= '~')) out += ch;
+        else out += ch.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7e]/g, '');
+    }
+    return out.replace(/\s+/g, ' ').trim();
+}
+
+const S = {
+    netError: '', places: [], custom: [], seq: 0, lastAdded: '', pin: '', port: 0, ipIndex: 0, data: {},
+    ipPlace: null, ipAt: 0, carPos: null, savedGps: null, gpsSavedAt: 0, revCache: null, hereCoords: null, hereSource: '',
+    startedAt: Date.now(), lastCmd: null, busy: false,
+};
 const clean = (p) => {
     if (!p || typeof p !== 'object') return null;
     const key = String(p.key || '').slice(0, 40), name = String(p.name || '').slice(0, 60);
@@ -247,12 +266,99 @@ function setPlaces(list) {
     return true;
 }
 
+const bareKey = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase()
+    .replace(/\b(city|province|thanh pho|tp|tinh|huyen|thi xa|quan|phuong)\b/g, ' ').replace(/[^a-z0-9]+/g, '');
+const STANDALONE = ['hochiminh', 'hanoi', 'danang', 'haiphong', 'cantho', 'hue', 'dalat', 'vungtau', 'nhatrang', 'phuquoc', 'hoian', 'sapa', 'halong', 'phanthiet', 'quynhon', 'buonmathuot', 'pleiku', 'bienhoa', 'thudaumot'];
+
+/** Normalize administrative prefixes ("Thành phố Hồ Chí Minh" -> "TP. Hồ Chí Minh", "Thành phố Hà Nội" -> "Hà Nội"). */
+function normalizeAdminName(raw) {
+    const s = plain(raw);
+    if (!s) return '';
+    const b = bareKey(s);
+    if (b === 'hochiminh' || b === 'saigon') return 'TP. Hồ Chí Minh';
+    if (b === 'thuduc') return 'TP. Thủ Đức';
+    return s.replace(/^Thành phố\s+/i, '').replace(/^Tỉnh\s+/i, '').replace(/\s+(City|Province)$/i, '').trim();
+}
+
+/** Extract a concise Vietnamese place name from BigDataCloud's reverse-geocode JSON. */
+function parseReverseGeocode(j) {
+    if (!j || typeof j !== 'object') return '';
+    const city = normalizeAdminName(j.city || '');
+    const prov = normalizeAdminName(j.principalSubdivision || '');
+    const loc = normalizeAdminName(j.locality || '');
+    const main = city || prov || loc;
+    if (!main) return '';
+    const mb = bareKey(main), pb = bareKey(prov);
+    if (prov && mb && pb && mb !== pb && STANDALONE.indexOf(mb) < 0 && (main + ', ' + prov).length <= 22) {
+        return main + ', ' + prov;
+    }
+    return main;
+}
+
+async function reversePlace(lat, lon, hint) {
+    const c = S.revCache;
+    if (c && c.name && Date.now() - c.at < 6 * 3600 * 1000 && Math.abs(c.lat - lat) < 0.012 && Math.abs(c.lon - lon) < 0.012) {
+        return c.name;
+    }
+    try {
+        const j = await getJson(CFG.revHost, '/data/reverse-geocode-client?localityLanguage=vi&latitude=' + lat.toFixed(4) + '&longitude=' + lon.toFixed(4));
+        const name = parseReverseGeocode(j);
+        if (name) { S.revCache = { lat, lon, name, at: Date.now() }; return name; }
+    } catch (e) { log('reverse geocode: ' + e.message); }
+    return normalizeAdminName(hint || '');
+}
+
+const validFix = (p) => !!(p && typeof p.lat === 'number' && typeof p.lon === 'number' && isFinite(p.lat) && isFinite(p.lon) &&
+    Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180 && !(Math.abs(p.lat) < 0.001 && Math.abs(p.lon) < 0.001));
+
+/** Update live car GPS from pos.js; triggers a refresh when upgrading from IP geolocation or moving >= ~2.2 km. */
+function onCarPos(p) {
+    if (!validFix(p)) return false;
+    const now = Date.now();
+    const city = normalizeAdminName(p.city || p.district || '');
+    S.carPos = { lat: p.lat, lon: p.lon, city, source: p.source || 'nav', at: now };
+    const sv = S.savedGps;
+    if (!sv || now - S.gpsSavedAt > 15 * 60 * 1000 || Math.abs(sv.lat - p.lat) >= 0.02 || Math.abs(sv.lon - p.lon) >= 0.02) {
+        S.savedGps = { lat: p.lat, lon: p.lon, city, at: now };
+        S.gpsSavedAt = now;
+        try { writeAtomic(path.join(CFG.state, 'gps.json'), JSON.stringify(S.savedGps)); } catch (e) { /* tests */ }
+    }
+    if (S.places.some((x) => x.here)) {
+        const moved = !S.hereCoords || Math.abs(S.hereCoords.lat - p.lat) >= 0.02 || Math.abs(S.hereCoords.lon - p.lon) >= 0.02;
+        if (S.hereSource === 'ip' || moved) refreshAll(true);
+    }
+    return true;
+}
+
 async function whereIAm() {
-    if (S.ipPlace && Date.now() - S.ipAt < 6 * 3600 * 1000) return S.ipPlace;
+    const now = Date.now();
+    // 1. Live car GPS / BMW navigation map-matched location (works even in underground garages)
+    if (validFix(S.carPos) && now - (S.carPos.at || 0) < 2 * 3600 * 1000) {
+        const city = await reversePlace(S.carPos.lat, S.carPos.lon, S.carPos.city);
+        return { lat: S.carPos.lat, lon: S.carPos.lon, city, source: S.carPos.source || 'nav' };
+    }
+    // 2. Last parked car GPS saved before reboot (up to 24h old)
+    if (validFix(S.savedGps) && now - (S.savedGps.at || 0) < 24 * 3600 * 1000) {
+        const city = await reversePlace(S.savedGps.lat, S.savedGps.lon, S.savedGps.city);
+        return { lat: S.savedGps.lat, lon: S.savedGps.lon, city, source: 'saved' };
+    }
+    // 3. Fallback when the head unit has no GPS at all: network IP geolocation (15 min TTL, cleared on manual refresh)
+    if (S.ipPlace && now - S.ipAt < CFG.everyMs) return S.ipPlace;
+    if (!CFG.base) {
+        try {
+            const b = await getJson(CFG.revHost, '/data/reverse-geocode-client?localityLanguage=vi');
+            if (b && validFix({ lat: b.latitude, lon: b.longitude })) {
+                const name = parseReverseGeocode(b) || String(b.city || '');
+                S.ipPlace = { lat: b.latitude, lon: b.longitude, city: name, source: 'ip' };
+                S.ipAt = now;
+                return S.ipPlace;
+            }
+        } catch (e) { log('ip geocode (' + CFG.revHost + '): ' + e.message); }
+    }
     const j = await getJson(CFG.ipHost, '/');
     const lat = j && j.latitude, lon = j && j.longitude;
-    if (!(j && j.success !== false && typeof lat === 'number' && typeof lon === 'number' && isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) throw new Error('chưa biết xe đang ở đâu');
-    S.ipPlace = { lat, lon, city: String(j.city || '') }; S.ipAt = Date.now();
+    if (!(j && j.success !== false && validFix({ lat, lon }))) throw new Error('chưa biết xe đang ở đâu');
+    S.ipPlace = { lat, lon, city: String(j.city || ''), source: 'ip' }; S.ipAt = now;
     return S.ipPlace;
 }
 
@@ -260,7 +366,13 @@ async function fetchPlace(p) {
     const prev = S.data[p.key] || {};
     let lat = p.lat, lon = p.lon, name = p.name;
     try {
-        if (p.here) { const w = await whereIAm(); lat = w.lat; lon = w.lon; if (w.city) name = w.city; }
+        if (p.here) {
+            const w = await whereIAm();
+            lat = w.lat; lon = w.lon;
+            if (w.city) name = w.city;
+            S.hereCoords = { lat, lon };
+            S.hereSource = w.source || '';
+        }
         const j = await getJson(CFG.host, FORECAST + '&latitude=' + lat.toFixed(3) + '&longitude=' + lon.toFixed(3));
         const w = parse(j);
         let air = null;                                  // the air is a second request: without it the weather still shows
@@ -302,16 +414,6 @@ function writeStatus() {
 
 /* ---------------- places the owner searched for on the phone ---------------- */
 const MAX_CUSTOM = 30;
-const VI = 'àáâãèéêìíòóôõùúýăđĩũơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐĨŨƠƯẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼẾỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỴỶỸ';
-/** A name the car's font can draw: Vietnamese letters stay, other accents go (ü -> u), what is left outside plain ASCII goes. */
-function plain(str) {
-    let out = '';
-    for (const ch of String(str || '').normalize('NFC')) {
-        if (VI.indexOf(ch) >= 0 || (ch >= ' ' && ch <= '~')) out += ch;
-        else out += ch.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7e]/g, '');
-    }
-    return out.replace(/\s+/g, ' ').trim();
-}
 const customKey = (lat, lon) => 'c' + Math.round(lat * 100) + '_' + Math.round(lon * 100);
 function loadCustom() { const c = readJson(path.join(CFG.state, 'custom.json')); S.custom = Array.isArray(c) ? c.map(cleanCustom).filter(Boolean).slice(0, MAX_CUSTOM) : []; }
 function cleanCustom(p) {
@@ -482,17 +584,53 @@ function pollCommands() {
     if (c.cmd === 'new_pin') { S.pin = newPin(); writeStatus(); }
     else if (c.cmd === 'next_ip') { S.ipIndex++; fwLast = ''; fwCheck(); writeStatus(); }
     else if (c.cmd === 'places' && setPlaces(c.places)) { for (const k of Object.keys(S.data)) if (!S.places.some((p) => p.key === k)) delete S.data[k]; refreshAll(true); }
-    else if (c.cmd === 'refresh') { if (c.places) setPlaces(c.places); refreshAll(true); }
+    else if (c.cmd === 'refresh') {
+        S.ipPlace = null; S.ipAt = 0; S.revCache = null;
+        if (c.places) setPlaces(c.places);
+        refreshAll(true);
+    }
 }
 
-const VERSION = '0.4.5';
+let posChild = null, posBuf = '', posRetryAt = 0;
+function startPos(now) {
+    if (CFG.noPos || posChild || now < posRetryAt || !fs.existsSync(CFG.pos)) return;
+    posRetryAt = now + 30000;
+    try {
+        posChild = cp.spawn(process.execPath, [CFG.pos, 'read'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (e) { log('pos spawn: ' + e.message); posChild = null; return; }
+    posBuf = '';
+    posChild.stdout.on('data', (chunk) => {
+        posBuf += chunk.toString('utf8');
+        let idx;
+        while ((idx = posBuf.indexOf('\n')) >= 0) {
+            const line = posBuf.slice(0, idx).trim();
+            posBuf = posBuf.slice(idx + 1);
+            if (!line) continue;
+            let j;
+            try { j = JSON.parse(line); } catch (e) { continue; }
+            if (j && j.ev === 'pos') {
+                log('car gps (' + (j.source || 'nav') + '): ' + Number(j.lat).toFixed(4) + ',' + Number(j.lon).toFixed(4) + (j.city ? ' ' + j.city : ''));
+                onCarPos(j);
+            } else if (j && j.ev === 'note' && j.text) {
+                log('pos: ' + String(j.text).slice(0, 160));
+            }
+        }
+    });
+    posChild.on('error', () => { posChild = null; });
+    posChild.on('close', () => { posChild = null; posRetryAt = Date.now() + 30000; });
+}
+
+const VERSION = '0.5.0';
 function start() {
     try { mkdirp(CFG.state); } catch (e) { /* tests */ }
     S.pin = newPin(); loadCustom();
+    const gps = readJson(path.join(CFG.state, 'gps.json'));
+    if (validFix(gps) && typeof gps.at === 'number') S.savedGps = gps;
     const saved = readJson(path.join(CFG.state, 'places.json'));
     if (saved) setPlaces(saved);
     writeStatus();
     log('thoi-tiet ' + VERSION + ' started, ' + S.places.length + ' places, ' + S.custom.length + ' own');
+    startPos(Date.now());
     if (!CFG.noServer) {
         const server = httpMod.createServer((req, res) => handle(req, res).catch((e) => { log('request failed: ' + e.message); try { json(res, 500, { ok: false, error: e.message }); } catch (e2) { /* gone */ } }));
         let port = CFG.port;
@@ -502,9 +640,11 @@ function start() {
         S.server = server;
     }
     const tick = () => {
+        const now = Date.now();
+        startPos(now);
         try { pollCommands(); } catch (e) { log('poll: ' + e.message); }
-        const stale = !S.fetchedAt || Date.now() - S.fetchedAt > (S.places.some((p) => !(S.data[p.key] && S.data[p.key].ok)) ? CFG.retryMs : CFG.everyMs);
-        if (S.places.length && findApp(Date.now()) && stale && !working) refreshAll();
+        const stale = !S.fetchedAt || now - S.fetchedAt > (S.places.some((p) => !(S.data[p.key] && S.data[p.key].ok)) ? CFG.retryMs : CFG.everyMs);
+        if (S.places.length && findApp(now) && stale && !working) refreshAll();
         writeStatus();
     };
     setInterval(tick, 1500); tick();
@@ -517,4 +657,9 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, Up, upOpts, uplinkUid, AIR, nameServers, resolveHost, handle, search, plain, addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir, getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST };
+module.exports = {
+    CFG, S, Up, upOpts, uplinkUid, AIR, nameServers, resolveHost, handle, search, plain,
+    normalizeAdminName, parseReverseGeocode, reversePlace, onCarPos, whereIAm,
+    addCustom, removeCustom, loadCustom, fwEnsure, fwClose, newPin, addresses, parse, parseAir,
+    getJson, setPlaces, refreshAll, fetchPlace, pollCommands, writeStatus, findApp, start, VERSION, FORECAST,
+};

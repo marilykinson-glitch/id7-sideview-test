@@ -32,6 +32,32 @@ assert.strictEqual(Wx.tileInfo('sun', cur0, { sunrise: '06:02', sunset: '17:28' 
 assert.ok(Wx.TILES.every((x) => Wx.tileInfo(x[0], cur0, { pop: 10, uv: 3 }, [], null).title)); ok('tiles');
 const own = [{ key: 'c1_2', name: 'Chiang Mai', lat: 18.8, lon: 98.97 }];
 assert.deepStrictEqual(Wx.placesFor(['here', 'c1_2', 'zz'], own).map((p) => p.key), ['here', 'c1_2']); assert.strictEqual(Wx.listFor('my', own).length, 1); assert.strictEqual(Wx.listFor('all', own).length, Wx.CITIES.length + 2); assert.strictEqual(Wx.listFor('my', []).length, 0); ok('places from the phone');
+assert.strictEqual(Wx.viName('Ho Chi Minh City'), 'TP. Hồ Chí Minh');
+assert.strictEqual(Wx.viName('Thành phố Hồ Chí Minh'), 'TP. Hồ Chí Minh');
+assert.strictEqual(Wx.viName('Long Thanh, Dong Nai'), 'Long Thành, Đồng Nai');
+assert.strictEqual(Wx.viName('Long Thanh'), 'Long Thành');
+ok('Vietnamese place names');
+
+/* car positioning (pos.js) */
+const Pos = require(path.join(ROOT, 'tools', 'thoi-tiet', 'pos.js'));
+assert.strictEqual(Pos.parseRawPosition({ fixType: 'NO_FIX', position: { coordinatesValid: false, latitude: 0, longitude: 0 } }), null);
+assert.strictEqual(Pos.parseRawPosition({ fixType: 0, position: { coordinatesValid: true, latitude: 10.728, longitude: 106.723 } }), null);
+const gnssFix = Pos.parseRawPosition({ fixType: 'FIX_3D', position: { coordinatesValid: true, latitude: 10.728, longitude: 106.723 } });
+assert.strictEqual(gnssFix.lat, 10.728); assert.strictEqual(gnssFix.lon, 106.723); assert.strictEqual(gnssFix.source, 'gnss');
+const garageNav = Pos.parseCurrentLocation({
+    status: 'INDOOR_PARKING_AREA', coordinatesValid: true, latitude: 10.7285, longitude: 106.7221,
+    textDescription: { textDescriptorList: { 13: { orthography: 'Hồ Chí Minh' }, 33: { orthography: 'Quận 7' } } },
+});
+assert.strictEqual(garageNav.lat, 10.7285); assert.strictEqual(garageNav.city, 'Hồ Chí Minh'); assert.strictEqual(garageNav.district, 'Quận 7');
+assert.strictEqual(Pos.parseCurrentLocation({ coordinatesValid: false, latitude: 0, longitude: 0 }), null);
+assert.strictEqual(Pos.pickBestPosition({ nav: Object.assign({}, garageNav, { at: 1000 }), gnss: Object.assign({}, gnssFix, { at: 2000 }) }, 3000).source, 'nav');
+assert.strictEqual(Pos.findPosInterfaces({ interfaces: { 'de.bmw.infotainment.navigation.positioning.Positioning': { fields: { currentLocation: {}, rawPositionData: {}, demoModeActive: {} } } } })[0].fields.length, 2);
+// Both firmware AppManagement.js bundle formats (Browserify & Webpack) extract IFConfigGenerator cleanly.
+const fakeBrowserify = '(function(){return function r(m){return function(i){const e={exports:{}};m[i][0](require,e,e.exports);return e.exports}}})()({"1":[function(req,mod,exp){exp.generate=function(db,mf){return {ok:mf}}},{"someip-interfaces-generator/IFConfigGenerator.js":1}]},{},[99]);';
+assert.ok(Pos.loadIFConfigGeneratorFromText(fakeBrowserify).generate({}, { a: 1 }).ok.a === 1);
+const fakeWebpack = 'var x = {\n/*** "./node_modules/mgu-IFA/IFConfigGenerator.js":\n/***/ (function(module, exports, req) {\nexports.generate = function(db, mf) { return { wp: mf }; };\n/***/ }),\n};';
+assert.ok(Pos.loadIFConfigGeneratorFromText(fakeWebpack).generate({}, { b: 2 }).wp.b === 2);
+ok('car positioning parser (underground map-matched nav + GNSS + firmware generator formats)');
 
 /* the tool */
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-'));
@@ -65,6 +91,10 @@ const hits = [];
 const srv = http.createServer((req, res) => {
     hits.push(req.url);
     if (req.url === '/broken') { res.writeHead(200, { 'Content-Length': 100 }); res.write('{'); return setImmediate(() => res.destroy()); }
+    if (/^\/data\/reverse-geocode-client/.test(req.url) && /latitude=10\.7/.test(req.url)) {
+        res.setHeader('Content-Type', 'application/json');
+        return res.end(JSON.stringify({ lookupSource: 'coordinates', city: 'Thành phố Hồ Chí Minh', principalSubdivision: 'Thành phố Hồ Chí Minh', locality: 'Tân Mỹ' }));
+    }
     if (/^\/v1\/search/.test(req.url)) { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ results: [{ name: 'Düsseldorf', latitude: 51.22, longitude: 6.78, admin1: 'Nordrhein-Westfalen', country: 'Đức' }, { name: 'Bad', latitude: 'x', longitude: 1 }] })); }
     if (/^\/v1\/air-quality/.test(req.url)) { if (failAir) { res.statusCode = 500; return res.end('air failed'); } res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ current: { us_aqi: 87, pm2_5: 29, pm10: 41, ozone: 60, nitrogen_dioxide: 12 } })); }
     if (/^\/v1\/forecast/.test(req.url) && /latitude=10\.7/.test(req.url)) { if (forecastGate) return forecastGate(res); res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(answer)); }
@@ -112,6 +142,24 @@ srv.listen(0, '127.0.0.1', async () => {
     failAir = true; await T.refreshAll(); failAir = false;
     assert.strictEqual(T.S.data.hcm.ok, true); assert.strictEqual(T.S.data.hcm.air, null, 'an unavailable AQI must not silently retain the old value');
     ok('AQI outage keeps the weather without showing an old AQI');
+    // Car GPS overrides a wrong CGNAT IP city ("Long Thanh") with the car's real HCMC position, and manual refresh clears IP cache.
+    assert.strictEqual(T.parseReverseGeocode({ city: 'Thành phố Hồ Chí Minh', principalSubdivision: 'Thành phố Hồ Chí Minh', locality: 'Tân Mỹ' }), 'TP. Hồ Chí Minh');
+    assert.strictEqual(T.parseReverseGeocode({ city: 'Long Thành', principalSubdivision: 'Đồng Nai' }), 'Long Thành, Đồng Nai');
+    T.setPlaces([{ key: 'here', name: 'Vị trí hiện tại', here: true }]);
+    T.S.ipPlace = { lat: 10.785, lon: 106.952, city: 'Long Thanh', source: 'ip' }; T.S.ipAt = Date.now();
+    await T.refreshAll();
+    assert.strictEqual(T.S.data.here.name, 'Long Thanh'); assert.strictEqual(T.S.hereSource, 'ip');
+    T.onCarPos({ lat: 10.728, lon: 106.723, city: 'Hồ Chí Minh', district: 'Quận 7', source: 'nav' });
+    await T.refreshAll();
+    assert.strictEqual(T.S.data.here.ok, true);
+    assert.strictEqual(T.S.data.here.name, 'TP. Hồ Chí Minh');
+    assert.strictEqual(T.S.hereSource, 'nav');
+    assert.ok(fs.existsSync(path.join(dir, 'state', 'gps.json')), 'car GPS persisted for underground reboot');
+    T.S.carPos = null; T.S.savedGps = null; T.S.ipPlace = { lat: 10.785, lon: 106.952, city: 'Long Thanh', source: 'ip' }; T.S.ipAt = Date.now();
+    fs.writeFileSync(path.join(root, 'data', 'command.json'), JSON.stringify({ id: 99, cmd: 'refresh', places: [{ key: 'here', name: 'Vị trí hiện tại', here: true }] }));
+    T.pollCommands(); await T.refreshAll();
+    assert.strictEqual(T.S.data.here.name, 'Hanoi', 'manual refresh must drop stale cached IP location');
+    ok('car GPS overrides CGNAT IP location and manual refresh clears IP cache');
     /* names: the servers asked when the system's resolver fails */
     const rt = path.join(dir, 'route'); fs.writeFileSync(rt, 'Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\nwlan0\t00000000\t012BA8C0\t0003\t0\t0\t0\t00000000\n');
     T.CFG.route = rt; T.CFG.dns = '10.1.1.1, 127.0.0.1, nonsense';

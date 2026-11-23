@@ -2,7 +2,7 @@
 [Unit]
 Description=Thời tiết: forecast for the weather app (thoi-tiet)
 RequiresMountsFor=/var/opt
-After=local-fs.target network.target
+After=local-fs.target network.target ufipc_daemon.service
 StartLimitIntervalSec=0
 
 [Service]

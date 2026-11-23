@@ -25,7 +25,9 @@ Xe không có Connected Drive thì không đổi được ảnh đại diện c�
 
 **Đã kiểm tra gì:** trên máy, với bản sao các gói thật của một đầu G20 trên bench (ảnh đại diện 3 gói, bìa Bluetooth, người gọi, hình xe G20 to và nhỏ, ảnh và video khởi động 1440x540; video làm ra được ffmpeg giải mã đúng ảnh): đọc, ghi lại giống từng byte, đổi hình, khôi phục về đúng file gốc. Trên xe: một gói ảnh đại diện ghi tay vẫn còn nguyên sau khi khởi động lại (xe không tự khôi phục). **Chưa kiểm tra trên xe:** app và trợ thủ chạy thật, bộ giải mã của đầu xe có phát được video đứng hình không (nếu không: khôi phục từ app), điện thoại nối vào cổng 8137 (tường lửa), chiều ảnh khi hiện, hình chiếc xe 3D (shader đã sửa biên dịch được và vẽ đúng trong một trình biên dịch GLSL thật trên máy, nhưng chưa biết đầu xe có dùng bản shader đã biên dịch sẵn không, tấm bóng đổ có được vẽ ở mọi màn hình không), các gói hình mặc định ngoài hai gói kể trên (cùng tên hình và cỡ thì dùng, khác thì bỏ qua).
 
-## Thời tiết 0.7.17 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.4.5)
+## Thời tiết 0.7.18 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.5.0)
+
+Bản 0.7.18 và trợ thủ 0.5.0 đọc trực tiếp tọa độ GPS / định vị bản đồ của xe qua SOME/IP (`Positioning.currentLocation` vẫn có vị trí khi xe đậu dưới hầm, dự phòng `rawPositionData` và `GnssPositioning`), tra ngược tên tỉnh/thành tiếng Việt có dấu, tự cập nhật khi xe di chuyển và xoá bộ nhớ đệm vị trí mạng mỗi lần bấm **Làm mới** (khắc phục lỗi mạng di động CGNAT ở TP.HCM bị `ipwho.is` định vị nhầm sang `Long Thanh`).
 
 Trợ thủ 0.4.5 lấy dự báo mỗi 15 phút; khi tải lỗi vẫn thử lại sau 1 phút.
 
@@ -43,7 +45,7 @@ Dự báo thời tiết trên màn hình xe, theo kiểu ứng dụng Thời ti�
 - Hiệu ứng chuyển động theo thời tiết (nắng, mây, mưa, giông có chớp, tuyết, sương, gió, sao đêm), tắt được trong Cài đặt.
 - Lời nhắc cho người lái ("Mưa lúc 16:00", "Đường trơn", "Sương mù: bật đèn sương", "Bụi mịn cao"…).
 - Chế độ **Lái xe**: chữ rất to, chỉ giữ những gì cần liếc nhìn.
-- Địa điểm: tối đa 6; vị trí hiện tại (theo địa chỉ mạng của xe, chỉ gần đúng thành phố), 46 thành phố trong nước lọc theo vùng, 18 thành phố nước ngoài, và **tìm bằng điện thoại**: quét mã QR, gõ tên bất kỳ nơi nào trên thế giới (trang web do trợ thủ mở ở cổng 8138, có mã PIN như MGU Studio), bấm Thêm là hiện ngay trên xe.
+- Địa điểm: tối đa 6; vị trí hiện tại (đọc trực tiếp GPS / định vị bản đồ của xe, dự phòng theo địa chỉ mạng khi xe chưa có tọa độ), 46 thành phố trong nước lọc theo vùng, 18 thành phố nước ngoài, và **tìm bằng điện thoại**: quét mã QR, gõ tên bất kỳ nơi nào trên thế giới (trang web do trợ thủ mở ở cổng 8138, có mã PIN như MGU Studio), bấm Thêm là hiện ngay trên xe.
 
 Dữ liệu từ Open-Meteo (không cần khoá), 15 phút lấy một lần. Xe tự lấy dự báo qua Wi-Fi của chính nó (trang điện thoại chỉ để tìm và thêm địa điểm, không gửi dự báo). Cần xe có mạng. Open-Meteo miễn phí chỉ dành cho dùng phi thương mại: lắp cho khách nên cân nhắc.
 
