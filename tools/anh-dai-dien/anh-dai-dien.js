@@ -49,7 +49,7 @@ const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
 
-const VERSION = '0.10.0';
+const VERSION = '0.11.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -58,6 +58,7 @@ const CFG = {
     // <model>/vehicle (3D), vehicle2D_big, vehicle2D_small; one folder per brand (BMW, BMW M: an M5 is bmwm/.../F90LCI), ':' between them
     vehicles: env('AVATAR_VEHICLES', '/mnt/dataro/dataro1/hmi/bmw/widgetasset/vehicles:/mnt/dataro/dataro1/hmi/bmwm/widgetasset/vehicles:/mnt/dataro/dataro1/hmi/mini/widgetasset/vehicles'),
     boot: env('AVATAR_BOOT', '/mnt/dataro/dataro1/ent/animationplayer'),   // mgu<gen>/eva_splash_*.png, eva_hi_*.h264, eva_bye_*.h264
+    bootLog: env('AVATAR_BOOT_LOG', ''),                                   // tests: simulated animationplayer log file
     route: env('AVATAR_ROUTE', '/proc/net/route'),
     nft: env('AVATAR_NFT', 'nft'),
     fwMs: Number(env('AVATAR_FW_MS', 30000)),
@@ -88,7 +89,7 @@ function vehicleDirs() {
     });
     return out;
 }
-const SLOTS = 15, THUMB = 256, SMALL = 96, MINI = 48, MORE0 = 21, CAR = 41, CAR_W = 1920, START = 51, START_W = 1920, START_H = 720;
+const SLOTS = 15, THUMB = 384, SMALL = 96, MINI = 144, MORE0 = 21, CAR = 41, CAR_W = 1920, START = 51, START_W = 1920, START_H = 720;
 const key = (n) => 'S' + (n < 10 ? '0' : '') + n;
 const two = (n) => (n < 10 ? '0' : '') + n;
 const mkdirp = (d) => { if (fs.existsSync(d)) return; mkdirp(path.dirname(d)); try { fs.mkdirSync(d); } catch (e) { if (e.code !== 'EEXIST') throw e; } };
@@ -191,12 +192,19 @@ function thumb(n, topDown, w, h) {
     if (n === CAR || n === START) { try { writeAtomic(path.join(CFG.run, 't' + n + '.rgba'), W.resize(topDown, w, h, MINI, Math.max(1, Math.round(MINI * h / w)))); } catch (e) { /* no RAM folder (tests) */ } }
 }
 
-/** What the app's preview plays: the start-up picture at 120 x 45 (p51.rgba) and whether it is a draft, with the light's box. */
-function previewOf(topDown, w, h, shine, draft) {
-    S.preview = { w: PREVIEW_W, h: PREVIEW_H, draft: !!draft, shine: shine || null };
+/** What the app's preview plays: the start-up picture at 480 x 180 (p51.rgba), whether it is a draft, the light's box and auto-close. */
+function previewOf(topDown, w, h, shine, draft, brief) {
+    S.preview = { w: PREVIEW_W, h: PREVIEW_H, draft: !!draft, shine: shine || null, brief: !!brief };
     try { writeAtomic(path.join(CFG.run, 'p' + START + '.rgba'), W.resize(topDown, w, h, PREVIEW_W, PREVIEW_H)); } catch (e) { /* no RAM folder (tests) */ }
 }
-function readShine() { try { const j = JSON.parse(fs.readFileSync(shineFile(), 'utf8')); return j && isFinite(j.x) ? j : null; } catch (e) { return null; } }
+function readStartOpts() {
+    try {
+        const j = JSON.parse(fs.readFileSync(shineFile(), 'utf8'));
+        if (!j || typeof j !== 'object') return { shine: null, brief: false };
+        if (isFinite(j.x)) return { shine: j, brief: false };
+        return { shine: j.shine && isFinite(j.shine.x) ? j.shine : null, brief: !!j.brief };
+    } catch (e) { return { shine: null, brief: false }; }
+}
 
 /* The car's picture is stored with its colours multiplied by its transparency, and painted by the head unit:
    shown = sqrt(picture^2 * (1 - mask.a) + paint(mask) * mask.a). With an empty mask the picture is shown as it is. */
@@ -320,6 +328,7 @@ function load() {
     try { loadCar(); } catch (e) { log('2D car pictures: ' + e.message); S.hero = null; }
     try { loadCar3d(); } catch (e) { log('3D car: ' + e.message); delete S.slots[CAR]; }
     try { loadStart(); } catch (e) { log('start-up screen: ' + e.message); delete S.slots[START]; }
+    S.activeSig = activeVehicleInfo().sig;
     S.compatible = true; S.rev++;
     return true;
 }
@@ -423,14 +432,30 @@ function carThumb(rgba) {
             const pic = fs.readFileSync(carPhoto());
             if (pic.length === CAR3D.PW * CAR3D.PH * 4) return thumb(CAR, pic, CAR3D.PW, CAR3D.PH);
         }
-        // the car's own look: the 2D picture of the model the central screen has open (any other model's would be another car)
-        const open = openVehicles().filter((o) => o.by === 'HmiMain3D').map((o) => o.dir);
-        const mine = S.hero ? S.hero.targets.filter((x) => !x.zero && open.indexOf(x.b.dir) >= 0).sort((x, y) => y.w - x.w) : [];
+        // the car's own look: prefer the 3D model base folder HmiMain3D has open (never beaten by the wider F40 2D fallback),
+        // then non-F40 2D folders HmiMain3D has open, matching the active Kombi trim when known
+        const info = activeVehicleInfo();
+        const all = S.hero ? S.hero.targets.filter((x) => !x.zero) : [];
+        let mine = info.bases3d.length ? all.filter((x) => info.bases3d.indexOf(path.dirname(x.b.dir)) >= 0) : [];
+        if (!mine.length && info.dirs2d.length) {
+            const nonF40 = info.dirs2d.filter((d) => path.basename(path.dirname(d)) !== 'F40');
+            const allow = nonF40.length ? nonF40 : info.dirs2d;
+            mine = all.filter((x) => allow.indexOf(x.b.dir) >= 0);
+        }
+        const trimRe = info.trim ? new RegExp('trim' + info.trim + '(?:\\d|_)', 'i') : null;
+        const num = (k) => { const m = /(\d+)_bitmap$/.exec(k); return m ? Number(m[1]) : -1; };
+        mine.sort((x, y) => {
+            const bx = info.bases3d.indexOf(path.dirname(x.b.dir)), by = info.bases3d.indexOf(path.dirname(y.b.dir));
+            if (bx !== by) return (bx < 0 ? 999 : bx) - (by < 0 ? 999 : by);
+            if (path.dirname(x.b.dir) === path.dirname(y.b.dir) && y.w !== x.w) return y.w - x.w;
+            if (trimRe) { const tx = trimRe.test(x.key) ? 0 : 1, ty = trimRe.test(y.key) ? 0 : 1; if (tx !== ty) return tx - ty; }
+            return (y.w - x.w) || (num(x.key) - num(y.key)) || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0);
+        });
         if (mine.length) {
             const t = mine[0], mk = S.hero.targets.filter((x) => x.b === t.b && x.zero && x.pair === t.key)[0];
             const src = readOriginal(t.b);
             const pic = painted(src.rgba(t.key), mk ? src.rgba(mk.key) : Buffer.alloc(t.w * t.h * 4));
-            return thumb(CAR, W.fit(W.flipRows(pic, t.w, t.h), t.w, t.h, slot.w >> 2, slot.h >> 2), slot.w >> 2, slot.h >> 2);
+            return thumb(CAR, W.flipRows(pic, t.w, t.h), t.w, t.h);
         }
     } catch (e) { /* the empty picture below */ }
     return thumb(CAR, Buffer.alloc(64 * 32 * 4), 64, 32);
@@ -449,7 +474,10 @@ function carWhere() { try { const w = fs.readFileSync(carWhereFile(), 'utf8').tr
 async function setCar(slot, rgba, where) {
     where = /^(tile|menu)$/.test(where) ? where : 'both';
     const in3d = where !== 'tile', in2d = where !== 'menu';
-    slot.models.forEach((m) => CAR_FILES.forEach((f) => {             // the originals first, each copied once
+    const info = activeVehicleInfo();
+    const activeModels = info.bases3d.length ? slot.models.filter((m) => info.bases3d.indexOf(path.dirname(m.dir)) >= 0) : [];
+    const targetModels = activeModels.length ? activeModels : slot.models;
+    targetModels.forEach((m) => CAR_FILES.forEach((f) => {            // the originals first, each copied once
         const bk = carBackup(m, f);
         if (fs.existsSync(bk)) return;                                // (a model without a copy was never changed: its files are the originals)
         mkdirp(path.dirname(bk));
@@ -459,23 +487,28 @@ async function setCar(slot, rgba, where) {
     let drop = [];
     const back = (m) => {                                             // a model's originals back (and its kept shaders gone)
         if (!CAR_FILES.every((f) => fs.existsSync(carBackup(m, f)))) return;
+        const changed = CAR_FILES.some((f) => { try { return Buffer.compare(fs.readFileSync(path.join(m.dir, f)), fs.readFileSync(carBackup(m, f))) !== 0; } catch (e) { return true; } });
+        if (!changed) return;
         CAR_FILES.forEach((f) => jobs.push({ file: path.join(m.dir, f), buf: fs.readFileSync(carBackup(m, f)) }));
         try { drop = drop.concat(CAR3D.cacheNames(new Res(fs.readFileSync(carBackup(m, 'effects.res')), fs.readFileSync(path.join(m.dir, 'effects.res.ids'), 'utf8')))); } catch (e) { /* nothing to remove */ }
     };
     if (!in3d && S.carChanged) slot.models.forEach(back);             // the picture only outside: the 3D model as it was
-    if (in3d) slot.models.forEach((m) => {
-        const ids = (f) => fs.readFileSync(path.join(m.dir, f + '.ids'), 'utf8');
-        const eff = new Res(fs.readFileSync(carBackup(m, 'effects.res')), ids('effects.res')), bmp = new Res(fs.readFileSync(carBackup(m, 'bitmaps.res')), ids('bitmaps.res'));
-        const mk = carMarks(m);
-        if (!CAR3D.check(eff, bmp) || !mk) throw new Error('bản gốc của mô hình xe ' + m.model + ' không đúng');
-        const effects = CAR3D.patchEffects(eff, mk.box, mk.at);          // the picture stands where the car does, as long as its body
-        const bitmaps = CAR3D.patchBitmaps(bmp, photo);
-        const e2 = new Res(effects, ids('effects.res')), b2 = new Res(bitmaps, ids('bitmaps.res'));      // both read back
-        Object.keys(e2.byName).forEach((n) => e2.shaders(n));
-        if (Buffer.compare(b2.payload(CAR3D.TEXTURE), CAR3D.pack(photo)) !== 0 || Object.keys(e2.byName).length !== Object.keys(eff.byName).length) throw new Error('mô hình xe ghi ra không đọc lại được');
-        jobs.push({ file: path.join(m.dir, 'effects.res'), buf: effects }, { file: path.join(m.dir, 'bitmaps.res'), buf: bitmaps });
-        drop = drop.concat(CAR3D.cacheNames(eff));
-    });
+    if (in3d) {
+        slot.models.filter((m) => targetModels.indexOf(m) < 0).forEach(back);    // restore unused models changed by an earlier version
+        targetModels.forEach((m) => {
+            const ids = (f) => fs.readFileSync(path.join(m.dir, f + '.ids'), 'utf8');
+            const eff = new Res(fs.readFileSync(carBackup(m, 'effects.res')), ids('effects.res')), bmp = new Res(fs.readFileSync(carBackup(m, 'bitmaps.res')), ids('bitmaps.res'));
+            const mk = carMarks(m);
+            if (!CAR3D.check(eff, bmp) || !mk) throw new Error('bản gốc của mô hình xe ' + m.model + ' không đúng');
+            const effects = CAR3D.patchEffects(eff, mk.box, mk.at);          // the picture stands where the car does, as long as its body
+            const bitmaps = CAR3D.patchBitmaps(bmp, photo);
+            const e2 = new Res(effects, ids('effects.res')), b2 = new Res(bitmaps, ids('bitmaps.res'));      // both read back
+            Object.keys(e2.byName).forEach((n) => e2.shaders(n));
+            if (Buffer.compare(b2.payload(CAR3D.TEXTURE), CAR3D.pack(photo)) !== 0 || Object.keys(e2.byName).length !== Object.keys(eff.byName).length) throw new Error('mô hình xe ghi ra không đọc lại được');
+            jobs.push({ file: path.join(m.dir, 'effects.res'), buf: effects }, { file: path.join(m.dir, 'bitmaps.res'), buf: bitmaps });
+            drop = drop.concat(CAR3D.cacheNames(eff));
+        });
+    }
     (slot.old || []).forEach(back);                                   // what an earlier version changed and this one does not
     // the 2D pictures: every trim's picture the photo, every paint mask empty
     const flat = !in2d ? [] : byBundle(slot).map((g) => {
@@ -501,7 +534,7 @@ async function setCar(slot, rgba, where) {
     if (!in3d) { S.carChanged = false; try { fs.unlinkSync(carMark()); } catch (e) { /* none */ } }
     S.needsRestart = true;
     carThumb(rgba);
-    return where + ': ' + (in3d ? slot.models.map((m) => m.model) : []).concat(flat.length ? ['2D'] : []).join(', ') + (drop.length ? ', compiled shaders removed: ' + gone : '');
+    return where + ': ' + (in3d ? targetModels.map((m) => m.model) : []).concat(flat.length ? ['2D'] : []).join(', ') + (drop.length ? ', compiled shaders removed: ' + gone : '');
 }
 
 async function restoreCar() {
@@ -529,10 +562,29 @@ async function restoreCar() {
 }
 
 /* ---------------- the start-up screen ---------------- */
-const startMark = () => path.join(CFG.state, 'start-changed');
+const startMark = () => path.join(CFG.state, 'start-changed'), startPhoto = () => path.join(CFG.state, 'start-photo.rgba');
 const shineFile = () => path.join(CFG.state, 'start-shine.json'), draftPic = () => path.join(CFG.state, 'start-draft.rgba'), draftInfo = () => path.join(CFG.state, 'start-draft.json');
-const PREVIEW_W = 120, PREVIEW_H = 45;              // one cell per macroblock of a 1920 x 720 picture: the app plays the opening as the video does
+const PREVIEW_W = 480, PREVIEW_H = 180;             // 4 x 4 samples per macroblock of a 1920 x 720 picture: crisp preview on the car
 const startBackup = (f) => path.join(CFG.state, 'backup', 'start', f.sub, f.name);
+
+let bootPlayedCache = null;
+/** The eva_* variant prefix animationplayer logged on this boot (e.g. '0x01_0x0'), or ''. */
+function bootPlayedPrefix() {
+    if (CFG.bootLog) {
+        try {
+            const m = /eva_(?:splash|hi|bye)_(0x[0-9a-fA-F]+_0x[0-9a-fA-F]+)/.exec(fs.readFileSync(CFG.bootLog, 'utf8'));
+            return m ? m[1].toLowerCase() : '';
+        } catch (e) { return ''; }
+    }
+    if (!CFG.mount || CFG.proc !== '/proc') return '';
+    if (bootPlayedCache !== null) return bootPlayedCache;
+    try {
+        const out = cp.execFileSync('journalctl', ['-b', '-u', 'animationplayer', '-n', '60', '--no-pager'], { timeout: 1500, encoding: 'utf8' });
+        const m = /eva_(?:splash|hi|bye)_(0x[0-9a-fA-F]+_0x[0-9a-fA-F]+)/.exec(out);
+        bootPlayedCache = m ? m[1].toLowerCase() : '';
+    } catch (e) { bootPlayedCache = ''; }
+    return bootPlayedCache;
+}
 
 /** The start-up pictures and videos of this head unit's generation (all generations if it cannot be told). */
 function loadStart() {
@@ -541,33 +593,62 @@ function loadStart() {
     let gen = '';
     try { const m = /^HWGEN=(\d+)/m.exec(fs.readFileSync(CFG.variant, 'utf8')); gen = m ? 'mgu' + m[1] : ''; } catch (e) { gen = ''; }
     if (gen && subs.indexOf(gen) >= 0) subs = [gen];
+    S.startChanged = fs.existsSync(startMark());
     const files = [];
     subs.forEach((sub) => fs.readdirSync(path.join(CFG.boot, sub)).sort().forEach((name) => {
         const m = /^eva_(splash|hi|bye)_.*\.(png|h264)$/.exec(name);
         if (!m || (m[1] === 'splash') !== (m[2] === 'png')) return;
-        const file = path.join(CFG.boot, sub, name);
+        const file = path.join(CFG.boot, sub, name), bk = startBackup({ sub, name });
         try {
             const head = fs.readFileSync(file);
             if (m[2] === 'png') { const i = BOOT.pngInfo(head); files.push({ sub, name, file, kind: 'png', w: i.w, h: i.h }); }
-            else { const i = BOOT.h264Info(head); if (i.frames < 1) return; files.push({ sub, name, file, kind: 'h264', w: i.w, h: i.h, level: i.level, frames: i.frames }); }
+            else {
+                const i = BOOT.h264Info(head); if (i.frames < 1) return;
+                const origBuf = S.startChanged && fs.existsSync(bk) ? fs.readFileSync(bk) : head;
+                files.push({ sub, name, file, kind: 'h264', w: i.w, h: i.h, level: i.level, frames: i.frames, timing: BOOT.h264Timing(origBuf) });
+            }
         } catch (e) { log('start-up file ' + name + ' left alone: ' + e.message); }
     }));
     if (!files.some((f) => f.kind === 'png')) return;
-    S.startChanged = fs.existsSync(startMark());
-    try { const d = JSON.parse(fs.readFileSync(draftInfo(), 'utf8')); S.draft = fs.existsSync(draftPic()) ? { shine: d.shine || null } : null; } catch (e) { S.draft = null; }
+    try { const d = JSON.parse(fs.readFileSync(draftInfo(), 'utf8')); S.draft = fs.existsSync(draftPic()) ? { shine: d.shine || null, brief: !!d.brief } : null; } catch (e) { S.draft = null; }
     S.slots[START] = { n: START, label: 'Màn hình khởi động', where: 'lúc màn hình khởi động, lúc chào khi lên xe và lúc tạm biệt', w: START_W, h: START_H, files, targets: [] };
     startThumb();
 }
+function bestSplash(files) {
+    const played = bootPlayedPrefix();
+    const brand = activeVehicleInfo().brand;
+    const wantBrand = brand === 'bmwm' ? '0x01' : brand === 'mini' ? '0x03' : '0x00';
+    const rank = (f) => {
+        const low = f.name.toLowerCase();
+        if (played && low.indexOf('eva_splash_' + played + '_') === 0) return 0;
+        if (low.indexOf('eva_splash_' + wantBrand + '_') === 0) return 1;
+        if (low.indexOf('eva_splash_0x00_') === 0) return 2;
+        return 3;
+    };
+    return files.filter((f) => f.kind === 'png').slice().sort((x, y) =>
+        (rank(x) - rank(y)) || ((y.w === START_W && y.h === START_H) - (x.w === START_W && x.h === START_H)) || (y.w - x.w) || (x.name < y.name ? -1 : x.name > y.name ? 1 : 0))[0];
+}
 function startThumb() {
     const slot = S.slots[START];
-    // the picture of this screen's shape (the others are other displays'), else the widest
-    const best = slot.files.filter((f) => f.kind === 'png').sort((x, y) => ((y.w === START_W && y.h === START_H) - (x.w === START_W && x.h === START_H)) || (y.w - x.w))[0];
+    const best = bestSplash(slot.files);
     try {
-        const p = BOOT.pngDecode(fs.readFileSync(best.file)); thumb(START, p.rgba, p.w, p.h);
-        if (S.draft) {                                                  // a draft waits: the preview plays that
-            try { previewOf(fs.readFileSync(draftPic()), START_W, START_H, S.draft.shine, true); return; } catch (e) { S.draft = null; }
+        let p = null;
+        if (S.startChanged) {
+            try {
+                const raw = fs.readFileSync(startPhoto());
+                if (raw.length === START_W * START_H * 4) p = { rgba: raw, w: START_W, h: START_H };
+            } catch (e) { p = null; }
         }
-        previewOf(p.rgba, p.w, p.h, S.startChanged ? readShine() : null, false);
+        if (!p) {
+            const srcFile = !S.startChanged && fs.existsSync(startBackup(best)) ? startBackup(best) : best.file;
+            p = BOOT.pngDecode(fs.readFileSync(srcFile));
+        }
+        thumb(START, p.rgba, p.w, p.h);
+        if (S.draft) {                                                  // a draft waits: the preview plays that
+            try { previewOf(fs.readFileSync(draftPic()), START_W, START_H, S.draft.shine, true, S.draft.brief); return; } catch (e) { S.draft = null; }
+        }
+        const opts = S.startChanged ? readStartOpts() : { shine: null, brief: false };
+        previewOf(p.rgba, p.w, p.h, opts.shine, false, opts.brief);
     } catch (e) { thumb(START, Buffer.alloc(64 * 24 * 4, 0), 64, 24); S.preview = null; }
 }
 
@@ -578,7 +659,8 @@ function parseShine(s) {
     if (v.length !== 4 || v.some((x) => !isFinite(x) || x < 0 || x > 1) || v[2] < 0.02 || v[3] < 0.02) return null;
     return { x: v[0], y: v[1], w: Math.min(v[2], 1 - v[0]), h: Math.min(v[3], 1 - v[1]) };
 }
-async function setStart(slot, rgba, shine) {
+async function setStart(slot, rgba, shine, brief) {
+    brief = !!brief;
     // the originals first, each copied once
     slot.files.forEach((f) => {
         const bk = startBackup(f);
@@ -589,14 +671,24 @@ async function setStart(slot, rgba, shine) {
     if (slot.files.some((f) => !fs.existsSync(startBackup(f)))) throw new Error('thiếu bản gốc của màn hình khởi động');
     const made = {};                                                // files of one kind and size are the same bytes: one file, the others links to it
     const jobs = slot.files.map((f) => {
-        // the greeting (eva_hi_*_noloop) opens the picture out of black, the goodbye (eva_bye_*) closes it; anything
-        // shorter than a third of a second, and what loops, is the still picture
-        const move = f.kind !== 'h264' || f.frames < 20 ? '' : /^eva_hi_.*_noloop\./.test(f.name) ? 'in' : /^eva_bye_/.test(f.name) ? 'out' : '';
-        const id = f.kind + f.w + 'x' + f.h + (f.kind === 'h264' ? '/' + f.level + '/' + f.frames + '/' + move : '');
+        // the greeting (eva_hi_*_noloop) opens the picture out of black (and with brief closes back to black so cold boot
+        // does not freeze on a bright poster while HmiMain3D loads), eva_hi_*_loop is black with brief or still without,
+        // the goodbye (eva_bye_*) closes it; anything shorter than a third of a second is the still picture
+        const isLoop = f.kind === 'h264' && f.frames >= 20 && /^eva_hi_.*_loop\./.test(f.name);
+        const move = f.kind !== 'h264' || f.frames < 20 ? '' : /^eva_hi_.*_noloop\./.test(f.name) ? 'in' : /^eva_bye_/.test(f.name) ? 'out' : (isLoop && brief ? 'black' : '');
+        const tm = f.timing || { tick: 1, timeScale: 60, fixedRate: 0 };
+        const id = f.kind + f.w + 'x' + f.h + (f.kind === 'h264' ? '/' + f.level + '/' + f.frames + '/' + tm.tick + ':' + tm.timeScale + ':' + tm.fixedRate + '/' + move + (move === 'in' && brief ? ':b' : '') : '');
         const lit = move === 'in' && shine ? { x: Math.round(shine.x * f.w), y: Math.round(shine.y * f.h), w: Math.round(shine.w * f.w), h: Math.round(shine.h * f.h) } : null;
         if (!made[id]) {
-            const pic = W.fit(rgba, slot.w, slot.h, f.w, f.h), o = { level: f.level, frames: f.frames, out: move === 'out', shine: lit };
-            made[id] = { buf: f.kind === 'png' ? W.png(pic, f.w, f.h) : move ? BOOT.openingVideo(pic, f.w, f.h, o) : BOOT.stillVideo(pic, f.w, f.h, o), first: '' };
+            const pic = move === 'black' ? null : W.fit(rgba, slot.w, slot.h, f.w, f.h);
+            const o = { level: f.level, frames: f.frames, out: move === 'out', shine: lit, brief: move === 'in' && brief, timing: tm };
+            made[id] = {
+                buf: f.kind === 'png' ? W.png(pic, f.w, f.h)
+                    : move === 'black' ? BOOT.blackVideo(f.w, f.h, o)
+                    : move ? BOOT.openingVideo(pic, f.w, f.h, o)
+                    : BOOT.stillVideo(pic, f.w, f.h, o),
+                first: '',
+            };
             if (f.kind === 'h264') { const i = BOOT.h264Info(made[id].buf); if (i.w !== f.w || i.h !== f.h || i.frames !== f.frames) throw new Error('video made wrong'); }
         }
         return { f, m: made[id] };
@@ -606,9 +698,13 @@ async function setStart(slot, rgba, shine) {
         jobs.forEach((j) => { putFile(j.f.file, j.m.buf, j.m.first); if (!j.m.first) j.m.first = j.f.file; });
     });
     S.startChanged = true; S.needsRestart = true;
-    try { if (shine) writeAtomic(shineFile(), JSON.stringify(shine)); else fs.unlinkSync(shineFile()); } catch (e) { /* none to remove */ }
+    try { writeAtomic(startPhoto(), rgba); } catch (e) { /* sharp preview copy */ }
+    try {
+        if (shine || brief) writeAtomic(shineFile(), JSON.stringify({ shine: shine || null, brief }));
+        else fs.unlinkSync(shineFile());
+    } catch (e) { /* none to remove */ }
     thumb(START, rgba, slot.w, slot.h);
-    previewOf(rgba, slot.w, slot.h, shine || null, false);
+    previewOf(rgba, slot.w, slot.h, shine || null, false, brief);
     return jobs.length;
 }
 
@@ -618,17 +714,18 @@ async function restoreStart() {
     const jobs = slot.files.map((f) => ({ f, buf: fs.readFileSync(startBackup(f)) }));
     await writable(async () => jobs.forEach((j) => putFile(j.f.file, j.buf)));
     try { fs.unlinkSync(startMark()); } catch (e) { /* gone */ }
+    try { fs.unlinkSync(startPhoto()); } catch (e) { /* gone */ }
     try { fs.unlinkSync(shineFile()); } catch (e) { /* gone */ }
     S.startChanged = false; S.needsRestart = true;
     startThumb();
 }
 
 /** A start-up picture kept as a draft: nothing on the car changes, the app plays it as a preview until it is applied or dropped. */
-function saveDraft(slot, rgba, shine) {
+function saveDraft(slot, rgba, shine, brief) {
     mkdirp(CFG.state);
-    writeAtomic(draftPic(), rgba); writeAtomic(draftInfo(), JSON.stringify({ shine: shine || null, at: Date.now() }));
-    S.draft = { shine: shine || null };
-    previewOf(rgba, slot.w, slot.h, shine || null, true);
+    writeAtomic(draftPic(), rgba); writeAtomic(draftInfo(), JSON.stringify({ shine: shine || null, brief: !!brief, at: Date.now() }));
+    S.draft = { shine: shine || null, brief: !!brief };
+    previewOf(rgba, slot.w, slot.h, shine || null, true, !!brief);
 }
 function dropDraft() {
     try { fs.unlinkSync(draftPic()); } catch (e) { /* none */ }
@@ -643,7 +740,7 @@ async function applyDraft() {
         let rgba; try { rgba = fs.readFileSync(draftPic()); } catch (e) { dropDraft(); throw bad('không đọc được bản nháp'); }
         S.busy = true; writeStatus();
         try {
-            const shine = S.draft.shine, count = await setStart(slot, rgba, shine);
+            const shine = S.draft.shine, brief = !!S.draft.brief, count = await setStart(slot, rgba, shine, brief);
             dropDraft(); S.rev++;
             log('start-up draft applied (' + count + ' files)');
             say('go', 'Đã áp dụng màn hình khởi động. Khởi động lại màn hình xe để thấy.');
@@ -673,13 +770,13 @@ async function setPicture(n, topDownRgba, opt) {
             if (slot.files) {
                 for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;
                 if (opt && opt.draft) {
-                    saveDraft(slot, rgba, opt.shine); S.rev++;
+                    saveDraft(slot, rgba, opt.shine, opt.brief); S.rev++;
                     log('start-up draft kept');
                     say('go', 'Đã gửi bản nháp. Xem thử trên màn hình xe, rồi bấm Áp dụng.');
                     return;
                 }
                 if (S.draft) dropDraft();
-                const count = await setStart(slot, rgba, opt && opt.shine);
+                const count = await setStart(slot, rgba, opt && opt.shine, opt && opt.brief);
                 S.rev++;
                 log('start-up screen replaced (' + count + ' files)');
                 say('go', 'Đã đổi màn hình khởi động. Khởi động lại màn hình xe để thấy.');
@@ -916,7 +1013,7 @@ async function handle(req, res) {
         const slot = S.slots[Number(m[1])];
         let b;
         try { b = await body(req, (slot ? slot.w * slot.h * 4 : W.RAW) + 1); } catch (e) { return json(res, 413, { ok: false, error: 'Ảnh quá lớn.' }); }
-        try { await setPicture(Number(m[1]), b, { where: q.where, shine: parseShine(q.shine), draft: q.draft === '1' }); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
+        try { await setPicture(Number(m[1]), b, { where: q.where, shine: parseShine(q.shine), draft: q.draft === '1', brief: q.brief === '1' }); return json(res, 200, { ok: true, message: S.message }); } catch (e) { return fail(res, e, 'picture'); }
     }
     m = /^\/api\/restore\/(all|\d+)$/.exec(p);
     if (req.method === 'POST' && m) {
@@ -952,7 +1049,7 @@ function findApp(now) {
 }
 
 /* ---------------- the diagnostic file ---------------- */
-/** The vehicle folders the HMI has open now (from /proc): what this car really shows. */
+/** The vehicle folders the HMI has open now (from /proc): what this car really shows. HmiMain3D wins over HmiKombi. */
 function openVehicles() {
     const out = {};
     let pids = [];
@@ -968,11 +1065,83 @@ function openVehicles() {
             try { to = fs.readlinkSync(path.join(CFG.proc, pid, 'fd', fd)); } catch (e) { return; }
             String(CFG.vehicles).split(':').filter(Boolean).forEach((given) => {
                 const real = (() => { try { return fs.realpathSync(given); } catch (e) { return given; } })();
-                [given, real].forEach((root) => { if (to.indexOf(root + '/') === 0) out[path.join(given, path.dirname(to.slice(root.length + 1)))] = comm; });
+                [given, real].forEach((root) => {
+                    if (to.indexOf(root + '/') === 0) {
+                        const k = path.join(given, path.dirname(to.slice(root.length + 1)));
+                        if (out[k] !== 'HmiMain3D') out[k] = comm;
+                    }
+                });
             });
         });
     });
     return Object.keys(out).sort().map((dir) => ({ dir, by: out[dir] }));
+}
+
+/**
+ * Active vehicle model, brand and Kombi trim opened by HmiMain3D:
+ *   bases3d: [<vehicles>/<model>] where <model>/vehicle is open (non-F40 and bmwm/mini prioritised)
+ *   dirs2d:  [<vehicles>/<model>/vehicle2D_*] open in HmiMain3D
+ *   brand:   'bmwm' | 'mini' | 'bmw'
+ *   trim:    'A'..'E' from /kombi_model/<model>/Trim<X>.zip when open, else ''
+ */
+function activeVehicleInfo() {
+    const open = openVehicles().filter((o) => o.by === 'HmiMain3D').map((o) => o.dir);
+    const roots = String(CFG.vehicles).split(':').filter(Boolean);
+    const brandOfBase = (base) => {
+        for (let i = 0; i < roots.length; i++) {
+            if (base.indexOf(roots[i] + path.sep) === 0 || path.dirname(base) === roots[i]) {
+                return i === 0 ? 'bmw' : path.basename(path.dirname(path.dirname(roots[i])));
+            }
+        }
+        return 'bmw';
+    };
+    const seen3d = {};
+    const bases3d = open.filter((d) => path.basename(d) === 'vehicle').map((d) => path.dirname(d)).filter((b) => { if (seen3d[b]) return false; seen3d[b] = 1; return true; });
+    bases3d.sort((a, b) => {
+        const fa = path.basename(a) === 'F40' ? 1 : 0, fb = path.basename(b) === 'F40' ? 1 : 0;
+        if (fa !== fb) return fa - fb;
+        const ba = brandOfBase(a) === 'bmw' ? 1 : 0, bb = brandOfBase(b) === 'bmw' ? 1 : 0;
+        return (ba - bb) || (a < b ? -1 : a > b ? 1 : 0);
+    });
+    const dirs2d = open.filter((d) => /^vehicle2D_/.test(path.basename(d)));
+    let trim = '';
+    try {
+        const pids = fs.readdirSync(CFG.proc).filter((d) => /^\d+$/.test(d));
+        pids.forEach((pid) => {
+            if (trim) return;
+            let comm = '';
+            try { comm = fs.readFileSync(path.join(CFG.proc, pid, 'comm'), 'utf8').trim(); } catch (e) { return; }
+            if (comm !== 'HmiMain3D') return;
+            let fds = [];
+            try { fds = fs.readdirSync(path.join(CFG.proc, pid, 'fd')); } catch (e) { return; }
+            fds.forEach((fd) => {
+                if (trim) return;
+                try {
+                    const to = fs.readlinkSync(path.join(CFG.proc, pid, 'fd', fd));
+                    const m = /\/kombi_model\/[^/]+\/Trim([A-Za-z0-9]+)\./i.exec(to);
+                    if (m) trim = m[1].toUpperCase();
+                } catch (e) { /* closed */ }
+            });
+        });
+    } catch (e) { /* no /proc */ }
+    const primary = bases3d[0] || dirs2d.map((d) => path.dirname(d)).filter((b) => path.basename(b) !== 'F40')[0] || (dirs2d[0] ? path.dirname(dirs2d[0]) : '');
+    const brand = primary ? brandOfBase(primary) : 'bmw';
+    const sig = bases3d.join(',') + '|' + dirs2d.join(',') + '|' + trim + '|' + brand;
+    return { bases3d, dirs2d, brand, trim, sig };
+}
+
+/** Refresh stock thumbnails once HmiMain3D finishes booting and opens the car's actual vehicle model. */
+function refreshActiveOriginals() {
+    if (!S.compatible || S.busy) return false;
+    const info = activeVehicleInfo();
+    if (S.activeSig === undefined) S.activeSig = info.sig;
+    if (info.sig === S.activeSig) return false;
+    S.activeSig = info.sig;
+    let updated = false;
+    if (S.slots[CAR] && !S.carChanged && !flatChanged()) { carThumb(); updated = true; }
+    if (S.slots[START] && !S.startChanged) { startThumb(); updated = true; }
+    if (updated) { S.rev++; log('refreshed stock thumbnails for active vehicle (' + (info.bases3d[0] || info.brand) + ')'); }
+    return updated;
 }
 /** What the diagnostic file holds: a report, and the files of the vehicle folders the HMI has open (originals too). */
 function diagFiles() {
@@ -1089,7 +1258,8 @@ function start() {
     server.on('error', (e) => { if (e.code === 'EADDRINUSE' && port < CFG.port + 9) { port++; server.listen(port, '0.0.0.0'); } else { log('server: ' + e.message); setTimeout(() => process.exit(1), 100); } });
     server.on('listening', () => { S.port = server.address().port; log('page on port ' + S.port + ', PIN ' + S.pin); writeStatus(); fwCheck(); });
     server.listen(port, '0.0.0.0');
-    setInterval(() => { pollCommands(); writeStatus(); }, 1500);
+    let tick = 0;
+    setInterval(() => { if (++tick % 2 === 0) refreshActiveOriginals(); pollCommands(); writeStatus(); }, 1500);
     if (CFG.fwMs > 0) setInterval(fwCheck, CFG.fwMs);
     process.on('SIGTERM', () => { server.close(); const bye = () => process.exit(0); setTimeout(bye, 3000); fwClose().then(bye, bye); });
     return server;
@@ -1102,4 +1272,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, reboot, openVehicles, diagFiles, tar, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, reboot, openVehicles, activeVehicleInfo, refreshActiveOriginals, diagFiles, tar, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

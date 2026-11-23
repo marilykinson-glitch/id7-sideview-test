@@ -97,6 +97,40 @@ function h264Info(buf) {
     return { w, h, level, profile, frames: list.filter((n) => n.type === 1 || n.type === 5).length };
 }
 
+/** { tick, timeScale, fixedRate } from an H.264 stream's first SPS VUI, or the 1/60 default when absent. */
+function h264Timing(buf) {
+    const dflt = { tick: 1, timeScale: 60, fixedRate: 0 };
+    try {
+        const list = nals(buf), sps = list.filter((n) => n.type === 7)[0];
+        if (!sps) return dflt;
+        const r = new BitReader(unescape(buf.slice(sps.start, Math.min(sps.end, sps.start + 256))));
+        const profile = r.u(8); r.u(8); r.u(8); r.ue();
+        if ([100, 110, 122, 244, 44, 83, 86, 118, 128].indexOf(profile) >= 0) {
+            const chroma = r.ue(); if (chroma === 3) r.u(1);
+            r.ue(); r.ue(); r.u(1);
+            if (r.u(1)) return dflt;
+        }
+        r.ue();
+        const poc = r.ue();
+        if (poc === 0) r.ue();
+        else if (poc === 1) { r.u(1); r.se(); r.se(); const k = r.ue(); for (let i = 0; i < k; i++) r.se(); }
+        r.ue(); r.u(1); r.ue(); r.ue();
+        const frameOnly = r.u(1);
+        if (!frameOnly) r.u(1);
+        r.u(1);
+        if (r.u(1)) { r.ue(); r.ue(); r.ue(); r.ue(); }
+        if (!r.u(1)) return dflt;                                    // vui_parameters_present_flag
+        if (r.u(1)) { const idc = r.u(8); if (idc === 255) { r.u(16); r.u(16); } }
+        if (r.u(1)) r.u(1);                                         // overscan
+        if (r.u(1)) { r.u(3); r.u(1); if (r.u(1)) { r.u(8); r.u(8); r.u(8); } }
+        if (r.u(1)) { r.ue(); r.ue(); }                             // chroma_loc
+        if (!r.u(1)) return dflt;                                    // timing_info_present_flag
+        const tick = r.u(32), timeScale = r.u(32), fixedRate = r.u(1);
+        if (tick > 0 && timeScale > 0 && timeScale / tick <= 480) return { tick, timeScale, fixedRate };
+    } catch (e) { /* keep default */ }
+    return dflt;
+}
+
 /** RGBA (top-down) to the three planes of 4:2:0, for a picture padded to whole macroblocks; no sample is 0 (I_PCM forbids it). */
 function planes(rgba, w, h, W, H) {
     const Y = Buffer.alloc(W * H), U = Buffer.alloc(W * H / 4), V = Buffer.alloc(W * H / 4);
@@ -122,8 +156,11 @@ function planes(rgba, w, h, W, H) {
 }
 
 /** The stream's two parameter sets for a picture of mw x mh macroblocks showing w x h. */
-function headers(w, h, mw, mh, level) {
+function headers(w, h, mw, mh, level, timing) {
     const W = mw * 16, H = mh * 16;
+    const tick = timing && timing.tick > 0 ? timing.tick : 1;
+    const timeScale = timing && timing.timeScale > 0 ? timing.timeScale : 60;
+    const fixedRate = timing && timing.fixedRate ? 1 : 0;
     const sps = new BitWriter(64);
     sps.u(8, 66); sps.u(8, 0xc0); sps.u(8, level);          // Baseline with constraint_set0 and 1: Constrained Baseline
     sps.ue(0);                                              // seq_parameter_set_id
@@ -135,7 +172,7 @@ function headers(w, h, mw, mh, level) {
     if (cropR || cropB) { sps.u(1, 1); sps.ue(0); sps.ue(cropR); sps.ue(0); sps.ue(cropB); } else sps.u(1, 0);
     sps.u(1, 1);                                            // VUI: only the timing and "no reordering"
     sps.u(1, 0); sps.u(1, 0); sps.u(1, 0); sps.u(1, 0);
-    sps.u(1, 1); sps.u(32, 1); sps.u(32, 60); sps.u(1, 0);  // the timing the head unit's own files state
+    sps.u(1, 1); sps.u(32, tick); sps.u(32, timeScale); sps.u(1, fixedRate);  // timing preserved from the head unit's own file
     sps.u(1, 0); sps.u(1, 0); sps.u(1, 0);
     sps.u(1, 1); sps.u(1, 1); sps.ue(0); sps.ue(0); sps.ue(10); sps.ue(10); sps.ue(0); sps.ue(1);
     sps.trailing();
@@ -186,20 +223,32 @@ function nextPicture(f, mbs, list, get) {
     return nal(2, 1, p.done());
 }
 function sizes(rgba, w, h, opt) {
-    if (rgba.length !== w * h * 4) throw new Error('wrong picture size');
+    if (rgba && rgba.length !== w * h * 4) throw new Error('wrong picture size');
     const frames = Math.max(1, opt.frames || 60);
     const mw = Math.ceil(w / 16), mh = Math.ceil(h / 16), mbs = mw * mh;
     return { frames, mw, mh, W: mw * 16, H: mh * 16, mbs, level: Math.max(opt.level || 31, mbs > 8192 ? 50 : mbs > 3600 ? 40 : mbs > 1620 ? 31 : 30) };
 }
 
 /**
+ * An H.264 stream showing pure black (w x h) for opt.frames pictures - used for eva_hi_*_loop when the greeting
+ * closes back to black so animationplayer does not hold a static poster for 20+ s during cold boot.
+ */
+function blackVideo(w, h, opt) {
+    opt = opt || {};
+    const z = sizes(null, w, h, opt);
+    const parts = headers(w, h, z.mw, z.mh, z.level, opt.timing).concat([firstPicture(null, z.W, z.mw, z.mh)]);
+    for (let f = 1; f < z.frames; f++) parts.push(nextPicture(f, z.mbs, [], null));
+    return Buffer.concat(parts);
+}
+
+/**
  * An H.264 stream showing the RGBA picture (top-down, w x h) for opt.frames pictures.
- * opt: { frames (60), level (31) }.
+ * opt: { frames (60), level (31), timing }.
  */
 function stillVideo(rgba, w, h, opt) {
     opt = opt || {};
     const z = sizes(rgba, w, h, opt);
-    const parts = headers(w, h, z.mw, z.mh, z.level).concat([firstPicture(planes(rgba, w, h, z.W, z.H), z.W, z.mw, z.mh)]);
+    const parts = headers(w, h, z.mw, z.mh, z.level, opt.timing).concat([firstPicture(planes(rgba, w, h, z.W, z.H), z.W, z.mw, z.mh)]);
     for (let f = 1; f < z.frames; f++) parts.push(nextPicture(f, z.mbs, [], null));
     return Buffer.concat(parts);
 }
@@ -275,26 +324,41 @@ function shiner(rgba, w, h, box) {
 }
 /**
  * An H.264 stream of opt.frames pictures in which the RGBA picture opens out of black (or, opt.out, closes into it)
- * as opening() says, with a moment of the whole picture (or of black) at the end. Every part of the picture is sent
- * once, uncompressed, when its turn comes. opt: { frames (60), level (31), out }.
+ * as opening() says, with a moment of the whole picture (or of black) at the end; with opt.brief (OEM-like greeting)
+ * it opens, shines/holds briefly, and closes back into black so the screen does not stay frozen during cold boot.
+ * Every part of the picture is sent uncompressed when its turn comes. opt: { frames (60), level (31), out, shine, brief, timing }.
  */
 function openingVideo(rgba, w, h, opt) {
     opt = opt || {};
     const z = sizes(rgba, w, h, opt), pl = planes(rgba, w, h, z.W, z.H), when = opening(z.mw, z.mh);
     const shine = opt.shine && !opt.out ? shiner(rgba, w, h, opt.shine) : null;
-    // with a light to show the opening takes the first 60%, the light the next 30%, the rest stands still
-    const moving = Math.max(1, Math.round((z.frames - 1) * (shine ? 0.6 : 0.8)));          // the last fifth stands still
-    const lit = shine ? Math.min(z.frames - 1 - moving, Math.round((z.frames - 1) * 0.3)) : 0;
+    const brief = !!(opt.brief && !opt.out && z.frames >= 20);
+    // with brief: open (~42-50%), shine/hold (~22-28%), then close back to black; otherwise open (60-80%), shine (30%), stand still
+    const moving = brief
+        ? Math.max(1, Math.round((z.frames - 1) * (shine ? 0.42 : 0.48)))
+        : Math.max(1, Math.round((z.frames - 1) * (shine ? 0.6 : 0.8)));
+    const lit = shine
+        ? Math.min(z.frames - 1 - moving - (brief ? 4 : 0), Math.max(2, Math.round((z.frames - 1) * (brief ? 0.28 : 0.3))))
+        : 0;
+    const hold = brief && !shine ? Math.max(2, Math.round((z.frames - 1) * 0.24)) : 0;
+    const closeFrom = brief ? Math.min(z.frames - 2, moving + lit + hold) : 0;
+    const closeLen = brief ? Math.max(1, (z.frames - 1) - closeFrom) : 0;
     const ease = (x) => 1 - Math.pow(1 - x, 2.2);                           // fast at first, settling
     // the picture in which each macroblock changes: 1..moving
-    const turn = new Int32Array(z.mbs), max = when.reduce((m, v) => Math.max(m, v), 0) || 1;
+    const turn = new Int32Array(z.mbs), closeTurn = brief ? new Int32Array(z.mbs) : null;
+    const max = when.reduce((m, v) => Math.max(m, v), 0) || 1;
     for (let n = 0; n < z.mbs; n++) {
         const want = (opt.out ? 1 - when[n] / max : when[n] / max);
         let f = 1; while (f < moving && ease(f / moving) < want) f++;
         turn[n] = f;
+        if (closeTurn) {
+            const cw = 1 - when[n] / max;
+            let cf = 1; while (cf < closeLen && ease(cf / closeLen) < cw) cf++;
+            closeTurn[n] = cf;
+        }
     }
     const mb = Buffer.alloc(384);
-    const parts = headers(w, h, z.mw, z.mh, z.level).concat([firstPicture(opt.out ? pl : null, z.W, z.mw, z.mh)]);
+    const parts = headers(w, h, z.mw, z.mh, z.level, opt.timing).concat([firstPicture(opt.out ? pl : null, z.W, z.mw, z.mh)]);
     // the light: the pictures moving+1 .. moving+lit send the macroblocks around the mark again, lit as that moment says
     // (the last of them as the picture is), the opening itself needs nothing more by then
     let near = [];
@@ -308,6 +372,12 @@ function openingVideo(rgba, w, h, opt) {
         if (lit > 0 && k >= 1 && k <= lit) {
             const lp = planes(shine(k === lit ? 0 : k / lit), w, h, z.W, z.H);
             parts.push(nextPicture(f, z.mbs, near, (n) => samples(lp, z.W, n % z.mw, (n / z.mw) | 0, mb)));
+            continue;
+        }
+        if (closeTurn && f > closeFrom) {
+            const cf = f - closeFrom, clist = [];
+            for (let n = 0; n < z.mbs; n++) if (closeTurn[n] === cf) clist.push(n);
+            parts.push(nextPicture(f, z.mbs, clist, () => BLACK));
             continue;
         }
         const list = [];
@@ -365,4 +435,4 @@ function pngDecode(buf) {
     return { w, h, rgba: out };
 }
 
-module.exports = { h264Info, stillVideo, openingVideo, pngInfo, pngDecode, nals };
+module.exports = { h264Info, h264Timing, blackVideo, stillVideo, openingVideo, pngInfo, pngDecode, nals };

@@ -48,7 +48,7 @@
         "ID7"
       ],
       "requires": {
-        "anh-dai-dien": "0.10.0",
+        "anh-dai-dien": "0.11.0",
         "idrive7-renderd": "2.1.7",
         "mgu-inputgate": "1.0.0"
       },

@@ -300,9 +300,9 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     r = await call('GET', '/api/state' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.json.slots.length, 15);
     assert.strictEqual(r.json.slots[0].size, 570); assert.strictEqual(r.json.more[0].size, 1305); assert.ok(r.json.more[0].where);
     assert.strictEqual(r.json.more.length, 1); assert.strictEqual(r.json.car.length, 1); assert.ok(r.json.car[0].alpha); assert.strictEqual(r.json.car[0].w, 1920); assert.strictEqual(r.json.car[0].h, 960);
-    r = await call('GET', '/api/thumb/' + svc.CAR + q); assert.strictEqual(r.body.readUInt32BE(20), 256);
-    r = await call('GET', '/api/thumb/4' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.type, 'image/png'); assert.strictEqual(r.body.readUInt32BE(16), 256);
-    r = await call('GET', '/api/thumb/' + BT + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.readUInt32BE(16), 256);
+    r = await call('GET', '/api/thumb/' + svc.CAR + q); assert.strictEqual(r.body.readUInt32BE(20), 384);
+    r = await call('GET', '/api/thumb/4' + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.type, 'image/png'); assert.strictEqual(r.body.readUInt32BE(16), 384);
+    r = await call('GET', '/api/thumb/' + BT + q); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.readUInt32BE(16), 384);
     r = await call('GET', '/api/thumb/16' + q); assert.strictEqual(r.code, 404);
     ok('the page is open; the API needs the PIN; thumbnails are PNG');
 
@@ -482,15 +482,15 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     await call('POST', '/api/picture/' + svc.START + q, sp);
     ok('the start-up screen: the picture and a still video at every size, same bytes linked, another generation untouched, restored byte for byte');
 
-    // a draft of the start-up screen: nothing on the car changes until it is applied; the app gets a 120 x 45 preview
+    // a draft of the start-up screen: nothing on the car changes until it is applied; the app gets a sharp 480 x 180 preview
     {
         const before = startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png'), dp = picture(43, 1920, 720);
         r = await call('POST', '/api/picture/' + svc.START + q + '&draft=1&shine=0.4,0.4,0.2,0.2', dp); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
         assert.strictEqual(Buffer.compare(startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png'), before), 0, 'a draft touches no file of the car');
         r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.draft, true);
         let st = JSON.parse(fs.readFileSync(path.join(run, 'status.json'), 'utf8'));
-        assert.deepStrictEqual(st.preview, { w: 120, h: 45, draft: true, shine: { x: 0.4, y: 0.4, w: 0.2, h: 0.2 } });
-        assert.strictEqual(fs.readFileSync(path.join(run, 'p51.rgba')).length, 120 * 45 * 4);
+        assert.deepStrictEqual(st.preview, { w: 480, h: 180, draft: true, shine: { x: 0.4, y: 0.4, w: 0.2, h: 0.2 }, brief: false });
+        assert.strictEqual(fs.readFileSync(path.join(run, 'p51.rgba')).length, 480 * 180 * 4);
         r = await call('POST', '/api/draft/apply' + q); assert.strictEqual(r.code, 200, JSON.stringify(r.json));
         assert.notStrictEqual(Buffer.compare(startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png'), before), 0);
         assert.strictEqual(Buffer.compare(BOOT.pngDecode(startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png')).rgba, W.fit(dp, 1920, 720, 1280, 480)), 0);
@@ -498,12 +498,13 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
         st = JSON.parse(fs.readFileSync(path.join(run, 'status.json'), 'utf8')); assert.strictEqual(st.preview.draft, false); assert.deepStrictEqual(st.preview.shine, { x: 0.4, y: 0.4, w: 0.2, h: 0.2 });
         r = await call('POST', '/api/draft/apply' + q); assert.strictEqual(r.code, 400);                 // none left
         const keep = startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png');
-        await call('POST', '/api/picture/' + svc.START + q + '&draft=1', picture(44, 1920, 720));
+        await call('POST', '/api/picture/' + svc.START + q + '&draft=1&brief=1', picture(44, 1920, 720));
+        st = JSON.parse(fs.readFileSync(path.join(run, 'status.json'), 'utf8')); assert.strictEqual(st.preview.brief, true);
         r = await call('POST', '/api/draft/discard' + q); assert.strictEqual(r.code, 200);
         r = await call('GET', '/api/state' + q); assert.strictEqual(r.json.draft, false);
         assert.strictEqual(Buffer.compare(startFile('mgu18/eva_splash_0x00_0x0_0x02_noloop.png'), keep), 0);
         await call('POST', '/api/picture/' + svc.START + q, sp);
-        ok('a start-up draft: kept apart from the car, previewed at 120 x 45, applied on the owner\'s word or dropped');
+        ok('a start-up draft: kept apart from the car, previewed at 480 x 180, applied on the owner\'s word or dropped');
     }
 
     // the app's preview plays the same order as the video: how many macroblocks the video sends in each picture = the cells the preview changes in it
@@ -515,12 +516,27 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
             turn.forEach((f) => { per[f]++; });
             for (let f = 1; f < P.FRAMES; f++) assert.strictEqual(Math.floor((nl[f].end - nl[f].start) / 384), per[f], (out ? 'out ' : 'in ') + f);
         });
+        // VUI timing preserved + brief auto-close ends on pure black + blackVideo for loop
+        const fast = BOOT.stillVideo(pic2, 160, 96, { frames: 30, timing: { tick: 1, timeScale: 120, fixedRate: 1 } });
+        assert.deepStrictEqual(BOOT.h264Timing(fast), { tick: 1, timeScale: 120, fixedRate: 1 });
+        const bv = BOOT.blackVideo(160, 96, { frames: 30, timing: { tick: 1, timeScale: 120, fixedRate: 1 } });
+        assert.strictEqual(BOOT.h264Info(bv).frames, 30);
+        const brv = BOOT.openingVideo(pic2, 160, 96, { frames: 40, brief: true, shine: { x: 40, y: 24, w: 40, h: 32 } });
+        assert.strictEqual(BOOT.h264Info(brv).frames, 40);
         const rgba = Buffer.alloc(120 * 45 * 4, 180); for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;
         const pl = new P.Player(rgba, 120, 45, { x: 0.4, y: 0.4, w: 0.2, h: 0.2 });
         const lit = (b) => { let c = 0; for (let i = 0; i < b.length; i++) c += b[i]; return c; };
         assert.strictEqual(lit(pl.frame('in', 0)), 0); assert.strictEqual(lit(pl.frame('in', P.FRAMES - 1)), lit(pl.pic)); assert.strictEqual(lit(pl.frame('out', 0)), lit(pl.pic)); assert.strictEqual(lit(pl.frame('out', P.FRAMES - 1)), 0);
         assert.ok(lit(pl.frame('in', pl.moving.in + 6)) > lit(pl.pic), 'the light adds to the picture');
-        ok('the app\'s preview changes the same cells in the same pictures as the video does, and lights the mark');
+        // 480 x 180 sharp player with brief=true: 120 x 45 macroblock grid, closes back to pure black at final frame
+        const rgbaHi = Buffer.alloc(480 * 180 * 4, 160); for (let i = 3; i < rgbaHi.length; i += 4) rgbaHi[i] = 255;
+        const plHi = new P.Player(rgbaHi, 480, 180, { x: 0.4, y: 0.4, w: 0.2, h: 0.2 }, true);
+        assert.strictEqual(plHi.mw, 120); assert.strictEqual(plHi.mh, 45);
+        assert.strictEqual(lit(plHi.frame('in', 0)), 0);
+        assert.strictEqual(lit(plHi.frame('in', plHi.moving.in)), lit(plHi.pic));
+        assert.ok(plHi.shinePatch('in', plHi.moving.in + 4) !== null);
+        assert.strictEqual(lit(plHi.frame('in', P.FRAMES - 1)), 0, 'brief greeting closes back to pure black');
+        ok('the app\'s preview changes the same cells in the same pictures as the video does, lights the mark, and supports 480x180 + brief close');
     }
 
     r = await call('POST', '/api/restore/3' + q); assert.strictEqual(r.code, 200);
@@ -693,7 +709,84 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
     }
     const none = new Recorder(UI.W, UI.H, { textScale: 1 }); none.own = true; UI.draw(none, G, theme, Object.assign({}, base, { anyChanged: false }), {});
     assert.ok(!none.targets.some((t) => t.key === 'adRestore'));
-    ok('the car screen: three cards and the rest in one line, a restart button, "restore all" only when something changed');
+    {   // sharp 144x72 / 144x54 / 52x52 card thumbnails + 480x180 GPU-cached preview player
+        const P = require(path.join(ROOT, 'apps', 'anh_dai_dien', 'preview.js'));
+        const hiBase = Object.assign({}, base, { thumbs: { 41: mini(144, 72, 90), 51: mini(144, 54, 40), 3: mini(52, 52, 200) } });
+        const rHi = new Recorder(UI.W, UI.H, { textScale: 1 }); rHi.own = true;
+        UI.draw(rHi, G, theme, hiBase, {});
+        const cvHi = new Canvas(UI.W, UI.H); play(rHi.words(), cvHi);
+        const plHi = new P.Player(mini(480, 180, 140), 480, 180, { x: 0.4, y: 0.4, w: 0.2, h: 0.2 }, true);
+        [0, 12, plHi.moving.in + 3, P.FRAMES - 1].forEach((f) => {
+            const rp = new Recorder(UI.W, UI.H, { textScale: 1 }); rp.own = true;
+            UI.draw(rp, G, theme, Object.assign({}, hiBase, { mode: 'preview', pvReady: true, draft: true, playing: 'in', pv: { player: plHi, kind: 'in', f, w: 480, h: 180 } }), {});
+            const cvp = new Canvas(UI.W, UI.H); play(rp.words(), cvp);
+        });
+    }
+    // stock image detection: active 3D model (bmwm/F90LCI) beats wider F40 2D fallback and higher-PID HmiKombi,
+    // selects matching Kombi trim, picks 0x01 BMW M splash out of 15 variants, and refreshes when HmiMain3D comes up
+    {
+        const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-orig-'));
+        const vBmw = path.join(fix, 'bmw', 'widgetasset', 'vehicles'), vM = path.join(fix, 'bmwm', 'widgetasset', 'vehicles');
+        const bdir = path.join(fix, 'boot', 'mgu18'), pdir = path.join(fix, 'proc'), rdir = path.join(fix, 'run'), sdir = path.join(fix, 'st');
+        mkdirs(path.join(vBmw, 'F40', 'vehicle2D_big')); mkdirs(path.join(vM, 'F90LCI', 'vehicle2D_small')); mkdirs(path.join(vM, 'F90LCI', 'vehicle'));
+        mkdirs(bdir); mkdirs(pdir); mkdirs(rdir);
+        const solidBundle = (names, w, h, rgb) => {
+            const pics = names.map((nm) => ({ name: nm, w, h }));
+            const b = makeBundle(pics), parsed = new W.Bundle(b.data, b.ids), repl = {};
+            names.forEach((nm, idx) => {
+                const key = nm.replace(/\.png$/, '');
+                const isMask = /_mask/.test(key);
+                const px = Buffer.alloc(w * h * 4);
+                if (!isMask) {
+                    const c = rgb[idx] || rgb[0];
+                    for (let i = 0; i < px.length; i += 4) { px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255; }
+                }
+                repl[key] = px;
+            });
+            return { data: parsed.build(repl), ids: b.ids };
+        };
+        // F40 2D big (672x336, bright red) vs F90LCI 2D small (440x222: trimA green, trimB blue)
+        const f40Big = solidBundle(['tex_f40_trimA_bitmap', 'tex_f40_trimA_mask_bitmap'], 672, 336, [[240, 10, 10]]);
+        const f90Small = solidBundle(['tex_f90_trimA_bitmap', 'tex_f90_trimB_bitmap', 'tex_f90_trimA_mask_bitmap', 'tex_f90_trimB_mask_bitmap'], 440, 222, [[10, 230, 10], [10, 40, 245]]);
+        fs.writeFileSync(path.join(vBmw, 'F40', 'vehicle2D_big', 'bitmaps.res'), f40Big.data);
+        fs.writeFileSync(path.join(vBmw, 'F40', 'vehicle2D_big', 'bitmaps.res.ids'), f40Big.ids);
+        fs.writeFileSync(path.join(vM, 'F90LCI', 'vehicle2D_small', 'bitmaps.res'), f90Small.data);
+        fs.writeFileSync(path.join(vM, 'F90LCI', 'vehicle2D_small', 'bitmaps.res.ids'), f90Small.ids);
+        [['effects.res', mkFx], ['bitmaps.res', mkTx], ['meshes.res', mkMesh]].forEach((x) => {
+            fs.writeFileSync(path.join(vM, 'F90LCI', 'vehicle', x[0]), x[1].data);
+            fs.writeFileSync(path.join(vM, 'F90LCI', 'vehicle', x[0] + '.ids'), x[1].ids);
+        });
+        fs.writeFileSync(path.join(vM, 'F90LCI', 'vehicle', 'meshes.res.attributes'), mkAttrs);
+        // 15 splash PNG variants across 0x00..0x06 (0x00 green, 0x01 blue M, 0x03..0x06 red)
+        for (let code = 0; code <= 6; code++) {
+            const hex = '0x0' + code, col = code === 0 ? [20, 200, 40] : code === 1 ? [25, 90, 250] : [250, 15, 20];
+            [[1280, 480, '0x02'], [1440, 540, '0x03']].forEach((d) => {
+                const px = Buffer.alloc(d[0] * d[1] * 4);
+                for (let i = 0; i < px.length; i += 4) { px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255; }
+                fs.writeFileSync(path.join(bdir, 'eva_splash_' + hex + '_0x0_' + d[2] + '_noloop.png'), W.png(px, d[0], d[1]));
+            });
+        }
+        // Start before HmiMain3D opens F90LCI (only BMW 0x00 splash expected initially)
+        Object.assign(svc.CFG, { dir, root, vehicles: vBmw + ':' + vM, boot: path.join(fix, 'boot'), variant: path.join(tmp, 'variant.env'), proc: pdir, state: sdir, run: rdir, bootLog: '' });
+        assert.ok(svc.load());
+        let stThumb = BOOT.pngDecode(svc.S.thumbs[svc.START]).rgba;
+        assert.ok(stThumb[1] > 180 && stThumb[0] < 50, 'before HmiMain3D starts, default BMW 0x00 splash is chosen (never 0x03 red)');
+        // Now HmiMain3D (PID 100) opens F40 2D big + F90LCI 3D + F90LCI 2D small + TrimB.zip, and HmiKombi (PID 900) also opens F90LCI 3D
+        mkdirs(path.join(pdir, '100', 'fd')); mkdirs(path.join(pdir, '900', 'fd'));
+        fs.writeFileSync(path.join(pdir, '100', 'comm'), 'HmiMain3D\n');
+        fs.writeFileSync(path.join(pdir, '900', 'comm'), 'HmiKombi\n');
+        fs.symlinkSync(path.join(vBmw, 'F40', 'vehicle2D_big', 'bitmaps.res'), path.join(pdir, '100', 'fd', '3'));
+        fs.symlinkSync(path.join(vM, 'F90LCI', 'vehicle', 'meshes.res'), path.join(pdir, '100', 'fd', '4'));
+        fs.symlinkSync(path.join(vM, 'F90LCI', 'vehicle2D_small', 'bitmaps.res'), path.join(pdir, '100', 'fd', '5'));
+        fs.symlinkSync('/mnt/dataro/dataro1/hmi/common/kombi_model/F90LCI/TrimB.zip', path.join(pdir, '100', 'fd', '6'));
+        fs.symlinkSync(path.join(vM, 'F90LCI', 'vehicle', 'meshes.res'), path.join(pdir, '900', 'fd', '3'));
+        assert.ok(svc.refreshActiveOriginals(), 'stock thumbnails refresh once HmiMain3D opens F90LCI');
+        const carRgba = BOOT.pngDecode(svc.S.thumbs[svc.CAR]).rgba;
+        assert.ok(carRgba[2] > 200 && carRgba[0] < 40 && carRgba[1] < 80, 'F90LCI TrimB (blue) chosen over wider F40 (red) and TrimA (green)');
+        stThumb = BOOT.pngDecode(svc.S.thumbs[svc.START]).rgba;
+        assert.ok(stThumb[2] > 200 && stThumb[0] < 50, 'bmwm active brand selects 0x01 BMW M splash instead of 0x00 or 0x03');
+    }
+    ok('the car screen & stock detection: sharp 144w/52px thumbnails, 480x180 preview, and accurate F90LCI + 0x01 stock detection');
 
     console.log('\nall ' + n + ' passed');
     process.exit(0);
