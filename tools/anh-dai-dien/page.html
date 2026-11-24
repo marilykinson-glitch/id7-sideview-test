@@ -272,7 +272,14 @@ input[type=range]{flex:1;accent-color:var(--acc)}
     $('emptyText').innerHTML = s.alpha ? 'Chọn ảnh chiếc xe của bạn.<br>Sau đó kéo và phóng to cho vừa khung.' : (s.w !== s.h ? 'Chọn một ảnh từ điện thoại.<br>Sau đó kéo và phóng to cho vừa khung.' : 'Chọn một ảnh từ điện thoại.<br>Sau đó kéo và phóng to để cắt vuông.');
     $('spotRow').className = 'hide'; $('empty').className = 'empty'; $('zoomRow').className = 'zoom hide'; $('editRow').className = 'row hide';
     $('resetOne').className = 'btn danger' + (changed ? '' : ' hide'); $('pick').textContent = 'Chọn ảnh từ điện thoại';
-    var t = new Image(); t.onload = function () { if (!img) { ctx.drawImage(t, 0, 0, SW, SH); } }; t.src = '/api/thumb/' + n + '?pin=' + pin + '&r=' + rev;
+    var t = new Image();
+    t.onload = function () {
+      if (!img && cur === s && t.width > 0 && t.height > 0) {
+        var r = Math.min(SW / t.width, SH / t.height), dw = t.width * r, dh = t.height * r;
+        ctx.drawImage(t, (SW - dw) / 2, (SH - dh) / 2, dw, dh);
+      }
+    };
+    t.src = '/api/thumb/' + n + '?pin=' + pin + '&r=' + rev;
     $('sheet').className = 'sheet show'; document.body.style.overflow = 'hidden';
   }
   function closeSheet() { stopPv(); $('sheet').className = 'sheet'; document.body.style.overflow = ''; }

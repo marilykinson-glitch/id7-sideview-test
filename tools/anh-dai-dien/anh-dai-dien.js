@@ -50,7 +50,7 @@ const { Res } = require('./res');
 const CAR3D = require('./car3d');
 const CARPAINT = require('./carpaint');
 
-const VERSION = '0.12.1';
+const VERSION = '0.12.2';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -359,7 +359,13 @@ function run(cmd, args) {
 async function writable(fn) {
     if (CFG.mount) await run('mount', ['-o', 'remount,rw', CFG.mount]);
     try { return await fn(); } finally {
-        if (CFG.mount) { try { await run('mount', ['-o', 'remount,ro', CFG.mount]); } catch (e) { log('remount ro failed: ' + e.message); } }
+        if (CFG.mount) {
+            try { await run('sync', []); } catch (e) { /* ignore */ }
+            try { await run('mount', ['-o', 'remount,ro', CFG.mount]); } catch (e) {
+                await new Promise((r) => setTimeout(r, 300));
+                try { await run('mount', ['-o', 'remount,ro', CFG.mount]); } catch (e2) { log('remount ro failed: ' + e2.message); }
+            }
+        }
     }
 }
 
@@ -539,8 +545,15 @@ async function setCar(slot, rgba, where) {
         });
     }
     (slot.old || []).forEach(back);                                   // what an earlier version changed and this one does not
-    // the 2D pictures: every trim's picture the photo, every paint mask empty
-    const flat = !in2d ? [] : byBundle(slot).map((g) => {
+    // the 2D pictures: write the active vehicle's 2D bundles (+ F40 fallback) when known, instead of all 35+ models
+    const allGroups = byBundle(slot);
+    const activeGroups = (info.primary || info.dirs2d.length) ? allGroups.filter((g) => {
+        const base = path.dirname(g.b.dir);
+        return (info.primary && base === info.primary) || info.dirs2d.indexOf(g.b.dir) >= 0 || path.basename(base) === 'F40';
+    }) : [];
+    const targetGroups = activeGroups.length ? activeGroups : allGroups;
+    const targetBundles = targetGroups.map((g) => g.b);
+    const flat = !in2d ? [] : targetGroups.map((g) => {
         const cur = readBundle(g.b), replace = {}, made = {};
         g.targets.forEach((t) => {
             const id = t.w + 'x' + t.h + (t.zero ? 'z' : '');
@@ -549,8 +562,8 @@ async function setCar(slot, rgba, where) {
         });
         return { g, buf: cur.build(replace) };
     });
-    // the picture only inside: the 2D pictures as they were
-    const flatBack = in2d ? [] : Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => /^car-/.test(b.id) && b.usable && Object.keys(b.changed).length).map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
+    // the picture only inside (or unused models changed by an earlier version): put those 2D bundles back as they were
+    const flatBack = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => /^car-/.test(b.id) && b.usable && Object.keys(b.changed).length && (!in2d || targetBundles.indexOf(b) < 0)).map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
     await writable(async () => {
         if (in3d && jobs.length) fs.writeFileSync(carMark(), String(Date.now()));
         jobs.forEach((j) => putFile(j.file, j.buf));
@@ -558,7 +571,7 @@ async function setCar(slot, rgba, where) {
         flatBack.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; });
     });
     const gone = dropShaders(drop);
-    try { fs.writeFileSync(carPhoto(), photo); fs.writeFileSync(carWhereFile(), where); } catch (e) { /* the look on the phone page only */ }
+    try { writeAtomic(carPhoto(), photo); writeAtomic(carWhereFile(), where); } catch (e) { /* the look on the phone page only */ }
     if (in3d && jobs.length) S.carChanged = true;
     if (!in3d) { S.carChanged = false; try { fs.unlinkSync(carMark()); } catch (e) { /* none */ } }
     S.needsRestart = true;
@@ -745,7 +758,10 @@ async function setStart(slot, rgba, shine, brief) {
 
 async function restoreStart() {
     const slot = S.slots[START];
-    if (!slot || !S.startChanged) return;
+    const hadDraft = !!S.draft;
+    if (hadDraft) dropDraft();
+    if (!slot) return;
+    if (!S.startChanged) { if (hadDraft) startThumb(); return; }
     const jobs = slot.files.map((f) => ({ f, buf: fs.readFileSync(startBackup(f)) }));
     await writable(async () => jobs.forEach((j) => putFile(j.f.file, j.buf)));
     try { fs.unlinkSync(startMark()); } catch (e) { /* gone */ }
@@ -856,9 +872,9 @@ async function restore(which) {          // a slot's number, or 'all'
         S.busy = true; writeStatus();
         try {
             if (!slot) {
-                const todo = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => b.usable && Object.keys(b.changed).length);
+                const todo = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => b.usable && Object.keys(b.changed).length && !(S.slots[CAR] && /^car-/.test(b.id)));
                 const files = todo.map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
-                await writable(async () => files.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; }));
+                if (files.length) await writable(async () => files.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; }));
                 Object.keys(S.slots).forEach((k) => { const s = S.slots[k]; if (!s.files && !s.models && todo.indexOf(s.targets[0].b) >= 0) thumbFrom(s, readOriginal(s.targets[0].b)); });
                 await restoreStart();
                 await restoreCar();
@@ -1169,9 +1185,14 @@ function activeVehicleInfo() {
             });
         });
     } catch (e) { /* no /proc */ }
+    const codedExact = coding.valid && coding.baureihe ? coding.baureihe : '';
+    const codedStem = codedExact ? codedExact.replace(/(?:BEV)?LCI$|BEV$/, '') : '';
+    const matchCoded = (base) => {
+        const nm = path.basename(base);
+        return codedExact && nm === codedExact ? 0 : (codedStem && nm === codedStem ? 1 : 2);
+    };
     const sortBases = (list) => list.sort((a, b) => {
-        const ca = coding.valid && coding.baureihe && path.basename(a) === coding.baureihe ? 0 : 1;
-        const cb = coding.valid && coding.baureihe && path.basename(b) === coding.baureihe ? 0 : 1;
+        const ca = matchCoded(a), cb = matchCoded(b);
         if (ca !== cb) return ca - cb;
         const da = bases2dNonF40.indexOf(a) >= 0 ? 0 : 1, db = bases2dNonF40.indexOf(b) >= 0 ? 0 : 1;
         if (da !== db) return da - db;
@@ -1187,8 +1208,10 @@ function activeVehicleInfo() {
     });
     const seen3d = {};
     const rawBases = open.filter((d) => path.basename(d) === 'vehicle').map((d) => path.dirname(d));
-    if (coding.valid && coding.baureihe) {
-        vehicleDirs().filter((v) => path.basename(v.base) === coding.baureihe).forEach((v) => rawBases.push(v.base));
+    if (codedExact) {
+        const exactDirs = vehicleDirs().filter((v) => path.basename(v.base) === codedExact);
+        const fbDirs = !exactDirs.length && codedStem ? vehicleDirs().filter((v) => path.basename(v.base) === codedStem) : [];
+        exactDirs.concat(fbDirs).forEach((v) => rawBases.push(v.base));
     }
     const bases3d = sortBases(rawBases.filter((b) => { if (seen3d[b]) return false; seen3d[b] = 1; return true; }));
     const primary = bases3d[0] || bases2dNonF40[0] || (dirs2d[0] ? path.dirname(dirs2d[0]) : '');

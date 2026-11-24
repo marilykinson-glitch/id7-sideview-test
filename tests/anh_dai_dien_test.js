@@ -949,12 +949,23 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
             't41.rgba renders F90LCI Marina Bay Blue + gold TrimL wheels instead of blank ENOENT');
         // Even if F90LCI itself is modified and car-photo.rgba is missing, carThumb falls back to the live bundle instead of zeros
         await svc.setPicture(svc.CAR, picture(88, svc.CAR_W, 960), { where: 'tile' });
+        assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(vM2, 'F90', 'vehicle2D_big', 'bitmaps.res')), f90PreData), 0, 'unrelated F90 2D untouched during F90LCI setCar');
+        assert.strictEqual(Buffer.compare(fs.readFileSync(path.join(vBmw2, 'G11', 'vehicle2D_small', 'bitmaps.res')), f90PreData), 0, 'stale G11 2D automatically restored during F90LCI setCar');
         fs.unlinkSync(path.join(sdir2, 'car-photo.rgba'));
         assert.ok(svc.load());
         const t41NoPhoto = fs.readFileSync(path.join(rdir2, 't41.rgba'));
         let nonZeroAlpha = 0;
         for (let i = 3; i < t41NoPhoto.length; i += 4) if (t41NoPhoto[i] > 100) nonZeroAlpha++;
         assert.ok(nonZeroAlpha > 1000, 'missing car-photo.rgba falls back to live 2D bundle without going blank');
+        // BAUREIHE 0x05..0x09 (G01LCI, G02LCI, G08LCI) + restore(START) drops pending draft
+        assert.strictEqual(CARPAINT.BAUREIHE_BY_CODE[0x05], 'G01LCI');
+        assert.strictEqual(CARPAINT.BAUREIHE_BY_CODE[0x08], 'G02LCI');
+        assert.strictEqual(CARPAINT.BAUREIHE_BY_CODE[0x09], 'G08LCI');
+        await svc.setPicture(svc.START, picture(89, 1920, 720), { draft: true, brief: true });
+        assert.ok(svc.S.draft && svc.S.preview && svc.S.preview.draft);
+        await svc.restore(svc.START);
+        assert.strictEqual(svc.S.draft, null, 'restore(START) drops pending draft');
+        assert.strictEqual(svc.S.preview.draft, false);
     }
     ok('the car screen & stock detection: sharp 144w/52px thumbnails, 480x180 preview, and coded Marina Bay Blue + TrimL M5 CS stock rendering');
 

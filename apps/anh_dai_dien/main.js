@@ -112,7 +112,7 @@ mgu.run({
             if (playing === 'both') {
                 const gap = pv && pv.brief ? Math.round(FPS * 0.4) : HOLD;
                 if (e < FRAMES) return { kind: 'in', f: e };
-                if (e < FRAMES + gap) return { kind: 'in', f: pv && pv.brief ? FRAMES - 1 : FRAMES - 1 };
+                if (e < FRAMES + gap) return { kind: 'in', f: FRAMES - 1 };
                 return { kind: 'out', f: Math.min(e - FRAMES - gap, FRAMES - 1), over: e >= 2 * FRAMES + gap };
             }
             return { kind: 'in', f: restFrame };
