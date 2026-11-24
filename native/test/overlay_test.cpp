@@ -114,6 +114,27 @@ int main()
     o.meters = -1;
     o.kind = kRoundabout;
     check(changed(o, 0) > 500, "a roundabout without a distance: drawn");
+    /* roundabout exits: exit 1, exit 2 and exit 3 draw distinct exit arrows/digits on the card */
+    {
+        Overlay r1 = o, r2 = o, r3 = o;
+        r1.meters = r2.meters = r3.meters = 40;
+        r1.exit = 1; r2.exit = 2; r3.exit = 3;
+        std::vector<uint8_t> p1, p2, p3;
+        changed(r1, 0, &p1);
+        changed(r2, 0, &p2);
+        changed(r3, 0, &p3);
+        check(p1 != p2 && p2 != p3 && p1 != p3, "roundabout exits 1, 2 and 3 draw distinct exit cards");
+    }
+    /* full-range black fade: left/right edges fade to pure black Y = 0 (not studio grey 16) */
+    {
+        Overlay fd;
+        fd.fade = true;
+        std::vector<uint8_t> pic((size_t)512 * 384 * 3 / 2, 128);
+        memset(pic.data(), 200, (size_t)512 * 384);
+        draw_overlay(pic.data(), 512, 384, fd, 0);
+        check(pic[(size_t)192 * 512 + 0] == 0 && pic[(size_t)192 * 512 + 511] == 0, "edge fade reaches pure full-range black (Y = 0) at outer columns");
+        check(pic[(size_t)192 * 512 + 256] == 200, "edge fade leaves the middle of the picture untouched");
+    }
     o.kind = kDestination;
     o.meters = 1500;
     check(changed(o, 0) > 500, "the destination 1,5 km ahead: drawn");

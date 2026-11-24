@@ -341,6 +341,9 @@ void apply_config(App &a, const cr::Json &j)
         const long sar = to_long(j, (std::string(names[v]) + "_sar").c_str(), vs.sar);
         if (sar >= 25 && sar <= 400)
             vs.sar = (int)sar;
+        const long rim = to_long(j, (std::string(names[v]) + "_rim").c_str(), vs.rim);
+        if (rim >= 0 && rim <= 255)
+            vs.rim = (int)rim;
     }
     const bool layer_changed = c.target != a.cfg.target || c.klass != a.cfg.klass || c.x != a.cfg.x || c.y != a.cfg.y ||
                                c.exclusive != a.cfg.exclusive || c.contend != a.cfg.contend ||
@@ -412,6 +415,9 @@ void apply_aux(App &a, const cr::Json &j)
     const long sar = to_long(j, "sar", c.vs.sar);
     if (sar >= 25 && sar <= 400)
         c.vs.sar = (int)sar;
+    const long rim = to_long(j, "rim", c.vs.rim);
+    if (rim >= 0 && rim <= 255)
+        c.vs.rim = (int)rim;
     std::string target = x.target;
     it = j.find("target");
     if (it != j.end() && !it->second.empty())

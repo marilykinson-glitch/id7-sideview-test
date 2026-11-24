@@ -538,6 +538,43 @@ t('plan: single-camera mode asks for the side\'s camera and waits for it', () =>
     p = L.plan(base({ mode: 'single', side: 'right', cam: L.camState(), helper: HELPER }));
     assert.strictEqual(p.view, 'none');
 });
+t('reverse gear, night rim dimming, blinker maxMs timeout, dead PID invalidation', () => {
+    // reverse gear: both DataPowerTrain2 and statusGearboxDrive, by name and wire number
+    assert.strictEqual(L.decodeReverse({ statusGearSelectionDrive: 'R' }), true);
+    assert.strictEqual(L.decodeReverse({ statusGearSelectionDrive: 2 }), true);
+    assert.strictEqual(L.decodeReverse({ statusGearSelectionDrive: 'D' }), null);
+    assert.strictEqual(L.decodeReverse({ statusGearSelectionDrive: '_3' }), false);
+    assert.strictEqual(L.decodeReverse({ statusGearSelectionDrive: 3 }), false);
+    assert.strictEqual(L.decodeReverse({ statusActualStageDrive: 'R' }), true);
+    assert.strictEqual(L.decodeReverse({ statusActualStageDrive: 2 }), true);
+    assert.strictEqual(L.decodeReverse({ statusActualStageDrive: 4 }), false);
+    assert.strictEqual(L.decodeReverse({ statusActualGearDrive: 1 }), true);
+    assert.strictEqual(L.decodeReverse({ statusActualGearDrive: 'G2' }), false);
+    assert.strictEqual(L.decodeReverse({ statusActualStageDrive: 0 }), null);
+    // reverse immediately drops view and sets want = null so clientDetach runs at once
+    assert.deepStrictEqual(L.plan(base({ side: 'left', reverse: true })), { view: 'none', why: 'Xe đang cài số lùi', want: null });
+    assert.strictEqual(L.plan(base({ test: 'left', reverse: true })).view, 'left');
+    // day/night rim dimming
+    assert.strictEqual(L.decodeNight({ dayNightChangeOver: 2 }), true);
+    assert.strictEqual(L.decodeNight({ dayNightChangeOver: 'NACHT' }), true);
+    assert.strictEqual(L.decodeNight({ dayNightChangeOver: 1 }), false);
+    assert.strictEqual(L.decodeNight({ dayNightChangeOver: 'TAG' }), false);
+    assert.strictEqual(L.decodeNight({ dayNightChangeOver: 0 }), null);
+    const T = L.parseTargets('map:1088x480,panel:1920x720');
+    assert.strictEqual(L.viewConfig({ night: true }, T, 'left').left_rim, 95);
+    assert.strictEqual(L.viewConfig({ night: true, nightRim: 'bright' }, T, 'left').left_rim, 200);
+    assert.strictEqual(L.viewConfig({ night: false }, T, 'left').left_rim, 200);
+    assert.strictEqual(L.auxConfig({ night: true }, T, 'right').rim, 95);
+    assert.strictEqual(L.auxConfig({ night: false }, T, 'right').rim, 200);
+    const H = require(path.join(__dirname, '..', 'tools', 'xinhan-cam', 'xinhan-cam.js'));
+    assert.strictEqual(JSON.parse(H.configLine(L.viewConfig({ night: true }, T, 'left'))).left_rim, 95);
+    assert.strictEqual(JSON.parse(H.auxLine(L.auxConfig({ night: true }, T, 'right'))).rim, 95);
+    // blinker maxMs safety timeout
+    const b = L.createBlinker({ holdMs: 2000, maxMs: 180000 });
+    b.event('LEFT', 'steady', 1000);
+    assert.strictEqual(b.side(120000), 'left');
+    assert.strictEqual(b.side(181000), null);
+});
 
 /* ---------------- camera.js against a fake camera unit ---------------- */
 function fakeUnit(o) {

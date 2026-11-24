@@ -26,11 +26,12 @@ struct ViewSpec {
 
     bool round = false;                     /* shown as a disc with a light rim, black around it (a round
                                              * "gauge" on the cluster's black background) */
+    int rim = 200;                          /* luma of the round view's rim (0..255): 200 by day, dimmed at night */
 
     bool operator==(const ViewSpec &o) const
     {
         return x == o.x && y == o.y && w == o.w && h == o.h && rot == o.rot && flip == o.flip && sar == o.sar &&
-               round == o.round;
+               round == o.round && (!round || rim == o.rim);
     }
     bool operator!=(const ViewSpec &o) const { return !(*this == o); }
 };

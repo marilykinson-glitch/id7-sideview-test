@@ -33,9 +33,12 @@ const TICK_MS = 100;
 const HEARTBEAT_MS = 500;
 const CAM_TICK_MS = 500;
 const CAM_IDLE_MS = 2000;
+const BLINKER_MAX_MS = 180000;      // a dropped "off" never keeps the mirror camera on past 3 min
 const IF = {
     light: 'de.bmw.body.Light',
     speed: 'de.bmw.infotainment.vehicle.Vehicle2',
+    gear: 'de.bmw.infrastructure.VehicleInformation',
+    vehicle: 'de.bmw.infotainment.vehicle.Vehicle',
     icam: 'de.bmw.infotainment.video.cameraproxy.ICAM2Proxy',
     cam: 'de.bmw.infotainment.video.cameraproxy.CameraProxy',
     xv: 'de.bmw.dass.XView3D',
@@ -88,11 +91,12 @@ mgu.run({
         // the settings the page's Position tab keeps besides the listed ones: where in the dial the view sits
         const EXTRA = ['gaugeDx', 'gaugeDy', 'panLx', 'panLy', 'panRx', 'panRy', 'zoomL', 'zoomR'].concat(Object.keys(L.CALIB));
         // a drag on the Position page in progress: where the view is now (saved when the finger comes up)
-        let dragPos = null;
+        let dragPos = null, reverse = false, night = null;
         const cfg = () => {
             const o = {};
             settings.schema.forEach((s) => { o[s.key] = settings.get(s.key); });
             EXTRA.forEach((k) => { o[k] = settings.get(k); });
+            if (night !== null) o.night = night;
             // (a drag whose finger's lift never came: forgotten after 10 s still)
             if (dragPos && Date.now() - dragPos.at > 10000) dragPos = null;
             if (dragPos) { o.gaugeDx = dragPos.dx; o.gaugeDy = dragPos.dy; o.place = 'gauge'; }
@@ -100,8 +104,8 @@ mgu.run({
         };
 
         /* ---- the turn signals ---- */
-        const blinker = L.createBlinker();
-        const applyBlinker = () => blinker.configure({ holdMs: (Number(settings.get('hold')) || 2) * 1000, tip: settings.get('tip') !== 'off' });
+        const blinker = L.createBlinker({ maxMs: BLINKER_MAX_MS });
+        const applyBlinker = () => blinker.configure({ holdMs: (Number(settings.get('hold')) || 2) * 1000, tip: settings.get('tip') !== 'off', maxMs: BLINKER_MAX_MS });
         applyBlinker();
         let lightState = 'Đang kết nối', lightEvents = 0, lastRaw = ['-', '-'];
         const onLight = (index, value) => {
@@ -128,6 +132,21 @@ mgu.run({
             },
         }, log, { pollMs: 1000 })
             .then((sub) => { if (sub.error) log.warn('speed: ' + sub.error); }).catch((e) => log.warn('speed: ' + e));
+
+        /* ---- reverse gear (instant detach so the rear-view camera never waits) and day/night rim ---- */
+        const onGear = (v) => {
+            const r = L.decodeReverse(v);
+            if (r !== null && r !== reverse) { reverse = r; log.info('reverse gear: ' + (r ? 'on' : 'off')); tick(); }
+        };
+        signals.watch(IF.gear, '1', { statusGearboxDrive: onGear, DataPowerTrain2: onGear }, log)
+            .then((sub) => { if (sub.error) log.info('gearbox: ' + sub.error); }).catch((e) => log.info('gearbox: ' + e));
+        signals.watch(IF.vehicle, '1', {
+            statusDayNightChangeOver: (v) => {
+                const n = L.decodeNight(v);
+                if (n !== null && n !== night) { night = n; log.info('day/night: ' + (n ? 'night' : 'day')); tick(); }
+            },
+        }, log, { pollMs: 5000 })
+            .then((sub) => { if (sub.error) log.info('day/night: ' + sub.error); }).catch((e) => log.info('day/night: ' + e));
 
         /* ---- the camera unit ---- */
         const px = {}, link = {}, tries = {};
@@ -251,7 +270,7 @@ mgu.run({
             if (L.arWanted({ arMode: s.ar, nav: navNow(st), speed: kmhNow, arLatched: lastPlan.ar === 'route' })) arHoldUntil = now + 3000;
             if (n && n.aux_state === 'refused' && now - auxRefusedAt >= 15000) { auxRefusedAt = now; auxReason = String(n.aux_reason || '').slice(0, 80); log.warn('second view refused (' + (n.aux_reason || '') + '): the mirror camera alone'); }
             const p = L.plan({
-                enabled: s.enabled !== 'off', mode: s.mode, source: s.source, side, test, front: s.front,
+                enabled: s.enabled !== 'off', reverse, mode: s.mode, source: s.source, side, test, front: s.front,
                 arMode: s.ar, nav: navNow(st), arLatched: lastPlan.ar === 'route', arHold: now < arHoldUntil,
                 // the second layer was refused a moment ago: the mirror camera alone for a while
                 dual: s.blinkFront, auxRefused: now - auxRefusedAt < 15000,

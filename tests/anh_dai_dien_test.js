@@ -786,7 +786,135 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
         stThumb = BOOT.pngDecode(svc.S.thumbs[svc.START]).rgba;
         assert.ok(stThumb[2] > 200 && stThumb[0] < 50, 'bmwm active brand selects 0x01 BMW M splash instead of 0x00 or 0x03');
     }
-    ok('the car screen & stock detection: sharp 144w/52px thumbnails, 480x180 preview, and accurate F90LCI + 0x01 stock detection');
+    // coded carpaint & HeroVehicle trim: /dev/shm/rawcodingdata (0x1a Marina Bay Blue, 0x20 clubsport -> TrimL, 0x38 F90LCI)
+    // + scene.pbx (mapping TrimL to scrambled trimA15_bitmap) + VEHICLE_CARPAINT_colorregistry.pbc + variantregistry_ext_car.pbvar
+    {
+        const CARPAINT = require(path.join(ROOT, 'tools', 'anh-dai-dien', 'carpaint.js'));
+        const pbVarint = (v) => { const a = []; while (v > 127) { a.push((v & 0x7f) | 0x80); v = Math.floor(v / 128); } a.push(v); return Buffer.from(a); };
+        const pbBytes = (fn, b) => { const buf = Buffer.isBuffer(b) ? b : Buffer.from(String(b), 'latin1'); return Buffer.concat([pbVarint((fn << 3) | 2), pbVarint(buf.length), buf]); };
+        const pbF32 = (fn, f) => { const b = Buffer.alloc(4); b.writeFloatLE(f, 0); return Buffer.concat([pbVarint((fn << 3) | 5), b]); };
+        const pbColorEntry = (full, v) => pbBytes(1, Buffer.concat([pbBytes(1, Buffer.concat([pbBytes(2, full), Buffer.from([0x10, 0x02])])), pbBytes(6, pbBytes(6, Buffer.concat([pbF32(1, v[0]), pbF32(2, v[1]), pbF32(3, v[2]), pbF32(4, v[3])])))]));
+        const pbVarEntry = (cond, baseName) => pbBytes(1, Buffer.concat([cond ? pbBytes(1, pbBytes(2, cond)) : Buffer.alloc(0), pbBytes(2, Buffer.concat([pbBytes(1, pbBytes(2, 'CARPAINT_BASE')), pbBytes(3, pbBytes(1, pbBytes(1, baseName)))]))]));
+        const pbcBuf = Buffer.concat([
+            pbColorEntry('CARPAINT_BASE_DEFAULT', [0.216, 0.251, 0.347, 8.0]),
+            pbColorEntry('CARPAINT_SPEC_DEFAULT', [1.313, 1.373, 1.4, 10.0]),
+            pbColorEntry('CARPAINT_REFL_DEFAULT', [0.823, 0.823, 0.823, 1.0]),
+            pbColorEntry('CARPAINT_BASE_marina_bay_blau_metallic_WC1K', [0.051, 0.172, 0.478, 3.0]),
+            pbColorEntry('CARPAINT_SPEC_marina_bay_blau_metallic_WC1K', [0.07, 0.372, 0.918, 9.5]),
+            pbColorEntry('CARPAINT_REFL_marina_bay_blau_metallic_WC1K', [0.69, 0.839, 0.988, 1.0]),
+            pbColorEntry('CARPAINT_BASE_sao_paulo_gelb_YC4H', [0.519, 0.565, 0.108, 1.0]),
+            pbColorEntry('CARPAINT_SPEC_sao_paulo_gelb_YC4H', [1.181, 1.2, 0.635, 11.5]),
+            pbColorEntry('CARPAINT_REFL_sao_paulo_gelb_YC4H', [1.195, 1.2, 1.051, 1.0]),
+        ]);
+        const pbvarBuf = Buffer.concat([
+            pbVarEntry('', 'CARPAINT_BASE_DEFAULT'),
+            pbVarEntry('va_VEHICLE_COLOUR_marina_bay_blau_metallic', 'CARPAINT_BASE_marina_bay_blau_metallic_WC1K'),
+            pbVarEntry('va_VEHICLE_COLOUR_sao_paulo_yellow', 'CARPAINT_BASE_sao_paulo_gelb_YC4H'),
+        ]);
+        const sceneBuf = Buffer.concat([
+            pbBytes(1, Buffer.concat([
+                pbBytes(1, 'root'),
+                pbBytes(10, Buffer.concat([pbBytes(1, '|KI_HIGH|F90LCI_HeroVehicle|pos|vehicle_hero_TrimA'), pbBytes(11, pbBytes(3, 'fx_f90_TRIMA_SG'))])),
+                pbBytes(10, Buffer.concat([pbBytes(1, '|KI_HIGH|F90LCI_HeroVehicle|pos|vehicle_hero_TrimL'), pbBytes(11, pbBytes(3, 'fx_f90_TRIML_SG'))])),
+            ])),
+            pbBytes(3, Buffer.concat([
+                pbBytes(1, Buffer.concat([
+                    pbBytes(1, 'fx_f90_TRIMA_SG'),
+                    pbBytes(4, Buffer.concat([pbBytes(2, 'tex_vehicle_welcome_f90_trimA7_bitmap'), pbBytes(9, 'tex0')])),
+                    pbBytes(4, Buffer.concat([pbBytes(2, 'tex_vehicle_welcome_f90_trimA_mask8_bitmap'), pbBytes(9, 'tex1')])),
+                ])),
+                pbBytes(1, Buffer.concat([
+                    pbBytes(1, 'fx_f90_TRIML_SG'),
+                    pbBytes(4, Buffer.concat([pbBytes(2, 'tex_vehicle_welcome_f90_trimA15_bitmap'), pbBytes(9, 'tex0')])),
+                    pbBytes(4, Buffer.concat([pbBytes(2, 'tex_vehicle_welcome_f90_trimA_mask16_bitmap'), pbBytes(9, 'tex1')])),
+                ])),
+            ])),
+        ]);
+        const parsedScene = CARPAINT.readSceneTrims(sceneBuf);
+        assert.deepStrictEqual(parsedScene.byTrim.L, { pic: 'tex_vehicle_welcome_f90_trimA15_bitmap', mask: 'tex_vehicle_welcome_f90_trimA_mask16_bitmap' });
+        assert.strictEqual(CARPAINT.resolveHeroTrim('bmwm-F90LCI', 'clubsport', ''), 'L');
+        assert.strictEqual(CARPAINT.resolveHeroTrim('G20', 'm_sportpaket', ''), 'E');
+
+        const fix2 = fs.mkdtempSync(path.join(os.tmpdir(), 'anh-cs-'));
+        const id7Dir = path.join(fix2, 'hmi', 'bmw', 'id7'), assetRoot = path.join(id7Dir, 'assetDB');
+        const vBmw2 = path.join(fix2, 'hmi', 'bmw', 'widgetasset', 'vehicles'), vM2 = path.join(fix2, 'hmi', 'bmwm', 'widgetasset', 'vehicles');
+        const bdir2 = path.join(fix2, 'boot', 'mgu18'), pdir2 = path.join(fix2, 'proc'), rdir2 = path.join(fix2, 'run'), sdir2 = path.join(fix2, 'st');
+        mkdirs(path.join(id7Dir, 'widget')); mkdirs(path.join(vM2, 'F90LCI', 'vehicle2D_big')); mkdirs(path.join(vM2, 'F90LCI', 'vehicle'));
+        mkdirs(bdir2); mkdirs(pdir2); mkdirs(rdir2);
+        const avDir = path.join(assetRoot, AV); mkdirs(avDir);
+        fs.writeFileSync(path.join(avDir, 'wbitmaps.res'), mk.data); fs.writeFileSync(path.join(avDir, 'wbitmaps.res.ids'), mk.ids);
+        fs.writeFileSync(path.join(id7Dir, 'widget', 'VEHICLE_CARPAINT_colorregistry.pbc'), pbcBuf);
+        fs.writeFileSync(path.join(id7Dir, 'widget', 'variantregistry_ext_car.pbvar'), pbvarBuf);
+
+        // W=64, H=32: left half = body (mask=[190,165,64,255]), right half = wheels/grille (mask.a=0: TrimA silver [190,195,200], TrimL gold [218,170,44])
+        const cw = 64, ch = 32;
+        const names = ['tex_vehicle_welcome_f90_trimA7_bitmap', 'tex_vehicle_welcome_f90_trimA15_bitmap', 'tex_vehicle_welcome_f90_trimA_mask8_bitmap', 'tex_vehicle_welcome_f90_trimA_mask16_bitmap'];
+        const baseB = makeBundle(names.map((nm) => ({ name: nm, w: cw, h: ch }))), parsedB = new W.Bundle(baseB.data, baseB.ids);
+        const makePic = (wheelRgb) => {
+            const px = Buffer.alloc(cw * ch * 4);
+            for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+                const i = (y * cw + x) * 4, c = x < 32 ? [40, 40, 40] : wheelRgb;
+                px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255;
+            }
+            return px;
+        };
+        const maskPx = Buffer.alloc(cw * ch * 4);
+        for (let y = 0; y < ch; y++) for (let x = 0; x < 32; x++) {
+            const i = (y * cw + x) * 4;
+            maskPx[i] = 190; maskPx[i + 1] = 165; maskPx[i + 2] = 64; maskPx[i + 3] = 255;
+        }
+        const f90CsData = parsedB.build({
+            tex_vehicle_welcome_f90_trimA7_bitmap: makePic([190, 195, 200]),
+            tex_vehicle_welcome_f90_trimA15_bitmap: makePic([218, 170, 44]),
+            tex_vehicle_welcome_f90_trimA_mask8_bitmap: maskPx,
+            tex_vehicle_welcome_f90_trimA_mask16_bitmap: maskPx,
+        });
+        fs.writeFileSync(path.join(vM2, 'F90LCI', 'vehicle2D_big', 'bitmaps.res'), f90CsData);
+        fs.writeFileSync(path.join(vM2, 'F90LCI', 'vehicle2D_big', 'bitmaps.res.ids'), baseB.ids);
+        fs.writeFileSync(path.join(vM2, 'F90LCI', 'vehicle2D_big', 'scene.pbx'), sceneBuf);
+        [['effects.res', mkFx], ['bitmaps.res', mkTx], ['meshes.res', mkMesh]].forEach((x) => {
+            fs.writeFileSync(path.join(vM2, 'F90LCI', 'vehicle', x[0]), x[1].data);
+            fs.writeFileSync(path.join(vM2, 'F90LCI', 'vehicle', x[0] + '.ids'), x[1].ids);
+        });
+        fs.writeFileSync(path.join(vM2, 'F90LCI', 'vehicle', 'meshes.res.attributes'), mkAttrs);
+        [[0, [20, 200, 40]], [1, [25, 90, 250]]].forEach((d) => {
+            const px = Buffer.alloc(1280 * 480 * 4);
+            for (let i = 0; i < px.length; i += 4) { px[i] = d[1][0]; px[i + 1] = d[1][1]; px[i + 2] = d[1][2]; px[i + 3] = 255; }
+            fs.writeFileSync(path.join(bdir2, 'eva_splash_0x0' + d[0] + '_0x0_0x02_noloop.png'), W.png(px, 1280, 480));
+        });
+        // Kombi opens TrimA.zip, while rawcodingdata codes F90LCI (0x38), Marina Bay Blue (0x1a), clubsport (0x20 -> TrimL)
+        mkdirs(path.join(pdir2, '100', 'fd'));
+        fs.writeFileSync(path.join(pdir2, '100', 'comm'), 'HmiMain3D\n');
+        fs.symlinkSync('/mnt/dataro/dataro1/hmi/common/kombi_model/F90LCI/TrimA.zip', path.join(pdir2, '100', 'fd', '6'));
+        const shm = Buffer.alloc(4144);
+        shm[0x28] = 0x09;
+        shm[0x2c + 0x3c] = 0x1a;                // va_VEHICLE_COLOUR_marina_bay_blau_metallic
+        shm[0x2c + 0x3d] = 0x20;                // va_TRIM_LINE_clubsport -> TrimL
+        shm[0x2c + 0x12d + 0x1b] = 0x38;        // va_BAUREIHE_F90LCI
+        const shmFile = path.join(fix2, 'rawcodingdata');
+        fs.writeFileSync(shmFile, shm);
+
+        Object.assign(svc.CFG, { dir: '', root: assetRoot, vehicles: vBmw2 + ':' + vM2, boot: path.join(fix2, 'boot'), variant: path.join(tmp, 'variant.env'), proc: pdir2, state: sdir2, run: rdir2, bootLog: '', rawCoding: shmFile, colorRegistry: '', variantRegistry: '', hmiLua: '' });
+        assert.ok(svc.load());
+        const infoCs = svc.activeVehicleInfo();
+        assert.strictEqual(infoCs.brand, 'bmwm');
+        assert.strictEqual(infoCs.trim, 'L', 'clubsport resolves to HeroVehicle TrimL despite Kombi TrimA.zip');
+        assert.strictEqual(infoCs.paint.name, 'marina_bay_blau_metallic_WC1K');
+        const t41 = fs.readFileSync(path.join(rdir2, 't41.rgba'));    // 144 x 72 top-down RGBA
+        const bodyIdx = (36 * 144 + 30) * 4, wheelIdx = (36 * 144 + 110) * 4;
+        assert.ok(t41[bodyIdx + 2] > 165 && t41[bodyIdx + 2] > t41[bodyIdx + 1] * 1.7 && t41[bodyIdx + 1] > t41[bodyIdx] * 1.4,
+            'car body shaded in Marina Bay Blue (' + [t41[bodyIdx], t41[bodyIdx + 1], t41[bodyIdx + 2]].join(',') + ')');
+        assert.ok(t41[wheelIdx] > 195 && t41[wheelIdx + 1] > 150 && t41[wheelIdx + 2] < 70,
+            'TrimL gold-bronze M5 CS wheels preserved (' + [t41[wheelIdx], t41[wheelIdx + 1], t41[wheelIdx + 2]].join(',') + ')');
+        // Flip coded colour to Sao Paulo Yellow (0x48 -> sao_paulo_gelb_YC4H via variantregistry_ext_car.pbvar)
+        shm[0x2c + 0x3c] = 0x48;
+        fs.writeFileSync(shmFile, shm);
+        assert.ok(svc.refreshActiveOriginals(), 'stock car thumbnail refreshes when rawcodingdata changes');
+        const t41Yellow = fs.readFileSync(path.join(rdir2, 't41.rgba'));
+        assert.ok(t41Yellow[bodyIdx] > 180 && t41Yellow[bodyIdx + 1] > 185 && t41Yellow[bodyIdx + 2] < 140,
+            'car body shaded in Sao Paulo Yellow (' + [t41Yellow[bodyIdx], t41Yellow[bodyIdx + 1], t41Yellow[bodyIdx + 2]].join(',') + ')');
+    }
+    ok('the car screen & stock detection: sharp 144w/52px thumbnails, 480x180 preview, and coded Marina Bay Blue + TrimL M5 CS stock rendering');
 
     console.log('\nall ' + n + ' passed');
     process.exit(0);

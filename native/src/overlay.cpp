@@ -18,13 +18,13 @@ inline double rad(double d) { return d * kPi / 180.0; }
 struct Color {
     uint8_t y, u, v;
 };
-/* BT.601 limited range, as the camera's pictures */
+/* BT.601 full range (0..255), matching Resampler::run() and the cluster renderer's atlas shader */
 Color rgb(int r, int g, int b)
 {
     Color c;
-    c.y = (uint8_t)std::min(235.0, std::max(16.0, 16 + 0.257 * r + 0.504 * g + 0.098 * b));
-    c.u = (uint8_t)std::min(240.0, std::max(16.0, 128 - 0.148 * r - 0.291 * g + 0.439 * b));
-    c.v = (uint8_t)std::min(240.0, std::max(16.0, 128 + 0.439 * r - 0.368 * g - 0.071 * b));
+    c.y = (uint8_t)std::min(255.0, std::max(0.0, 0.299 * r + 0.587 * g + 0.114 * b + 0.5));
+    c.u = (uint8_t)std::min(255.0, std::max(0.0, 128.0 - 0.168736 * r - 0.331264 * g + 0.5 * b + 0.5));
+    c.v = (uint8_t)std::min(255.0, std::max(0.0, 128.0 + 0.5 * r - 0.418688 * g - 0.081312 * b + 0.5));
     return c;
 }
 
@@ -355,7 +355,7 @@ void draw_fade(const Surface &s)
     const int band = s.w * 14 / 100;
     const Color black = rgb(0, 0, 0);
     for (int x = 0; x < band; x += 2) {
-        const int a = 235 * (band - x) / band;
+        const int a = 256 * (band - x) / band;
         for (int row = 0; row < s.h; row++) {
             span(s, row, x, x + 1, black, a);
             span(s, row, s.w - 2 - x, s.w - 1 - x, black, a);
@@ -374,8 +374,12 @@ void draw_card(const Surface &s, const Overlay &o)
         else
             snprintf(dist, sizeof dist, "%dm", o.meters >= 100 ? (int)(o.meters / 50 + 0.5) * 50 : (int)(o.meters / 10 + 0.5) * 10);
     }
+    char ex[4] = "";
+    if (o.kind == kRoundabout && o.exit >= 1 && o.exit <= 9)
+        snprintf(ex, sizeof ex, "%d", o.exit);
     const int icon = 14 * k, pad = 4 * k;
-    const int cw = pad + icon + (dist[0] ? pad + text_width(dist, k) : 0) + pad, ch = icon + 2 * pad;
+    const int exw = ex[0] ? 2 * k + text_width(ex, k) : 0;
+    const int cw = pad + icon + exw + (dist[0] ? pad + text_width(dist, k) : 0) + pad, ch = icon + 2 * pad;
     /* at the top, in the middle: the cluster's window has its corners cut off */
     const int x0 = (s.w - cw) / 2, y0 = 3 * k;
     rect(s, x0, y0, cw, ch, rgb(8, 12, 20), 190);
@@ -389,14 +393,20 @@ void draw_card(const Surface &s, const Overlay &o)
         rect(s, (int)(cx - 4 * u), (int)(cy - 6 * u), (int)(1.6 * u + 1), (int)(12 * u), white, 256);
         tri(s, {cx - 2.4 * u, cy - 6 * u}, {cx + 5 * u, cy - 3 * u}, {cx - 2.4 * u, cy}, white, 256);
     } else {
-        const double a = rad(o.kind == kStraight ? 0 : std::max(-150.0, std::min(150.0, o.angle)));
+        double card_angle = o.kind == kStraight ? 0 : std::max(-150.0, std::min(150.0, o.angle));
+        if (o.kind == kRoundabout && o.exit >= 1) {
+            /* exit direction by exit number: 1 -> turn to driving side, 2 -> straight, 3 -> opposite turn, 4+ -> U-turn */
+            const double side = o.angle < 0 ? -1.0 : 1.0;
+            card_angle = o.exit == 1 ? side * 90.0 : o.exit == 2 ? 0.0 : o.exit == 3 ? -side * 90.0 : -side * 150.0;
+        }
+        const double a = rad(card_angle);
         const double dx = sin(a), dy = -cos(a);                   /* the head's way */
         const double jx = cx - dx * 1.5 * u, jy = cy + 1.5 * u;   /* where the shaft bends */
         line(s, {jx, cy + 6 * u}, {jx, jy - 0.8 * u}, 2.4 * u, white, 256);
-        const double ex = jx + dx * 5.5 * u, ey = jy + dy * 5.5 * u;
-        line(s, {jx, jy}, {ex, ey}, 2.4 * u, white, 256);
+        const double ex_x = jx + dx * 5.5 * u, ey = jy + dy * 5.5 * u;
+        line(s, {jx, jy}, {ex_x, ey}, 2.4 * u, white, 256);
         const double px = -dy, py = dx;
-        tri(s, {ex + dx * 3.2 * u, ey + dy * 3.2 * u}, {ex + px * 3 * u, ey + py * 3 * u}, {ex - px * 3 * u, ey - py * 3 * u}, white, 256);
+        tri(s, {ex_x + dx * 3.2 * u, ey + dy * 3.2 * u}, {ex_x + px * 3 * u, ey + py * 3 * u}, {ex_x - px * 3 * u, ey - py * 3 * u}, white, 256);
         if (o.kind == kRoundabout) {
             /* a ring at the bend */
             for (int i = 0; i < 12; i++) {
@@ -405,8 +415,10 @@ void draw_card(const Surface &s, const Overlay &o)
             }
         }
     }
+    if (ex[0])
+        text(s, x0 + pad + icon + 2 * k, y0 + (ch - 7 * k) / 2, ex, k, rgb(130, 200, 255), 256);
     if (dist[0])
-        text(s, x0 + pad + icon + pad, y0 + (ch - 7 * k) / 2, dist, k, white, 256);
+        text(s, x0 + pad + icon + exw + pad, y0 + (ch - 7 * k) / 2, dist, k, white, 256);
     /* the road's name under the card, centred on it */
     if (o.label && o.label_w > 0 && o.label_h > 0 && o.label->size() >= (size_t)o.label_w * o.label_h && o.label_w <= s.w) {
         const int lw = o.label_w, lh = o.label_h;

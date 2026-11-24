@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.7.9';
+const VERSION = '0.8.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),
@@ -95,7 +95,8 @@ let procOf = null, procAt = 0;
  * could not read a folder given to its data folder's owner). null when not found.
  */
 function appProcess(app, now) {
-    if (procOf && procOf.root === app.root && now - procAt < 30000 && now >= procAt) return procOf.who;
+    if (procOf && procOf.root === app.root && now - procAt < 30000 && now >= procAt &&
+        (!procOf.who || fs.existsSync(path.join(CFG.proc, String(procOf.who.pid))))) return procOf.who;
     procAt = now;
     let who = null, pids = [];
     try { pids = fs.readdirSync(CFG.proc).filter((d) => /^\d+$/.test(d) && Number(d) !== process.pid); } catch (e) { pids = []; }
@@ -166,7 +167,7 @@ function configLine(config) {
     const out = { op: 'config' };
     const str = ['target', 'klass', 'left', 'right', 'all', 'front'];
     const num = ['w', 'h', 'x', 'y', 'fps', 'exclusive', 'contend', 'persist', 'left_rot', 'right_rot', 'all_rot',
-        'left_flip', 'right_flip', 'all_flip', 'left_sar', 'right_sar', 'all_sar', 'pair', 'pair_swap', 'left_round', 'right_round', 'front_rot', 'front_flip', 'front_sar', 'front_round'];
+        'left_flip', 'right_flip', 'all_flip', 'left_sar', 'right_sar', 'all_sar', 'pair', 'pair_swap', 'left_round', 'right_round', 'left_rim', 'right_rim', 'front_rot', 'front_flip', 'front_sar', 'front_round'];
     str.forEach((k) => { if (typeof config[k] === 'string' && /^[a-z0-9_,]{1,40}$/i.test(config[k])) out[k] = config[k]; });
     num.forEach((k) => { if (Number.isFinite(config[k])) out[k] = Math.round(config[k]); });
     return JSON.stringify(out);
@@ -179,7 +180,7 @@ function auxLine(aux) {
     out.side = aux.side;
     if (typeof aux.target === 'string' && /^[a-z]{1,12}$/.test(aux.target)) out.target = aux.target;
     if (typeof aux.crop === 'string' && /^[0-9,]{7,24}$/.test(aux.crop)) out.crop = aux.crop;
-    ['w', 'h', 'x', 'y', 'fps', 'rot', 'flip', 'sar', 'round'].forEach((k) => { if (Number.isFinite(aux[k])) out[k] = Math.round(aux[k]); });
+    ['w', 'h', 'x', 'y', 'fps', 'rot', 'flip', 'sar', 'round', 'rim'].forEach((k) => { if (Number.isFinite(aux[k])) out[k] = Math.round(aux[k]); });
     return JSON.stringify(out);
 }
 

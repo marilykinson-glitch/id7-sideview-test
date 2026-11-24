@@ -104,6 +104,41 @@ function createBlinker(opts) {
     };
 }
 
+/**
+ * Whether a VehicleInformation event (statusGearboxDrive or DataPowerTrain2) reports reverse gear:
+ * true (R), false (P / N / D / forward gear), or null (unfilled / unrelated).
+ */
+function decodeReverse(value) {
+    const sel = field(value, 'statusGearSelectionDrive');
+    if (sel !== undefined) {
+        if (sel === 'R' || sel === 2 || /^REVERSE/i.test(String(sel))) return true;
+        if (sel === 'N' || sel === 'P' || sel === 'NP' || /^_\d+$/.test(String(sel)) || (typeof sel === 'number' && sel >= 1 && sel <= 13)) return false;
+    }
+    const stage = field(value, 'statusActualStageDrive');
+    if (stage !== undefined) {
+        if (stage === 'R' || stage === 2 || /^REVERSE/i.test(String(stage))) return true;
+        if (stage === 'P' || stage === 'N' || stage === 'D' || stage === 1 || stage === 3 || stage === 4) return false;
+    }
+    const gear = field(value, 'statusActualGearDrive');
+    if (gear !== undefined) {
+        if (gear === 'R' || gear === 1) return true;
+        if (gear === 'N_OR_P' || /^G\d+$/.test(String(gear)) || (typeof gear === 'number' && gear >= 2 && gear <= 12)) return false;
+    }
+    return null;
+}
+
+/**
+ * Whether Vehicle.statusDayNightChangeOver reports night mode: true (NACHT / 2), false (TAG / 1),
+ * or null (KEINE_AENDERUNG / SIGNAL_UNGUELTIG / unrelated).
+ */
+function decodeNight(value) {
+    const raw = field(value, 'dayNightChangeOver');
+    const v = raw !== undefined ? raw : value;
+    if (v === 2 || v === 'NACHT' || v === 'NIGHT') return true;
+    if (v === 1 || v === 'TAG' || v === 'DAY') return false;
+    return null;
+}
+
 /* ---------------- the camera unit ---------------- */
 
 // CurrentState.application of a parking view (TOPREARVIEW 1, SIDEVIEW 2, RFK 3, OFFROAD 20, REMOTE360 60):
@@ -245,7 +280,7 @@ function viewConfig(settings, targets, side, view, dual) {
     y -= y % 2;
     const fps = [8, 10, 12, 15].indexOf(Number(s.fps)) >= 0 ? Number(s.fps) : 12;
     const flip = s.mirror === 'on' ? 1 : 0;
-    return {
+    const out = {
         op: 'config', target, w, h, x, y, fps, klass: 'overlay', exclusive: 1, contend: 1, persist: s.layer === 'make' ? 0 : 1,
         left, left_rot: rot('rotLeft'), left_flip: flip, left_sar: stretch, left_round: round ? 1 : 0,
         right, right_rot: rot('rotRight'), right_flip: flip, right_sar: stretch, right_round: round ? 1 : 0,
@@ -255,6 +290,12 @@ function viewConfig(settings, targets, side, view, dual) {
         // them one above the other, and the quarters above are of that picture
         pair: single ? 0 : 1, pair_swap: s.pairSwap === 'on' ? 1 : 0,
     };
+    if (s.night !== undefined && s.night !== null) {
+        const rim = s.night && s.nightRim !== 'bright' ? 95 : 200;
+        out.left_rim = rim;
+        out.right_rim = rim;
+    }
+    return out;
 }
 
 const FRONT_CROP = '0,0,500,500';      // the front camera: the upper left quarter of the four-camera picture
@@ -385,8 +426,10 @@ function auxConfig(s, targets, side) {
     if (side !== 'left' && side !== 'right') return null;
     // (cut from the four-camera picture, whatever the mode setting: see plan)
     const c = viewConfig(Object.assign({}, s, { mode: 'mosaic' }), targets, side, side);
-    return { side, target: c.target, w: c.w, h: c.h, x: c.x, y: c.y, fps: Math.min(c.fps, 10), crop: c[side], rot: c[side + '_rot'],
+    const out = { side, target: c.target, w: c.w, h: c.h, x: c.x, y: c.y, fps: Math.min(c.fps, 10), crop: c[side], rot: c[side + '_rot'],
         flip: c[side + '_flip'], sar: c[side + '_sar'], round: c[side + '_round'] };
+    if (s && s.night !== undefined && s.night !== null) out.rim = c[side + '_rim'];
+    return out;
 }
 
 function arConfig(s, mode, speed) {
@@ -404,6 +447,7 @@ function arConfig(s, mode, speed) {
 function plan(i) {
     const none = (why, want) => ({ view: 'none', why, want: want === undefined ? null : want });
     if (!i.enabled && !i.test) return none('Đang tắt');
+    if (i.reverse && !i.test) return none('Xe đang cài số lùi', null);
     // the speed limit setting is for the mirror cameras: above it a turn signal is as if it were off (the front
     // camera, the route, stay as they are)
     const fast = !i.test && i.maxSpeed && i.speed !== null && i.speed !== undefined && i.speed > i.maxSpeed;
@@ -467,4 +511,4 @@ function plan(i) {
     return dualWhy ? { view: side, why: '', want, dualWhy } : { view: side, why: '', want };
 }
 
-module.exports = { decode, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES, frontCrop, auxConfig, arWanted, arConfig, calib, CALIB, AR_NEAR_M, arNearM };
+module.exports = { decode, decodeReverse, decodeNight, field, createBlinker, camState, parseTargets, zoomCrop, viewConfig, frontConfig, plan, CONTROL, HEIGHTS, GAUGE, FRONT_SIZES, frontCrop, auxConfig, arWanted, arConfig, calib, CALIB, AR_NEAR_M, arNearM };

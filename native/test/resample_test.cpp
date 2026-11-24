@@ -190,6 +190,13 @@ int main()
         CHECK(Y(a, 384, 192, 3) == 200 && U(a, 384, 384, 192, 3) == 128);                                        /* the rim, top */
         CHECK(Y(a, 384, 380, 192) == 200 && Y(a, 384, 3, 192) == 200 && Y(a, 384, 192, 380) == 200);
         CHECK(Y(a, 384, 192, 12) == 90);                                                                         /* past the rim */
+        /* dimmed night rim: rim = 95 changes the rebuild signature and dims the ring to Y = 95 */
+        ViewSpec night = v;
+        night.rim = 95;
+        CHECK(!r.matches(480, 480, night, 384, 384));
+        CHECK(r.build(480, 480, night, 384, 384));
+        r.run(p.planes(true), a.data());
+        CHECK(Y(a, 384, 192, 3) == 95 && Y(a, 384, 380, 192) == 95 && U(a, 384, 384, 192, 3) == 128);
         ViewSpec sq;
         CHECK(!r.matches(480, 480, sq, 384, 384));                                                               /* round is part of the view */
         CHECK(r.build(480, 480, sq, 384, 384));

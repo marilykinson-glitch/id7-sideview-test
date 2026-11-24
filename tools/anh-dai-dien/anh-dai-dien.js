@@ -48,8 +48,9 @@ const W = require('./wbm');
 const BOOT = require('./boot');
 const { Res } = require('./res');
 const CAR3D = require('./car3d');
+const CARPAINT = require('./carpaint');
 
-const VERSION = '0.11.0';
+const VERSION = '0.12.0';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -59,6 +60,10 @@ const CFG = {
     vehicles: env('AVATAR_VEHICLES', '/mnt/dataro/dataro1/hmi/bmw/widgetasset/vehicles:/mnt/dataro/dataro1/hmi/bmwm/widgetasset/vehicles:/mnt/dataro/dataro1/hmi/mini/widgetasset/vehicles'),
     boot: env('AVATAR_BOOT', '/mnt/dataro/dataro1/ent/animationplayer'),   // mgu<gen>/eva_splash_*.png, eva_hi_*.h264, eva_bye_*.h264
     bootLog: env('AVATAR_BOOT_LOG', ''),                                   // tests: simulated animationplayer log file
+    rawCoding: env('AVATAR_RAW_CODING', ''),                               // /dev/shm/rawcodingdata override (tests)
+    colorRegistry: env('AVATAR_COLOR_REGISTRY', ''),                       // VEHICLE_CARPAINT_colorregistry.pbc override
+    variantRegistry: env('AVATAR_VARIANT_REGISTRY', ''),                   // variantregistry_ext_car.pbvar override
+    hmiLua: env('AVATAR_HMI_LUA', ''),                                     // hmi_script.lua override
     route: env('AVATAR_ROUTE', '/proc/net/route'),
     nft: env('AVATAR_NFT', 'nft'),
     fwMs: Number(env('AVATAR_FW_MS', 30000)),
@@ -213,19 +218,9 @@ function premultiply(rgba) {
     for (let i = 0; i < out.length; i += 4) { const a = out[i + 3]; if (a < 255) { out[i] = out[i] * a / 255; out[i + 1] = out[i + 1] * a / 255; out[i + 2] = out[i + 2] * a / 255; } }
     return out;
 }
-/** The car as the head unit would paint it in white (the phone page's look at the original), not multiplied. */
-function painted(pic, mask) {
-    const out = Buffer.alloc(pic.length);
-    for (let i = 0; i < pic.length; i += 4) {
-        const ma = mask[i + 3] / 255, r = mask[i] / 255, g = mask[i + 1] / 255, b = mask[i + 2] / 255;
-        const paint = 0.85 * r + 0.35 * Math.pow(g, 16 / 12.5) + 0.25 * b * b, a = pic[i + 3];
-        for (let c = 0; c < 3; c++) {
-            const v = Math.sqrt(Math.min(1, (pic[i + c] / 255) * (pic[i + c] / 255) * (1 - ma) + paint * ma)) * 255;
-            out[i + c] = a ? Math.min(255, v * 255 / a) : 0;
-        }
-        out[i + 3] = a;
-    }
-    return out;
+/** The car shaded with BMW's 2D carpaint formula and the head unit's coded paint (or white when uncoded/absent), un-premultiplied. */
+function painted(pic, mask, paint) {
+    return CARPAINT.shadeCarpaint(pic, mask, paint || activeVehicleInfo().paint);
 }
 /** An opaque photo gets soft edges, so that it does not sit on the menu as a hard rectangle. */
 function feather(rgba, w, h) {
@@ -267,10 +262,23 @@ function loadCar() {
         const id = 'car-' + model + '-' + sub.slice(10);
         const b = bundle(id, dir, id + '.res.orig', 'bitmaps.res');
         const p = check(b, []);
-        // a mask is named after its picture: trimA / trimA_mask, or numbered one after it: trimA7 / trimA_mask8
-        const isMask = (k) => /_mask\d*_bitmap$/.test(k);
+        const scene = CARPAINT.readSceneTrims(path.join(dir, 'scene.pbx'));
+        // scene.pbx binds each vehicle_hero_Trim<X> to its exact tex0 (picture) and tex1 (mask); fall back to naming convention
+        const isMask = (k) => (scene && scene.picOfMask[k] ? true : /_mask\d*_bitmap$/.test(k));
         const num = (k) => { const m = /(\d+)_bitmap$/.exec(k); return m ? Number(m[1]) : -1; };
-        const picOf = (mk, pics) => { const plain = mk.replace(/_mask(\d*)_bitmap$/, '_bitmap'); return pics.filter((x) => x.key === plain)[0] || pics.filter((x) => num(x.key) >= 0 && num(x.key) === num(mk) - 1 && x.key.replace(/\d+_bitmap$/, '') === mk.replace(/_mask\d+_bitmap$/, ''))[0]; };
+        const trimOf = (k) => {
+            if (scene && scene.trimOfPic[k]) return scene.trimOfPic[k];
+            const m = /trim([A-Za-z]+)\d*_bitmap$/i.exec(k);
+            return m ? m[1].toUpperCase() : '';
+        };
+        const picOf = (mk, pics) => {
+            if (scene && scene.picOfMask[mk]) {
+                const hit = pics.filter((x) => x.key === scene.picOfMask[mk])[0];
+                if (hit) return hit;
+            }
+            const plain = mk.replace(/_mask(\d*)_bitmap$/, '_bitmap');
+            return pics.filter((x) => x.key === plain)[0] || pics.filter((x) => num(x.key) >= 0 && num(x.key) === num(mk) - 1 && x.key.replace(/\d+_bitmap$/, '') === mk.replace(/_mask\d+_bitmap$/, ''))[0];
+        };
         let okay = !!p;
         if (p) {
             const masks = p.entries.filter((e) => isMask(e.key)), pics = p.entries.filter((e) => !isMask(e.key));
@@ -278,7 +286,7 @@ function loadCar() {
             if (!pics.length || masks.length !== pics.length || p.entries.some((e) => e.w !== e0.w || e.h !== e0.h) || masks.some((e) => !picOf(e.key, pics))) { okay = false; b.error = 'other pictures than a picture and a mask per trim'; }
             else if (backup(b, p)) {
                 pics.sort((x, y) => (num(x.key) - num(y.key)) || (x.key < y.key ? -1 : 1));
-                pics.forEach((e) => targets.push({ b, key: e.key, w: e.w, h: e.h }));
+                pics.forEach((e) => targets.push({ b, key: e.key, w: e.w, h: e.h, trim: trimOf(e.key) }));
                 masks.forEach((e) => { const pr = picOf(e.key, pics); targets.push({ b, key: e.key, w: e.w, h: e.h, zero: true, pair: pr ? pr.key : '' }); });
                 if (!first) first = p;
             } else okay = false;
@@ -442,19 +450,26 @@ function carThumb(rgba) {
             const allow = nonF40.length ? nonF40 : info.dirs2d;
             mine = all.filter((x) => allow.indexOf(x.b.dir) >= 0);
         }
-        const trimRe = info.trim ? new RegExp('trim' + info.trim + '(?:\\d|_)', 'i') : null;
+        if (!mine.length) mine = all.slice();
+        const wantTrim = info.trim || 'A';
+        const trimRank = (x) => (x.trim === wantTrim ? 0 : x.trim === 'A' ? 1 : 2);
         const num = (k) => { const m = /(\d+)_bitmap$/.exec(k); return m ? Number(m[1]) : -1; };
         mine.sort((x, y) => {
             const bx = info.bases3d.indexOf(path.dirname(x.b.dir)), by = info.bases3d.indexOf(path.dirname(y.b.dir));
             if (bx !== by) return (bx < 0 ? 999 : bx) - (by < 0 ? 999 : by);
-            if (path.dirname(x.b.dir) === path.dirname(y.b.dir) && y.w !== x.w) return y.w - x.w;
-            if (trimRe) { const tx = trimRe.test(x.key) ? 0 : 1, ty = trimRe.test(y.key) ? 0 : 1; if (tx !== ty) return tx - ty; }
+            if (path.dirname(x.b.dir) === path.dirname(y.b.dir)) {
+                const tx = trimRank(x), ty = trimRank(y);
+                if (tx !== ty) return tx - ty;
+                if (y.w !== x.w) return y.w - x.w;
+            }
+            const tx = trimRank(x), ty = trimRank(y);
+            if (tx !== ty) return tx - ty;
             return (y.w - x.w) || (num(x.key) - num(y.key)) || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0);
         });
         if (mine.length) {
             const t = mine[0], mk = S.hero.targets.filter((x) => x.b === t.b && x.zero && x.pair === t.key)[0];
             const src = readOriginal(t.b);
-            const pic = painted(src.rgba(t.key), mk ? src.rgba(mk.key) : Buffer.alloc(t.w * t.h * 4));
+            const pic = painted(src.rgba(t.key), mk ? src.rgba(mk.key) : Buffer.alloc(t.w * t.h * 4), info.paint);
             return thumb(CAR, W.flipRows(pic, t.w, t.h), t.w, t.h);
         }
     } catch (e) { /* the empty picture below */ }
@@ -1077,12 +1092,25 @@ function openVehicles() {
     return Object.keys(out).sort().map((dir) => ({ dir, by: out[dir] }));
 }
 
+function hmiId7File(brand, rel, explicit) {
+    if (explicit) return explicit;
+    const bmwId7 = path.dirname(CFG.root);                                     // .../hmi/bmw/id7
+    const hmiBase = path.dirname(path.dirname(bmwId7));                        // .../hmi
+    if (brand && brand !== 'bmw') {
+        const cand = path.join(hmiBase, brand, 'id7', rel);
+        if (fs.existsSync(cand)) return cand;
+    }
+    const def = path.join(bmwId7, rel);
+    return fs.existsSync(def) ? def : '';
+}
+
 /**
- * Active vehicle model, brand and Kombi trim opened by HmiMain3D:
- *   bases3d: [<vehicles>/<model>] where <model>/vehicle is open (non-F40 and bmwm/mini prioritised)
+ * Active vehicle model, brand, HeroVehicle trim and coded carpaint:
+ *   bases3d: [<vehicles>/<model>] where <model>/vehicle is open (or coded BAUREIHE before HmiMain3D finishes starting)
  *   dirs2d:  [<vehicles>/<model>/vehicle2D_*] open in HmiMain3D
  *   brand:   'bmwm' | 'mini' | 'bmw'
- *   trim:    'A'..'E' from /kombi_model/<model>/Trim<X>.zip when open, else ''
+ *   trim:    'A'..'L' resolved from coded TRIM_LINE + hmi_script.lua (e.g. clubsport -> 'L' on F90LCI), else Kombi Trim<X>
+ *   paint:   { name, base, spec, refl } resolved from coded VEHICLE_COLOUR + VEHICLE_CARPAINT_colorregistry.pbc
  */
 function activeVehicleInfo() {
     const open = openVehicles().filter((o) => o.by === 'HmiMain3D').map((o) => o.dir);
@@ -1095,39 +1123,54 @@ function activeVehicleInfo() {
         }
         return 'bmw';
     };
-    const seen3d = {};
-    const bases3d = open.filter((d) => path.basename(d) === 'vehicle').map((d) => path.dirname(d)).filter((b) => { if (seen3d[b]) return false; seen3d[b] = 1; return true; });
-    bases3d.sort((a, b) => {
+    const sortBases = (list) => list.sort((a, b) => {
         const fa = path.basename(a) === 'F40' ? 1 : 0, fb = path.basename(b) === 'F40' ? 1 : 0;
         if (fa !== fb) return fa - fb;
         const ba = brandOfBase(a) === 'bmw' ? 1 : 0, bb = brandOfBase(b) === 'bmw' ? 1 : 0;
         return (ba - bb) || (a < b ? -1 : a > b ? 1 : 0);
     });
+    const seen3d = {};
+    const bases3d = sortBases(open.filter((d) => path.basename(d) === 'vehicle').map((d) => path.dirname(d)).filter((b) => { if (seen3d[b]) return false; seen3d[b] = 1; return true; }));
     const dirs2d = open.filter((d) => /^vehicle2D_/.test(path.basename(d)));
-    let trim = '';
+    const rawCodingPath = CFG.rawCoding || (CFG.mount && CFG.proc === '/proc' ? '/dev/shm/rawcodingdata' : '');
+    const coding = CARPAINT.readRawCoding(rawCodingPath);
+    if (!bases3d.length && coding.valid && coding.baureihe) {
+        const codedBases = sortBases(vehicleDirs().filter((v) => path.basename(v.base) === coding.baureihe).map((v) => v.base));
+        codedBases.forEach((b) => { if (!seen3d[b]) { seen3d[b] = 1; bases3d.push(b); } });
+    }
+    let kombiTrim = '';
     try {
         const pids = fs.readdirSync(CFG.proc).filter((d) => /^\d+$/.test(d));
         pids.forEach((pid) => {
-            if (trim) return;
+            if (kombiTrim) return;
             let comm = '';
             try { comm = fs.readFileSync(path.join(CFG.proc, pid, 'comm'), 'utf8').trim(); } catch (e) { return; }
             if (comm !== 'HmiMain3D') return;
             let fds = [];
             try { fds = fs.readdirSync(path.join(CFG.proc, pid, 'fd')); } catch (e) { return; }
             fds.forEach((fd) => {
-                if (trim) return;
+                if (kombiTrim) return;
                 try {
                     const to = fs.readlinkSync(path.join(CFG.proc, pid, 'fd', fd));
                     const m = /\/kombi_model\/[^/]+\/Trim([A-Za-z0-9]+)\./i.exec(to);
-                    if (m) trim = m[1].toUpperCase();
+                    if (m) kombiTrim = m[1].toUpperCase();
                 } catch (e) { /* closed */ }
             });
         });
     } catch (e) { /* no /proc */ }
     const primary = bases3d[0] || dirs2d.map((d) => path.dirname(d)).filter((b) => path.basename(b) !== 'F40')[0] || (dirs2d[0] ? path.dirname(dirs2d[0]) : '');
+    const modelName = primary ? path.basename(primary) : (coding.valid ? coding.baureihe : '');
     const brand = primary ? brandOfBase(primary) : 'bmw';
-    const sig = bases3d.join(',') + '|' + dirs2d.join(',') + '|' + trim + '|' + brand;
-    return { bases3d, dirs2d, brand, trim, sig };
+    let trim = kombiTrim;
+    if (coding.valid && modelName) {
+        const heroTrim = CARPAINT.resolveHeroTrim(modelName, coding.trimLine, hmiId7File(brand, 'script/hmi_script.lua', CFG.hmiLua));
+        if (coding.trimCode !== 0 || !kombiTrim) trim = heroTrim;
+    }
+    const colorReg = hmiId7File(brand, 'widget/VEHICLE_CARPAINT_colorregistry.pbc', CFG.colorRegistry);
+    const variantReg = hmiId7File(brand, 'widget/variantregistry_ext_car.pbvar', CFG.variantRegistry);
+    const paint = CARPAINT.resolvePaint(coding.valid ? coding.colour : '', colorReg, variantReg);
+    const sig = bases3d.join(',') + '|' + dirs2d.join(',') + '|' + trim + '|' + brand + '|' + paint.name + '|' + (coding.valid ? coding.colour + ':' + coding.trimLine + ':' + coding.baureihe : '');
+    return { bases3d, dirs2d, brand, trim, kombiTrim, modelName, colour: coding.valid ? coding.colour : '', trimLine: coding.valid ? coding.trimLine : '', baureihe: coding.valid ? coding.baureihe : '', paint, sig };
 }
 
 /** Refresh stock thumbnails once HmiMain3D finishes booting and opens the car's actual vehicle model. */
@@ -1156,6 +1199,8 @@ function diagFiles() {
         add('bundles: ' + Object.keys(S.bundles).map((id) => id + (S.bundles[id].usable ? '' : ' (not usable: ' + S.bundles[id].error + ')') + (Object.keys(S.bundles[id].changed).length ? ' changed' : '')).join('; '));
         const start = S.slots[START];
         add('start-up files: ' + (start ? start.files.map((f) => f.sub + '/' + f.name + ' ' + f.w + 'x' + f.h + (f.frames ? ' ' + f.frames + 'f' : '')).join('; ') : 'none'));
+        const info = activeVehicleInfo();
+        add('active vehicle: ' + JSON.stringify({ model: info.modelName, brand: info.brand, trim: info.trim, kombiTrim: info.kombiTrim, colour: info.colour, trimLine: info.trimLine, baureihe: info.baureihe, paint: info.paint ? info.paint.name : '' }));
     } catch (e) { add('state: ' + e.message); }
     let open = [];
     try { open = openVehicles(); } catch (e) { add('open: ' + e.message); }
@@ -1189,7 +1234,9 @@ function diagFiles() {
         try { fs.readdirSync(o.dir).forEach((f) => put('vehicles/' + rel + '/' + f, path.join(o.dir, f))); } catch (e) { /* gone */ }
         if (path.basename(o.dir) === 'vehicle') CAR_FILES.forEach((f) => put('vehicles/' + rel + '.orig/' + f, carBackup({ model }, f)));
     });
-    Object.keys(S.bundles).filter((id) => /^car-/.test(id)).forEach((id) => { const b = S.bundles[id]; put('2d/' + id + '/bitmaps.res', path.join(b.dir, b.file)); put('2d/' + id + '/bitmaps.res.ids', path.join(b.dir, b.file + '.ids')); put('2d/' + id + '/original.res', b.bk); });
+    Object.keys(S.bundles).filter((id) => /^car-/.test(id)).forEach((id) => { const b = S.bundles[id]; put('2d/' + id + '/bitmaps.res', path.join(b.dir, b.file)); put('2d/' + id + '/bitmaps.res.ids', path.join(b.dir, b.file + '.ids')); put('2d/' + id + '/scene.pbx', path.join(b.dir, 'scene.pbx')); put('2d/' + id + '/original.res', b.bk); });
+    const rawCodingPath = CFG.rawCoding || (CFG.mount && CFG.proc === '/proc' ? '/dev/shm/rawcodingdata' : '');
+    if (rawCodingPath) put('coding/rawcodingdata', rawCodingPath);
     put('log/anh-dai-dien.log', path.join(CFG.state, 'anh-dai-dien.log')); put('log/anh-dai-dien.log.1', path.join(CFG.state, 'anh-dai-dien.log.1'));
     add(''); add('== files in this archive'); files.forEach((f) => add(f.name + ' ' + f.size));
     return [{ name: 'report.txt', buf: Buffer.from(lines.join('\n') + '\n', 'utf8') }].concat(files);
@@ -1272,4 +1319,4 @@ if (require.main === module) {
     else start();
 }
 
-module.exports = { CFG, S, reboot, openVehicles, activeVehicleInfo, refreshActiveOriginals, diagFiles, tar, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };
+module.exports = { CFG, S, reboot, openVehicles, activeVehicleInfo, refreshActiveOriginals, diagFiles, tar, addresses, fwEnsure, fwClose, MORE, MORE0, START, CAR, CAR_W, premultiply, painted, feather, load, setPicture, restore, start, handle, pollCommands, writeStatus, key };

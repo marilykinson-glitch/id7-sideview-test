@@ -51,8 +51,6 @@ const RangeTables &range_tables()
 
 inline int even_down(int v) { return v & ~1; }
 
-const unsigned kRimLuma = 200;   /* the round view's rim */
-
 }  // namespace
 
 /* The taps of one plane: its source rect (px0, py0, psw, psh) onto a content
@@ -196,10 +194,11 @@ void Resampler::run(const Planes &p, uint8_t *atlas) const
                 if (stretch)
                     v = rt.y[v];
                 if (!y_mask_.empty()) {
-                    /* the rim (a light grey) over the picture, then black outside the disc */
+                    /* the rim (a light grey, dimmed at night) over the picture, then black outside the disc */
                     const size_t m = (size_t)j * dw_ + i;
                     const unsigned k = y_rim_[m], a = y_mask_[m];
-                    v = (uint8_t)(((v * (255 - k) + kRimLuma * k) / 255) * a / 255);
+                    const unsigned rl = view_.rim < 0 ? 0u : view_.rim > 255 ? 255u : (unsigned)view_.rim;
+                    v = (uint8_t)(((v * (255 - k) + rl * k) / 255) * a / 255);
                 }
                 o[i] = v;
             }

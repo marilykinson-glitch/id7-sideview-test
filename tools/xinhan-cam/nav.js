@@ -285,7 +285,7 @@ async function read() {
                 say({ ev: 'proxy', iface: iface.name, inst, ok: true, note: 'method ' + qm });
                 // the request's shape is tried out: as the unit's own values came in (a union keyed or typed), then the others
                 const tries = [['keyed', false], ['typed', false], ['keyed', true], ['typed', true]];
-                let good = -1, at = 0, busy = false, fails = 0, lastErr = '', lastReply = '';
+                let good = -1, at = 0, busy = false, fails = 0, errStreak = 0, lastErr = '', lastReply = '';
                 setInterval(() => {
                     if (busy) return;
                     // the car's own guidance is on: its field has the turn
@@ -298,6 +298,8 @@ async function read() {
                     try { done = Promise.resolve(p.callMethod(qm, queryRequest(tries[k][0], tries[k][1]), 3000)); } catch (e) { done = Promise.reject(e); }
                     within(done, 4000, qm).then((r) => {
                         busy = false;
+                        fails = 0;
+                        errStreak = 0;
                         if (good < 0) { good = k; say({ ev: 'note', text: 'event list: request shape ' + tries[k].join(' ') + ' answered' }); }
                         values.events = r;
                         // (the unit numbers every answer anew, uid: an answer that differs in that alone is the same one)
@@ -309,6 +311,12 @@ async function read() {
                         const msg = cut(e && e.message || e, 200);
                         if (good < 0) at++;
                         else if (++fails > 20) { good = -1; fails = 0; }
+                        // phone guidance ended / CarPlay disconnected and queryContent keeps failing: drop the stale turn
+                        if (++errStreak >= 3 && values.events) {
+                            values.events = null;
+                            lastReply = '';
+                            changed();
+                        }
                         if (msg !== lastErr) { lastErr = msg; say({ ev: 'note', text: 'event list ' + tries[k].join(' ') + ': ' + msg }); }
                     });
                 }, 1000);

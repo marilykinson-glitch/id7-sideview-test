@@ -23,6 +23,19 @@ setTimeout(() => {
     const last = navs[navs.length - 1] || {};
     check(last.active === true && last.kind === 'turn' && last.angle === -90 && last.meters === 120 && last.provider === 'ANDROID_AUTO', 'the phone\'s turn: left in 120 m, from Android Auto: ' + JSON.stringify(last));
     check(ev.filter((e) => e.ev === 'value' && e.name === 'queryContent').length === 1, 'an unchanged reply is reported once');
-    console.log(fail.length ? 'nav_read_test: ' + fail.length + ' FAILED' : 'nav_read_test: all ok');
-    process.exit(fail.length ? 1 : 0);
+    // second run: phone guidance stops and queryContent rejects 3 times -> stale turn is cleared
+    const env2 = Object.assign({}, env, { FAKE_STOP_AFTER: '1' });
+    const p2 = cp.spawn(process.execPath, [path.join(__dirname, '..', 'tools', 'xinhan-cam', 'nav.js'), 'read'], { env: env2, stdio: ['ignore', 'pipe', 'inherit'] });
+    let out2 = '';
+    p2.stdout.on('data', (d) => { out2 += d; });
+    setTimeout(() => {
+        p2.kill();
+        const ev2 = out2.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+        const navs2 = ev2.filter((e) => e.ev === 'nav').map((e) => e.nav);
+        const sawTurn = navs2.some((n) => n.active === true && n.kind === 'turn');
+        const cleared = (navs2[navs2.length - 1] || {}).active === false && (navs2[navs2.length - 1] || {}).kind === null;
+        check(sawTurn && cleared, 'when queryContent fails 3 times after CarPlay stops, the stale turn is cleared: ' + JSON.stringify(navs2[navs2.length - 1]));
+        console.log(fail.length ? 'nav_read_test: ' + fail.length + ' FAILED' : 'nav_read_test: all ok');
+        process.exit(fail.length ? 1 : 0);
+    }, 6500);
 }, 7000);
