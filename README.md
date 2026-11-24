@@ -25,7 +25,9 @@ Xe không có Connected Drive thì không đổi được ảnh đại diện c�
 
 **Đã kiểm tra gì:** trên máy, với bản sao các gói thật của một đầu G20 trên bench (ảnh đại diện 3 gói, bìa Bluetooth, người gọi, hình xe G20 to và nhỏ, ảnh và video khởi động 1440x540; video làm ra được ffmpeg giải mã đúng ảnh): đọc, ghi lại giống từng byte, đổi hình, khôi phục về đúng file gốc. Trên xe: một gói ảnh đại diện ghi tay vẫn còn nguyên sau khi khởi động lại (xe không tự khôi phục). **Chưa kiểm tra trên xe:** app và trợ thủ chạy thật, bộ giải mã của đầu xe có phát được video đứng hình không (nếu không: khôi phục từ app), điện thoại nối vào cổng 8137 (tường lửa), chiều ảnh khi hiện, hình chiếc xe 3D (shader đã sửa biên dịch được và vẽ đúng trong một trình biên dịch GLSL thật trên máy, nhưng chưa biết đầu xe có dùng bản shader đã biên dịch sẵn không, tấm bóng đổ có được vẽ ở mọi màn hình không), các gói hình mặc định ngoài hai gói kể trên (cùng tên hình và cỡ thì dùng, khác thì bỏ qua).
 
-## Thời tiết 0.7.18 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.5.0)
+## Thời tiết 0.7.19 (app thứ ba trong nguồn này; trợ thủ `thoi-tiet` 0.5.0)
+
+Bản 0.7.19 hiển thị luôn nhiệt độ thấp của 3 ngày tới trên widget lớn màn hình chính bằng cách ghép lên dòng tiêu đề cột rộng (`TextDayliDetail1..3`: `Mai · 25°`, `T4 · 24°`, `CN · 25°`) và giữ nhiệt độ cao chữ to ở dưới (`TextTempDayDetail1..3`: `33°`), tránh bị khuôn gốc `LT_Table_OnlineApps_WeatherWidget` của BMW cắt chữ.
 
 Bản 0.7.18 và trợ thủ 0.5.0 đọc trực tiếp tọa độ GPS / định vị bản đồ của xe qua SOME/IP (`Positioning.currentLocation` vẫn có vị trí khi xe đậu dưới hầm, dự phòng `rawPositionData` và `GnssPositioning`), tra ngược tên tỉnh/thành tiếng Việt có dấu, tự cập nhật khi xe di chuyển và xoá bộ nhớ đệm vị trí mạng mỗi lần bấm **Làm mới** (khắc phục lỗi mạng di động CGNAT ở TP.HCM bị `ipwho.is` định vị nhầm sang `Long Thanh`).
 

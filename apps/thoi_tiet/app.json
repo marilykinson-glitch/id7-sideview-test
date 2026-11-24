@@ -2,7 +2,7 @@
   "id": "thoi_tiet",
   "title": "Thời tiết",
   "description": "Thời tiết ngay trên màn hình xe, kiểu ứng dụng Thời tiết của BMW Connected Drive nhưng nhiều hơn: nhiệt độ, gió, độ ẩm, khả năng mưa, UV, chất lượng không khí (AQI), tầm nhìn, áp suất, giờ mặt trời mọc/lặn; dự báo theo giờ (biểu tượng hoặc biểu đồ), cung mặt trời, 5 ngày tới; hiệu ứng chuyển động theo thời tiết; lời nhắc cho người lái; chế độ Lái xe chữ to. Cài đặt để bật tắt từng thông số. Chọn tối đa 6 địa điểm: 46 thành phố trong nước, 18 nước ngoài, hoặc tìm bất kỳ nơi nào trên thế giới bằng điện thoại (quét mã QR). Xe không cần Connected Drive, chỉ cần có mạng. Dữ liệu từ Open-Meteo. Cần trợ thủ thoi-tiet (tự cài kèm).",
-  "version": "0.7.18",
+  "version": "0.7.19",
   "vendor": "custom",
   "loggingId": "OATT",
   "signals": {},

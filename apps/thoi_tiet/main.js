@@ -197,7 +197,8 @@ mgu.run({
                     T('TextTempDayDetail' + n, ''); T('TextTempDayDetailUnit' + n, '');
                     return;
                 }
-                T('TextDayliDetail' + n, i === 0 ? 'Mai' : (dy.dow === 0 ? 'CN' : 'T' + (dy.dow + 1)));
+                const dayLabel = i === 0 ? 'Mai' : (dy.dow === 0 ? 'CN' : typeof dy.dow === 'number' && isFinite(dy.dow) ? 'T' + (dy.dow + 1) : ''), lo = Wx.deg(dy.lo);
+                T('TextDayliDetail' + n, lo === '–' ? dayLabel : (dayLabel ? dayLabel + ' · ' + lo : lo));
                 A('IconDayliDetail' + n, Wx.describe(dy.code).icon, true, 44);
                 T('TextTempDayDetail' + n, Wx.deg(dy.hi)); T('TextTempDayDetailUnit' + n, '');
             });
