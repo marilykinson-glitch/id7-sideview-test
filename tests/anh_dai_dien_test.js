@@ -913,6 +913,48 @@ const flip = (p, w) => W.flipRows(p, w || W.SIZE, w || W.SIZE);
         const t41Yellow = fs.readFileSync(path.join(rdir2, 't41.rgba'));
         assert.ok(t41Yellow[bodyIdx] > 180 && t41Yellow[bodyIdx + 1] > 185 && t41Yellow[bodyIdx + 2] < 140,
             'car body shaded in Sao Paulo Yellow (' + [t41Yellow[bodyIdx], t41Yellow[bodyIdx + 1], t41Yellow[bodyIdx + 2]].join(',') + ')');
+
+        // Real-car regression (172.16.222.97): HmiMain3D preloads F90 (TrimA silver only) + F90LCI (TrimL gold) + G11,
+        // while an unrelated bundle (car-G11-small) has a stale .orig mismatch and car-photo.rgba is absent
+        mkdirs(path.join(vM2, 'F90', 'vehicle2D_big')); mkdirs(path.join(vM2, 'F90', 'vehicle'));
+        mkdirs(path.join(vBmw2, 'G11', 'vehicle2D_small'));
+        const f90PreNames = ['tex_vehicle_hero_g30_trimA_bitmap', 'tex_vehicle_hero_g30_trimA_mask_bitmap'];
+        const f90PreB = makeBundle(f90PreNames.map((nm) => ({ name: nm, w: cw, h: ch }))), f90PreParsed = new W.Bundle(f90PreB.data, f90PreB.ids);
+        const f90PreData = f90PreParsed.build({ tex_vehicle_hero_g30_trimA_bitmap: makePic([190, 195, 200]), tex_vehicle_hero_g30_trimA_mask_bitmap: maskPx });
+        fs.writeFileSync(path.join(vM2, 'F90', 'vehicle2D_big', 'bitmaps.res'), f90PreData);
+        fs.writeFileSync(path.join(vM2, 'F90', 'vehicle2D_big', 'bitmaps.res.ids'), f90PreB.ids);
+        [['effects.res', mkFx], ['bitmaps.res', mkTx], ['meshes.res', mkMesh]].forEach((x) => {
+            fs.writeFileSync(path.join(vM2, 'F90', 'vehicle', x[0]), x[1].data);
+            fs.writeFileSync(path.join(vM2, 'F90', 'vehicle', x[0] + '.ids'), x[1].ids);
+        });
+        fs.writeFileSync(path.join(vM2, 'F90', 'vehicle', 'meshes.res.attributes'), mkAttrs);
+        const g11Modified = f90PreParsed.build({ tex_vehicle_hero_g30_trimA_bitmap: makePic([250, 10, 10]), tex_vehicle_hero_g30_trimA_mask_bitmap: Buffer.alloc(cw * ch * 4) });
+        fs.writeFileSync(path.join(vBmw2, 'G11', 'vehicle2D_small', 'bitmaps.res'), g11Modified);
+        fs.writeFileSync(path.join(vBmw2, 'G11', 'vehicle2D_small', 'bitmaps.res.ids'), f90PreB.ids);
+        mkdirs(path.join(sdir2, 'backup'));
+        fs.writeFileSync(path.join(sdir2, 'backup', 'car-G11-small.res.orig'), f90PreData);    // stale mismatch on unrelated G11
+        fs.symlinkSync(path.join(vM2, 'F90', 'vehicle', 'meshes.res'), path.join(pdir2, '100', 'fd', '7'));
+        fs.symlinkSync(path.join(vM2, 'F90LCI', 'vehicle', 'meshes.res'), path.join(pdir2, '100', 'fd', '8'));
+        shm[0x2c + 0x3c] = 0x1a;                // back to Marina Bay Blue
+        shm[0x2c + 0x3d] = 0x20;                // clubsport -> TrimL
+        shm[0x2c + 0x12d + 0x1b] = 0x38;        // BAUREIHE F90LCI (must beat F90 alphabetically)
+        fs.writeFileSync(shmFile, shm);
+        assert.ok(svc.load());
+        assert.strictEqual(svc.activeVehicleInfo().modelName, 'F90LCI', 'coded F90LCI beats preloaded F90');
+        const stReal = svc.writeStatus();
+        assert.strictEqual(stReal.more.filter((s) => s.n === svc.CAR)[0].changed, false, 'unrelated G11 mismatch does not mark F90LCI as changed');
+        assert.strictEqual(stReal.anyChanged, false);
+        const t41Real = fs.readFileSync(path.join(rdir2, 't41.rgba'));
+        assert.ok(t41Real[bodyIdx + 3] > 200 && t41Real[bodyIdx + 2] > 165 && t41Real[wheelIdx] > 195 && t41Real[wheelIdx + 2] < 70,
+            't41.rgba renders F90LCI Marina Bay Blue + gold TrimL wheels instead of blank ENOENT');
+        // Even if F90LCI itself is modified and car-photo.rgba is missing, carThumb falls back to the live bundle instead of zeros
+        await svc.setPicture(svc.CAR, picture(88, svc.CAR_W, 960), { where: 'tile' });
+        fs.unlinkSync(path.join(sdir2, 'car-photo.rgba'));
+        assert.ok(svc.load());
+        const t41NoPhoto = fs.readFileSync(path.join(rdir2, 't41.rgba'));
+        let nonZeroAlpha = 0;
+        for (let i = 3; i < t41NoPhoto.length; i += 4) if (t41NoPhoto[i] > 100) nonZeroAlpha++;
+        assert.ok(nonZeroAlpha > 1000, 'missing car-photo.rgba falls back to live 2D bundle without going blank');
     }
     ok('the car screen & stock detection: sharp 144w/52px thumbnails, 480x180 preview, and coded Marina Bay Blue + TrimL M5 CS stock rendering');
 

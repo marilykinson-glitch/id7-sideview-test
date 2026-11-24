@@ -65,7 +65,7 @@ mgu.run({
                     const b = file('t' + n + '.rgba');
                     const okSize = b && ((b.length >= UI.MINI * 4 && b.length % (UI.MINI * 4) === 0) || (b.length >= 48 * 4 && b.length % (48 * 4) === 0));
                     if (!okSize) return;
-                    for (let i = 3; i < b.length; i += 4) if (b[i] > 40 && b[i - 1] + b[i - 2] + b[i - 3] > 60) { t[n] = b; return; }
+                    for (let i = 3; i < b.length; i += 4) if (b[i] > 40 && (n === 41 || b[i - 1] + b[i - 2] + b[i - 3] > 12)) { t[n] = b; return; }
                 });
                 const all = status.slots || [], fw = UI.FACE || 52;
                 all.filter((x) => x.changed).concat(all.filter((x) => !x.changed)).slice(0, 3).forEach((x) => {

@@ -50,7 +50,7 @@ const { Res } = require('./res');
 const CAR3D = require('./car3d');
 const CARPAINT = require('./carpaint');
 
-const VERSION = '0.12.0';
+const VERSION = '0.12.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const AVATAR_REL = 'High/2D/Baukasten/ContentElements/illustrations/Static/Avatar/MyVehicle_Avatar';
 const REPL_REL = 'High/2D/Baukasten/ContentElements/illustrations/Replacement/4_sizes/';
@@ -264,7 +264,7 @@ function loadCar() {
         const p = check(b, []);
         const scene = CARPAINT.readSceneTrims(path.join(dir, 'scene.pbx'));
         // scene.pbx binds each vehicle_hero_Trim<X> to its exact tex0 (picture) and tex1 (mask); fall back to naming convention
-        const isMask = (k) => (scene && scene.picOfMask[k] ? true : /_mask\d*_bitmap$/.test(k));
+        const isMask = (k) => (scene && scene.picOfMask[k] && p && p.byKey[scene.picOfMask[k]] ? true : /_mask\d*_bitmap$/.test(k));
         const num = (k) => { const m = /(\d+)_bitmap$/.exec(k); return m ? Number(m[1]) : -1; };
         const trimOf = (k) => {
             if (scene && scene.trimOfPic[k]) return scene.trimOfPic[k];
@@ -341,8 +341,14 @@ function load() {
     return true;
 }
 
-const slotChanged = (slot) => (slot.models ? S.carChanged || slot.targets.some((t) => !!t.b.changed[t.key]) : slot.files ? S.startChanged : slot.targets.some((t) => !!t.b.changed[t.key]));
-const anyChanged = () => S.startChanged || S.carChanged || Object.keys(S.bundles).some((id) => Object.keys(S.bundles[id].changed).length > 0);
+function carSlotChanged(slot) {
+    if (S.carChanged) return true;
+    const picked = pickCarTarget();
+    if (picked) return !!picked.t.b.changed[picked.t.key];
+    return slot.targets.some((t) => !!t.b.changed[t.key]);
+}
+const slotChanged = (slot) => (slot.models ? carSlotChanged(slot) : slot.files ? S.startChanged : slot.targets.some((t) => !!t.b.changed[t.key]));
+const anyChanged = () => Object.keys(S.slots).some((k) => slotChanged(S.slots[k]));
 
 /* ---------------- writing the bundles ---------------- */
 function run(cmd, args) {
@@ -407,7 +413,10 @@ function loadCar3d() {
     models.forEach((v) => {
         const model = v.model, dir = path.join(v.base, 'vehicle');
         const m = { model, dir };
-        const kept = () => { if (CAR_FILES.every((f) => fs.existsSync(carBackup(m, f)) && fs.existsSync(path.join(dir, f)))) old.push(m); };
+        const kept = () => {
+            if (CAR_FILES.every((f) => fs.existsSync(carBackup(m, f)) && fs.existsSync(path.join(dir, f))) &&
+                CAR_FILES.some((f) => { try { return Buffer.compare(fs.readFileSync(path.join(dir, f)), fs.readFileSync(carBackup(m, f))) !== 0; } catch (e) { return false; } })) old.push(m);
+        };
         if (!CAR_NEEDS.every((f) => fs.existsSync(path.join(dir, f)))) return kept();
         try {
             // what the model is, is read from its originals: the files on the car may be this tool's
@@ -431,48 +440,52 @@ function carMarks(m) {
     const data = fs.readFileSync(path.join(m.dir, 'meshes.res')), attrs = JSON.parse(fs.readFileSync(path.join(m.dir, 'meshes.res.attributes'), 'utf8'));
     return CAR3D.marks(attrs, (id) => new Res(data, id + ' X\n').payload('X'));
 }
-const flatChanged = () => Object.keys(S.bundles).some((id) => /^car-/.test(id) && Object.keys(S.bundles[id].changed).length > 0);
+/** Picks the 2D target (picture + mask) representing this car's own model and trim. */
+function pickCarTarget(info) {
+    info = info || activeVehicleInfo();
+    const all = S.hero ? S.hero.targets.filter((x) => !x.zero) : [];
+    if (!all.length) return null;
+    let mine = info.primary ? all.filter((x) => path.dirname(x.b.dir) === info.primary) : [];
+    if (!mine.length && info.bases3d.length) mine = all.filter((x) => info.bases3d.indexOf(path.dirname(x.b.dir)) >= 0);
+    if (!mine.length && info.dirs2d.length) {
+        const nonF40 = info.dirs2d.filter((d) => path.basename(path.dirname(d)) !== 'F40');
+        const allow = nonF40.length ? nonF40 : info.dirs2d;
+        mine = all.filter((x) => allow.indexOf(x.b.dir) >= 0);
+    }
+    if (!mine.length) mine = all.slice();
+    const wantTrim = info.trim || 'A';
+    const trimRank = (x) => (x.trim === wantTrim ? 0 : x.trim === 'A' ? 1 : 2);
+    const num = (k) => { const m = /(\d+)_bitmap$/.exec(k); return m ? Number(m[1]) : -1; };
+    mine.sort((x, y) => {
+        const bx = info.bases3d.indexOf(path.dirname(x.b.dir)), by = info.bases3d.indexOf(path.dirname(y.b.dir));
+        if (bx !== by) return (bx < 0 ? 999 : bx) - (by < 0 ? 999 : by);
+        const tx = trimRank(x), ty = trimRank(y);
+        if (tx !== ty) return tx - ty;
+        return (y.w - x.w) || (num(x.key) - num(y.key)) || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0);
+    });
+    const t = mine[0];
+    const mk = S.hero.targets.filter((x) => x.b === t.b && x.zero && x.pair === t.key)[0] || null;
+    return { t, mk, info };
+}
 function carThumb(rgba) {
     const slot = S.slots[CAR];
     if (rgba) return thumb(CAR, rgba, slot.w, slot.h);
     try {
-        if (S.carChanged || flatChanged()) {                         // the photo, as it was sent
-            const pic = fs.readFileSync(carPhoto());
-            if (pic.length === CAR3D.PW * CAR3D.PH * 4) return thumb(CAR, pic, CAR3D.PW, CAR3D.PH);
+        if (slot && carSlotChanged(slot)) {                          // the photo, as it was sent (if car-photo.rgba is present)
+            try {
+                const pic = fs.readFileSync(carPhoto());
+                if (pic.length === CAR3D.PW * CAR3D.PH * 4) return thumb(CAR, pic, CAR3D.PW, CAR3D.PH);
+            } catch (e) { /* missing car-photo.rgba: fall back to bundle on disk below */ }
         }
-        // the car's own look: prefer the 3D model base folder HmiMain3D has open (never beaten by the wider F40 2D fallback),
-        // then non-F40 2D folders HmiMain3D has open, matching the active Kombi trim when known
-        const info = activeVehicleInfo();
-        const all = S.hero ? S.hero.targets.filter((x) => !x.zero) : [];
-        let mine = info.bases3d.length ? all.filter((x) => info.bases3d.indexOf(path.dirname(x.b.dir)) >= 0) : [];
-        if (!mine.length && info.dirs2d.length) {
-            const nonF40 = info.dirs2d.filter((d) => path.basename(path.dirname(d)) !== 'F40');
-            const allow = nonF40.length ? nonF40 : info.dirs2d;
-            mine = all.filter((x) => allow.indexOf(x.b.dir) >= 0);
-        }
-        if (!mine.length) mine = all.slice();
-        const wantTrim = info.trim || 'A';
-        const trimRank = (x) => (x.trim === wantTrim ? 0 : x.trim === 'A' ? 1 : 2);
-        const num = (k) => { const m = /(\d+)_bitmap$/.exec(k); return m ? Number(m[1]) : -1; };
-        mine.sort((x, y) => {
-            const bx = info.bases3d.indexOf(path.dirname(x.b.dir)), by = info.bases3d.indexOf(path.dirname(y.b.dir));
-            if (bx !== by) return (bx < 0 ? 999 : bx) - (by < 0 ? 999 : by);
-            if (path.dirname(x.b.dir) === path.dirname(y.b.dir)) {
-                const tx = trimRank(x), ty = trimRank(y);
-                if (tx !== ty) return tx - ty;
-                if (y.w !== x.w) return y.w - x.w;
-            }
-            const tx = trimRank(x), ty = trimRank(y);
-            if (tx !== ty) return tx - ty;
-            return (y.w - x.w) || (num(x.key) - num(y.key)) || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0);
-        });
-        if (mine.length) {
-            const t = mine[0], mk = S.hero.targets.filter((x) => x.b === t.b && x.zero && x.pair === t.key)[0];
-            const src = readOriginal(t.b);
-            const pic = painted(src.rgba(t.key), mk ? src.rgba(mk.key) : Buffer.alloc(t.w * t.h * 4), info.paint);
+        const picked = pickCarTarget();
+        if (picked) {
+            const t = picked.t, mk = picked.mk;
+            const useLive = !!t.b.changed[t.key];
+            const src = useLive ? readBundle(t.b) : readOriginal(t.b);
+            const pic = painted(src.rgba(t.key), mk ? src.rgba(mk.key) : Buffer.alloc(t.w * t.h * 4), picked.info.paint);
             return thumb(CAR, W.flipRows(pic, t.w, t.h), t.w, t.h);
         }
-    } catch (e) { /* the empty picture below */ }
+    } catch (e) { log('carThumb: ' + e.message); }
     return thumb(CAR, Buffer.alloc(64 * 32 * 4), 64, 32);
 }
 /** Removes the compiled shaders the head unit keeps for these effects, so that it compiles the ones in the file. */
@@ -490,7 +503,8 @@ async function setCar(slot, rgba, where) {
     where = /^(tile|menu)$/.test(where) ? where : 'both';
     const in3d = where !== 'tile', in2d = where !== 'menu';
     const info = activeVehicleInfo();
-    const activeModels = info.bases3d.length ? slot.models.filter((m) => info.bases3d.indexOf(path.dirname(m.dir)) >= 0) : [];
+    const primaryModels = info.primary ? slot.models.filter((m) => path.dirname(m.dir) === info.primary) : [];
+    const activeModels = primaryModels.length ? primaryModels : (info.bases3d.length ? slot.models.filter((m) => info.bases3d.indexOf(path.dirname(m.dir)) >= 0) : []);
     const targetModels = activeModels.length ? activeModels : slot.models;
     targetModels.forEach((m) => CAR_FILES.forEach((f) => {            // the originals first, each copied once
         const bk = carBackup(m, f);
@@ -557,22 +571,28 @@ async function restoreCar() {
     if (!slot) return;
     const jobs = [], flat = Object.keys(S.bundles).map((id) => S.bundles[id]).filter((b) => /^car-/.test(b.id) && b.usable && Object.keys(b.changed).length);
     let drop = [];
-    if (S.carChanged) slot.models.concat(slot.old || []).forEach((m) => {
+    const checkList = S.carChanged ? slot.models.concat(slot.old || []) : (slot.old || []);
+    checkList.forEach((m) => {
         if (!CAR_FILES.every((f) => fs.existsSync(carBackup(m, f)))) return;
+        const changed = CAR_FILES.some((f) => { try { return Buffer.compare(fs.readFileSync(path.join(m.dir, f)), fs.readFileSync(carBackup(m, f))) !== 0; } catch (e) { return true; } });
+        if (!changed) return;
         CAR_FILES.forEach((f) => jobs.push({ file: path.join(m.dir, f), buf: fs.readFileSync(carBackup(m, f)) }));
         try { drop = drop.concat(CAR3D.cacheNames(new Res(fs.readFileSync(carBackup(m, 'effects.res')), fs.readFileSync(path.join(m.dir, 'effects.res.ids'), 'utf8')))); } catch (e) { /* nothing to remove */ }
     });
-    if (!jobs.length && !flat.length) return;
-    const files = flat.map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
-    await writable(async () => {
-        jobs.forEach((j) => putFile(j.file, j.buf));
-        files.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; });
-    });
-    dropShaders(drop);
+    if (jobs.length || flat.length) {
+        const files = flat.map((b) => ({ b, buf: fs.readFileSync(b.bk) }));
+        await writable(async () => {
+            jobs.forEach((j) => putFile(j.file, j.buf));
+            files.forEach((f) => { commit(f.b, f.buf); f.b.changed = {}; });
+        });
+        dropShaders(drop);
+        slot.old = [];
+        S.needsRestart = true;
+    }
     try { fs.unlinkSync(carMark()); } catch (e) { /* gone */ }
     try { fs.unlinkSync(carPhoto()); } catch (e) { /* gone */ }
     try { fs.unlinkSync(carWhereFile()); } catch (e) { /* gone */ }
-    S.carChanged = false; S.needsRestart = true;
+    S.carChanged = false;
     carThumb();
 }
 
@@ -1113,7 +1133,9 @@ function hmiId7File(brand, rel, explicit) {
  *   paint:   { name, base, spec, refl } resolved from coded VEHICLE_COLOUR + VEHICLE_CARPAINT_colorregistry.pbc
  */
 function activeVehicleInfo() {
-    const open = openVehicles().filter((o) => o.by === 'HmiMain3D').map((o) => o.dir);
+    const openAll = openVehicles();
+    const open = openAll.filter((o) => o.by === 'HmiMain3D').map((o) => o.dir);
+    const openKombi3d = openAll.filter((o) => o.by === 'HmiKombi' && path.basename(o.dir) === 'vehicle').map((o) => path.dirname(o.dir));
     const roots = String(CFG.vehicles).split(':').filter(Boolean);
     const brandOfBase = (base) => {
         for (let i = 0; i < roots.length; i++) {
@@ -1123,22 +1145,11 @@ function activeVehicleInfo() {
         }
         return 'bmw';
     };
-    const sortBases = (list) => list.sort((a, b) => {
-        const fa = path.basename(a) === 'F40' ? 1 : 0, fb = path.basename(b) === 'F40' ? 1 : 0;
-        if (fa !== fb) return fa - fb;
-        const ba = brandOfBase(a) === 'bmw' ? 1 : 0, bb = brandOfBase(b) === 'bmw' ? 1 : 0;
-        return (ba - bb) || (a < b ? -1 : a > b ? 1 : 0);
-    });
-    const seen3d = {};
-    const bases3d = sortBases(open.filter((d) => path.basename(d) === 'vehicle').map((d) => path.dirname(d)).filter((b) => { if (seen3d[b]) return false; seen3d[b] = 1; return true; }));
     const dirs2d = open.filter((d) => /^vehicle2D_/.test(path.basename(d)));
+    const bases2dNonF40 = dirs2d.map((d) => path.dirname(d)).filter((b) => path.basename(b) !== 'F40');
     const rawCodingPath = CFG.rawCoding || (CFG.mount && CFG.proc === '/proc' ? '/dev/shm/rawcodingdata' : '');
     const coding = CARPAINT.readRawCoding(rawCodingPath);
-    if (!bases3d.length && coding.valid && coding.baureihe) {
-        const codedBases = sortBases(vehicleDirs().filter((v) => path.basename(v.base) === coding.baureihe).map((v) => v.base));
-        codedBases.forEach((b) => { if (!seen3d[b]) { seen3d[b] = 1; bases3d.push(b); } });
-    }
-    let kombiTrim = '';
+    let kombiModel = '', kombiTrim = '';
     try {
         const pids = fs.readdirSync(CFG.proc).filter((d) => /^\d+$/.test(d));
         pids.forEach((pid) => {
@@ -1152,13 +1163,35 @@ function activeVehicleInfo() {
                 if (kombiTrim) return;
                 try {
                     const to = fs.readlinkSync(path.join(CFG.proc, pid, 'fd', fd));
-                    const m = /\/kombi_model\/[^/]+\/Trim([A-Za-z0-9]+)\./i.exec(to);
-                    if (m) kombiTrim = m[1].toUpperCase();
+                    const m = /\/kombi_model\/([^/]+)\/Trim([A-Za-z0-9]+)\./i.exec(to);
+                    if (m) { kombiModel = m[1]; kombiTrim = m[2].toUpperCase(); }
                 } catch (e) { /* closed */ }
             });
         });
     } catch (e) { /* no /proc */ }
-    const primary = bases3d[0] || dirs2d.map((d) => path.dirname(d)).filter((b) => path.basename(b) !== 'F40')[0] || (dirs2d[0] ? path.dirname(dirs2d[0]) : '');
+    const sortBases = (list) => list.sort((a, b) => {
+        const ca = coding.valid && coding.baureihe && path.basename(a) === coding.baureihe ? 0 : 1;
+        const cb = coding.valid && coding.baureihe && path.basename(b) === coding.baureihe ? 0 : 1;
+        if (ca !== cb) return ca - cb;
+        const da = bases2dNonF40.indexOf(a) >= 0 ? 0 : 1, db = bases2dNonF40.indexOf(b) >= 0 ? 0 : 1;
+        if (da !== db) return da - db;
+        const ka = kombiModel && path.basename(a) === kombiModel ? 0 : 1;
+        const kb = kombiModel && path.basename(b) === kombiModel ? 0 : 1;
+        if (ka !== kb) return ka - kb;
+        const fa = path.basename(a) === 'F40' ? 1 : 0, fb = path.basename(b) === 'F40' ? 1 : 0;
+        if (fa !== fb) return fa - fb;
+        const ba = brandOfBase(a) === 'bmw' ? 1 : 0, bb = brandOfBase(b) === 'bmw' ? 1 : 0;
+        if (ba !== bb) return ba - bb;
+        const k3a = openKombi3d.indexOf(a) >= 0 ? 0 : 1, k3b = openKombi3d.indexOf(b) >= 0 ? 0 : 1;
+        return (k3a - k3b) || (a < b ? -1 : a > b ? 1 : 0);
+    });
+    const seen3d = {};
+    const rawBases = open.filter((d) => path.basename(d) === 'vehicle').map((d) => path.dirname(d));
+    if (coding.valid && coding.baureihe) {
+        vehicleDirs().filter((v) => path.basename(v.base) === coding.baureihe).forEach((v) => rawBases.push(v.base));
+    }
+    const bases3d = sortBases(rawBases.filter((b) => { if (seen3d[b]) return false; seen3d[b] = 1; return true; }));
+    const primary = bases3d[0] || bases2dNonF40[0] || (dirs2d[0] ? path.dirname(dirs2d[0]) : '');
     const modelName = primary ? path.basename(primary) : (coding.valid ? coding.baureihe : '');
     const brand = primary ? brandOfBase(primary) : 'bmw';
     let trim = kombiTrim;
@@ -1169,8 +1202,8 @@ function activeVehicleInfo() {
     const colorReg = hmiId7File(brand, 'widget/VEHICLE_CARPAINT_colorregistry.pbc', CFG.colorRegistry);
     const variantReg = hmiId7File(brand, 'widget/variantregistry_ext_car.pbvar', CFG.variantRegistry);
     const paint = CARPAINT.resolvePaint(coding.valid ? coding.colour : '', colorReg, variantReg);
-    const sig = bases3d.join(',') + '|' + dirs2d.join(',') + '|' + trim + '|' + brand + '|' + paint.name + '|' + (coding.valid ? coding.colour + ':' + coding.trimLine + ':' + coding.baureihe : '');
-    return { bases3d, dirs2d, brand, trim, kombiTrim, modelName, colour: coding.valid ? coding.colour : '', trimLine: coding.valid ? coding.trimLine : '', baureihe: coding.valid ? coding.baureihe : '', paint, sig };
+    const sig = primary + '|' + bases3d.join(',') + '|' + dirs2d.join(',') + '|' + trim + '|' + brand + '|' + paint.name + '|' + (coding.valid ? coding.colour + ':' + coding.trimLine + ':' + coding.baureihe : '');
+    return { primary, bases3d, dirs2d, brand, trim, kombiModel, kombiTrim, modelName, colour: coding.valid ? coding.colour : '', trimLine: coding.valid ? coding.trimLine : '', baureihe: coding.valid ? coding.baureihe : '', paint, sig };
 }
 
 /** Refresh stock thumbnails once HmiMain3D finishes booting and opens the car's actual vehicle model. */
@@ -1181,9 +1214,9 @@ function refreshActiveOriginals() {
     if (info.sig === S.activeSig) return false;
     S.activeSig = info.sig;
     let updated = false;
-    if (S.slots[CAR] && !S.carChanged && !flatChanged()) { carThumb(); updated = true; }
+    if (S.slots[CAR] && !slotChanged(S.slots[CAR])) { carThumb(); updated = true; }
     if (S.slots[START] && !S.startChanged) { startThumb(); updated = true; }
-    if (updated) { S.rev++; log('refreshed stock thumbnails for active vehicle (' + (info.bases3d[0] || info.brand) + ')'); }
+    if (updated) { S.rev++; log('refreshed stock thumbnails for active vehicle (' + (info.primary || info.brand) + ')'); }
     return updated;
 }
 /** What the diagnostic file holds: a report, and the files of the vehicle folders the HMI has open (originals too). */

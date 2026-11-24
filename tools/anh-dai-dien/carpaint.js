@@ -513,6 +513,7 @@ module.exports = {
     readVariantRegistry,
     resolvePaint,
     readRawCoding,
+    readLuaTrimRules,
     resolveHeroTrim,
     readSceneTrims,
     shadeCarpaint,
