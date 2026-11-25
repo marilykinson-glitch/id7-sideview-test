@@ -16,11 +16,18 @@
 // controlIndicateDirection is what the stalk asks for, activeFunctionIndicateDirection what blinks.
 const CONTROL = {
     BLINKEN_AUS: 0,
+    KEIN_BLINKEN: 0,
+    AUS: 0,
+    OFF: 0,
+    NONE: 0,
+    INAKTIV: 0,
+    INACTIVE: 0,
     TIPP_BLINKEN_LINKS_EIN: 1,
     TIPP_BLINKEN_RECHTS_EIN: 2,
     DAUER_BLINKEN_LINKS_EIN: 3,
     DAUER_BLINKEN_RECHTS_EIN: 4,
     BEIDSEITIGES_BLINKEN_EIN: 8,
+    WARNBLINKEN_EIN: 8,
 };
 const CONTROL_DIR = { 0: 'OFF', 1: 'LEFT', 2: 'RIGHT', 3: 'LEFT', 4: 'RIGHT', 8: 'HAZARD' };
 const CONTROL_KIND = { 1: 'tip', 2: 'tip', 3: 'steady', 4: 'steady' };
@@ -45,17 +52,30 @@ function field(value, key) {
 function decode(value) {
     const command = field(value, 'controlIndicateDirection');
     const active = field(value, 'activeFunctionIndicateDirection');
-    const code = Object.prototype.hasOwnProperty.call(CONTROL, command) ? CONTROL[command] : command;
-    const commanded = CONTROL_DIR[code];
-    const a = String(active);
-    const observed = ACTIVE_DIR[active]
-        || (/^(?:DAUERBLINKEN|TIPPBLINKEN)_LINKS$/.test(a) ? 'LEFT' : undefined)
-        || (/^(?:DAUERBLINKEN|TIPPBLINKEN)_RECHTS$/.test(a) ? 'RIGHT' : undefined)
-        || (/^WARNBLINKEN/.test(a) ? 'HAZARD' : undefined);
+    const cStr = command === undefined || command === null ? '' : String(command).trim();
+    const cUpper = cStr.toUpperCase();
+    const code = Object.prototype.hasOwnProperty.call(CONTROL, command) ? CONTROL[command]
+        : Object.prototype.hasOwnProperty.call(CONTROL, cUpper) ? CONTROL[cUpper]
+            : /^-?\d+$/.test(cStr) ? Number(cStr) : command;
+    let commanded = CONTROL_DIR[code];
+    if (!commanded && typeof command === 'string' && cStr) {
+        commanded = /^(?:BLINKEN_AUS|KEIN_BLINKEN|AUS|OFF|NONE|INAKTIV|INACTIVE)$/i.test(cStr) ? 'OFF'
+            : /^(?:WARN_?BLINK|BEIDSEITIG|HAZARD)/i.test(cStr) ? 'HAZARD'
+                : /(?:BLINKEN|INDICAT).*(?:LINKS|LEFT)|^(?:LINKS|LEFT)$/i.test(cStr) ? 'LEFT'
+                    : /(?:BLINKEN|INDICAT).*(?:RECHTS|RIGHT)|^(?:RECHTS|RIGHT)$/i.test(cStr) ? 'RIGHT' : undefined;
+    }
+    const a = active === undefined || active === null ? '' : String(active).trim();
+    const aKey = a && /^-?\d+$/.test(a) ? Number(a) : active;
+    const observed = (active !== undefined && active !== null ? ACTIVE_DIR[aKey] : undefined)
+        || (a && /^(?:BLINKEN_AUS|KEIN_BLINKEN|AUS|OFF|NONE|INAKTIV|INACTIVE)$/i.test(a) ? 'OFF' : undefined)
+        || (a && /^(?:DAUER_?BLINKEN|TIPP_?BLINKEN|BLINKEN)_?(?:LINKS|LEFT)(?:_EIN)?$/i.test(a) ? 'LEFT' : undefined)
+        || (a && /^(?:DAUER_?BLINKEN|TIPP_?BLINKEN|BLINKEN)_?(?:RECHTS|RIGHT)(?:_EIN)?$/i.test(a) ? 'RIGHT' : undefined)
+        || (a && /^(?:WARN_?BLINK|BEIDSEITIG|HAZARD)/i.test(a) ? 'HAZARD' : undefined);
     const direction = commanded && commanded !== 'OFF' ? commanded : observed || commanded;
     let kind = null;
     if (direction === 'LEFT' || direction === 'RIGHT') {
-        kind = CONTROL_KIND[code] || (/^TIPPBLINKEN/.test(a) ? 'tip' : /^DAUERBLINKEN/.test(a) ? 'steady' : null);
+        kind = CONTROL_KIND[code] || (/TIPP_?BLINKEN/i.test(cStr) || /^TIPP_?BLINKEN/i.test(a) ? 'tip'
+            : /DAUER_?BLINKEN/i.test(cStr) || /^DAUER_?BLINKEN/i.test(a) ? 'steady' : null);
     }
     return { direction, kind, raw: String(command === undefined || command === null ? '-' : command) + ' / ' + String(active === undefined || active === null ? '-' : active) };
 }
@@ -63,15 +83,20 @@ function decode(value) {
 /**
  * The side whose camera is wanted, from the indicator events as they come.
  *   b.event(direction, kind, now)   one decoded event (direction undefined: ignored)
+ *   b.travel(kmh, now)              vehicle speed sample (km/h) to cap distance on a missed "off"
  *   b.side(now)                     'left' | 'right' | null
  *   b.state()                       'LEFT' | 'RIGHT' | 'HAZARD' | 'OFF' | 'WAITING' (no event yet)
  * opts: holdMs (the side stays this long after its signal goes off: covers the dark half of a blink
  * and the moment after a turn), tip (false: the three-blink tap does not show the camera),
- * maxMs (a signal left on longer than this is taken as a missed "off": 0 = never).
+ * maxMs (a signal left on longer than this is taken as a missed "off": 0 = never),
+ * tipMaxMs (short safety cap for 3-blink comfort taps whose final "off" was missed),
+ * maxKm / moveMaxMs (distance-driven safety cap when moving after a missed "off").
  */
 function createBlinker(opts) {
-    let o = Object.assign({ holdMs: 2000, tip: true, maxMs: 0 }, opts || {});
-    let dir = 'WAITING', side = null, onAt = 0, offAt = null;
+    let o = Object.assign({ holdMs: 2000, tip: true, maxMs: 0, tipMaxMs: 0, maxKm: 0, moveMaxMs: 20000 }, opts || {});
+    let dir = 'WAITING', side = null, activeKind = null, onAt = 0, offAt = null;
+    let km = 0, speedKmh = null, speedAt = 0;
+    const clear = () => { side = null; activeKind = null; offAt = null; km = 0; };
     return {
         configure(next) { o = Object.assign({}, o, next || {}); },
         event(direction, kind, now) {
@@ -84,20 +109,30 @@ function createBlinker(opts) {
                     return;
                 }
                 const s = direction === 'LEFT' ? 'left' : 'right';
-                if (s !== side || offAt !== null) onAt = now;
+                if (s !== side || offAt !== null) { onAt = now; km = 0; activeKind = kind || null; }
+                else if (kind) activeKind = kind;
                 side = s;
                 offAt = null;
             } else if (direction === 'HAZARD') {
-                side = null;             // both sides blink: no camera, at once
-                offAt = null;
+                clear();                 // both sides blink: no camera, at once
             } else if (side && offAt === null) {
                 offAt = now;             // OFF: the side stays for holdMs
             }
         },
+        travel(kmh, now) {
+            if (!Number.isFinite(kmh) || kmh < 0) return;
+            if (side && offAt === null && speedKmh !== null && now > speedAt && now - speedAt < 5000 && (kmh > 3 || speedKmh > 3)) {
+                km += ((speedKmh + kmh) / 2) * (now - speedAt) / 3600000;
+            }
+            speedKmh = kmh;
+            speedAt = now;
+        },
         side(now) {
             if (!side) return null;
-            if (offAt !== null && now - offAt >= o.holdMs) { side = null; offAt = null; return null; }
-            if (offAt === null && o.maxMs && now - onAt >= o.maxMs) { side = null; return null; }
+            if (offAt !== null && now - offAt >= o.holdMs) { clear(); return null; }
+            if (offAt === null && activeKind === 'tip' && o.tipMaxMs && now - onAt >= o.tipMaxMs) { clear(); dir = 'OFF'; return null; }
+            if (offAt === null && o.maxKm && km >= o.maxKm && (!o.moveMaxMs || now - onAt >= o.moveMaxMs)) { clear(); dir = 'OFF'; return null; }
+            if (offAt === null && o.maxMs && now - onAt >= o.maxMs) { clear(); dir = 'OFF'; return null; }
             return side;
         },
         state() { return dir; },
@@ -364,13 +399,17 @@ function frontConfig(s, targets, dual) {
  * want: the perspective to ask the camera unit for (7 all four, 3 left, 4 right), or null to ask for
  * nothing (off, or "passive": use what another app has on).
  */
-/** Whether the "front" setting wants the front camera now: 'always', or 'slow30' / 'slow60' below that speed. */
+const FRONT_HYST_KMH = 4;
+/** Whether the "front" setting wants the front camera now: 'always', or 'slow30' / 'slow60' below that speed (with +4 km/h hysteresis once latched so cruising near the threshold never flaps Google Maps). */
 function frontWanted(i) {
     const f = i.front;
     if (f === 'always') return true;
     const m = /^slow(\d+)$/.exec(String(f || ''));
     if (!m) return false;
-    return i.speed !== null && i.speed !== undefined && i.speed <= Number(m[1]);
+    if (i.speed === null || i.speed === undefined) return false;
+    const lim = Number(m[1]);
+    if (i.frontHold && i.speed <= lim + FRONT_HYST_KMH * 2) return true;
+    return i.speed <= lim + (i.frontLatched ? FRONT_HYST_KMH : 0);
 }
 
 /** How near the next turn has to be for "ar: near" to bring the front camera up, in metres. */
@@ -483,7 +522,7 @@ function plan(i) {
     if (cam.kind === 'parking') return none('Xe đang hiện camera đỗ xe', want);
     if (cam.kind === 'starting') return none('Hộp camera đang khởi động', want);
     if (h.pictureAge === null || h.pictureAge === undefined || h.pictureAge < 0) return none('Chưa có hình từ camera', want);
-    if (h.pictureAge > 1500) return none('Luồng camera đang dừng', want);
+    if (h.pictureAge > 2200) return none('Luồng camera đang dừng', want);
     if (i.test === 'all') return { view: 'all', why: '', want };
     if (frontOn) {
         const four = (i.cam || {}).kind === 'all4' || ((i.cam || {}).kind === 'unknown' && (h.pictureH >= 800 || (!!h.pair && h.pair !== 'off')));

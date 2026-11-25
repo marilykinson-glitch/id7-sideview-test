@@ -2,7 +2,7 @@
   "id": "xinhan_cam",
   "title": "Camera xi nhan",
   "description": "Bật xi nhan bên nào thì đồng hồ hiện camera gương bên đó (kiểu Hyundai/Kia); có thể hiện camera trước ở giữa đồng hồ. Cần xe có camera 360, trợ thủ xinhan-cam (tự cài kèm) và cluster-render.",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "startType": "autostart",
   "vendor": "custom",
   "loggingId": "OAXN",
@@ -19,10 +19,6 @@
       "_optional": "instant reverse gear release so the rear-view camera never waits",
       "statusGearboxDrive": "s",
       "DataPowerTrain2": "s"
-    },
-    "de.bmw.infotainment.vehicle.Vehicle": {
-      "_optional": "dim the mirror camera's bright rim at night",
-      "statusDayNightChangeOver": "rs"
     },
     "de.bmw.infotainment.video.cameraproxy.ICAM2Proxy": "*",
     "de.bmw.infotainment.video.cameraproxy.CameraProxy": "*",
@@ -357,7 +353,7 @@
       "options": [
         [
           "dim",
-          "Tự dịu theo đèn xe"
+          "Tự dịu ban đêm"
         ],
         [
           "bright",
@@ -671,15 +667,16 @@
       "key": "layer",
       "label": "Lớp video",
       "type": "choice",
-      "default": "keep",
+      "default": "make",
+      "reset": 1,
       "options": [
-        [
-          "keep",
-          "Giữ sẵn"
-        ],
         [
           "make",
           "Tạo mỗi lần"
+        ],
+        [
+          "keep",
+          "Giữ sẵn"
         ]
       ]
     },

@@ -49,7 +49,7 @@ using namespace sidecam;
 
 namespace {
 
-const int64_t kFreshMs = 800;       /* a picture older than this is not shown */
+const int64_t kFreshMs = 1100;      /* a picture older than this is not shown (survives 1 s keyframe jitter, still < 1.6 s stall) */
 const int64_t kHeartbeatMs = 3000;  /* a view not asked for again this long goes */
 const int64_t kJoinRetryMs = 2000;
 const int64_t kStatusMs = 1000;

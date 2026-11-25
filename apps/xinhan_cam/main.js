@@ -29,16 +29,22 @@ const UI = require('./ui');
 
 const STATUS = process.env.XINHAN_STATUS || '/run/xinhan-cam/status.json';
 const STATUS_STALE_MS = 4000;       // the tool writes at least once a second
+const SPEED_STALE_MS = 8000;        // statusCarSpeed2 polls every 1 s with a 3 s timeout; steady cruise must not drop speed to null
 const TICK_MS = 100;
 const HEARTBEAT_MS = 500;
 const CAM_TICK_MS = 500;
-const CAM_IDLE_MS = 2000;
-const BLINKER_MAX_MS = 180000;      // a dropped "off" never keeps the mirror camera on past 3 min
+const CAM_IDLE_MS = 1500;
+const CAM_CACHE_MS = 8000;          // keep last good XView3D / ICAM2 state across a single SOME/IP timeout
+const BLINKER_MAX_MS = 120000;      // stationary ceiling (2 min) if an "off" event was missed
+const BLINKER_TIP_MAX_MS = 6000;    // 3-blink / 5-blink comfort tap safety ceiling (6 s)
+const BLINKER_MAX_KM = 0.35;        // moving safety ceiling: 350 m + 20 s without a new indicator event
+const BLINKER_MOVE_MS = 20000;
+const AR_HOLD_MS = 3500;
+const FRONT_HOLD_MS = 1500;
 const IF = {
     light: 'de.bmw.body.Light',
     speed: 'de.bmw.infotainment.vehicle.Vehicle2',
     gear: 'de.bmw.infrastructure.VehicleInformation',
-    vehicle: 'de.bmw.infotainment.vehicle.Vehicle',
     icam: 'de.bmw.infotainment.video.cameraproxy.ICAM2Proxy',
     cam: 'de.bmw.infotainment.video.cameraproxy.CameraProxy',
     xv: 'de.bmw.dass.XView3D',
@@ -91,12 +97,13 @@ mgu.run({
         // the settings the page's Position tab keeps besides the listed ones: where in the dial the view sits
         const EXTRA = ['gaugeDx', 'gaugeDy', 'panLx', 'panLy', 'panRx', 'panRy', 'zoomL', 'zoomR'].concat(Object.keys(L.CALIB));
         // a drag on the Position page in progress: where the view is now (saved when the finger comes up)
-        let dragPos = null, reverse = false, night = null;
-        const cfg = () => {
+        let dragPos = null, reverse = false;
+        const nightAt = (now) => { const h = new Date(now).getHours(); return h >= 18 || h < 6; };
+        const cfg = (now) => {
             const o = {};
             settings.schema.forEach((s) => { o[s.key] = settings.get(s.key); });
             EXTRA.forEach((k) => { o[k] = settings.get(k); });
-            if (night !== null) o.night = night;
+            if (o.nightRim === 'dim' || o.nightRim === 'bright') o.night = nightAt(now || Date.now());
             // (a drag whose finger's lift never came: forgotten after 10 s still)
             if (dragPos && Date.now() - dragPos.at > 10000) dragPos = null;
             if (dragPos) { o.gaugeDx = dragPos.dx; o.gaugeDy = dragPos.dy; o.place = 'gauge'; }
@@ -104,15 +111,35 @@ mgu.run({
         };
 
         /* ---- the turn signals ---- */
-        const blinker = L.createBlinker({ maxMs: BLINKER_MAX_MS });
-        const applyBlinker = () => blinker.configure({ holdMs: (Number(settings.get('hold')) || 2) * 1000, tip: settings.get('tip') !== 'off', maxMs: BLINKER_MAX_MS });
+        const blinker = L.createBlinker({ maxMs: BLINKER_MAX_MS, tipMaxMs: BLINKER_TIP_MAX_MS, maxKm: BLINKER_MAX_KM, moveMaxMs: BLINKER_MOVE_MS });
+        const applyBlinker = () => blinker.configure({
+            holdMs: (Number(settings.get('hold')) || 2) * 1000,
+            tip: settings.get('tip') !== 'off',
+            maxMs: BLINKER_MAX_MS,
+            tipMaxMs: BLINKER_TIP_MAX_MS,
+            maxKm: BLINKER_MAX_KM,
+            moveMaxMs: BLINKER_MOVE_MS,
+        });
         applyBlinker();
-        let lightState = 'Đang kết nối', lightEvents = 0, lastRaw = ['-', '-'];
+        let lightState = 'Đang kết nối', lightEvents = 0, lastRaw = ['-', '-'], lastDir = [null, null], stream0OffAt = -1e9, stream0OffDir = null;
         const onLight = (index, value) => {
+            const now = Date.now();
             const ev = L.decode(value);
             lightEvents++;
-            if (ev.raw !== lastRaw[index]) { lastRaw[index] = ev.raw; log.info('indicators ' + (index + 1) + ': ' + ev.raw + ' -> ' + (ev.direction || '-')); }
-            blinker.event(ev.direction, ev.kind, Date.now());
+            const rawSame = ev.raw === lastRaw[index];
+            if (!rawSame) { lastRaw[index] = ev.raw; log.info('indicators ' + (index + 1) + ': ' + ev.raw + ' -> ' + (ev.direction || '-')); }
+            // An unchanged indicator subfield while a view/hold is active means another light field in the struct notified:
+            // never let it clear offAt and resurrect a cancelled blinker.
+            if (rawSame && blinker.side(now) !== null) return;
+            if (index === 0) {
+                if (ev.direction === 'OFF' && (lastDir[0] === 'LEFT' || lastDir[0] === 'RIGHT')) { stream0OffAt = now; stream0OffDir = lastDir[0]; }
+                else if (ev.direction === 'LEFT' || ev.direction === 'RIGHT') { stream0OffAt = -1e9; stream0OffDir = null; }
+            } else if (ev.direction === stream0OffDir && lastDir[0] === 'OFF' && now >= stream0OffAt && now - stream0OffAt < 350) {
+                lastDir[1] = ev.direction;
+                return;
+            }
+            if (ev.direction) lastDir[index] = ev.direction;
+            blinker.event(ev.direction, ev.kind, now);
             tick();
         };
         signals.watch(IF.light, '1', {
@@ -121,35 +148,30 @@ mgu.run({
         }, log).then((sub) => { lightState = sub.error ? 'Lỗi: ' + errText(sub.error) : 'Đã kết nối'; })
             .catch((e) => { lightState = 'Lỗi: ' + errText(e); });
 
-        /* ---- the speed (the speed limit, the front camera below 30 / 60, the route's distance) ---- */
+        /* ---- the speed (the speed limit, the front camera below 30 / 60, the route's distance, missed-off distance cap) ---- */
         let speed = null, speedAt = 0;
         signals.watch(IF.speed, '1', {
             statusCarSpeed2: (v) => {
                 const raw = v && v.speedVehicleCentreOfGravity;
                 if (!Number.isFinite(raw) || raw === 65535) return;
+                const now = Date.now();
                 speed = raw * 0.015625;             // BMW's scaling, km/h
-                speedAt = Date.now();
+                speedAt = now;
+                blinker.travel(speed, now);
             },
         }, log, { pollMs: 1000 })
             .then((sub) => { if (sub.error) log.warn('speed: ' + sub.error); }).catch((e) => log.warn('speed: ' + e));
 
-        /* ---- reverse gear (instant detach so the rear-view camera never waits) and day/night rim ---- */
+        /* ---- reverse gear (instant detach so the rear-view camera never waits) ---- */
         const onGear = (v) => {
             const r = L.decodeReverse(v);
             if (r !== null && r !== reverse) { reverse = r; log.info('reverse gear: ' + (r ? 'on' : 'off')); tick(); }
         };
         signals.watch(IF.gear, '1', { statusGearboxDrive: onGear, DataPowerTrain2: onGear }, log)
             .then((sub) => { if (sub.error) log.info('gearbox: ' + sub.error); }).catch((e) => log.info('gearbox: ' + e));
-        signals.watch(IF.vehicle, '1', {
-            statusDayNightChangeOver: (v) => {
-                const n = L.decodeNight(v);
-                if (n !== null && n !== night) { night = n; log.info('day/night: ' + (n ? 'night' : 'day')); tick(); }
-            },
-        }, log, { pollMs: 5000 })
-            .then((sub) => { if (sub.error) log.info('day/night: ' + sub.error); }).catch((e) => log.info('day/night: ' + e));
 
         /* ---- the camera unit ---- */
-        const px = {}, link = {}, tries = {};
+        const px = {}, link = {}, tries = {}, camCache = {};
         const connect = (name) => {
             if (px[name] || link[name] === 'connecting') return;
             link[name] = 'connecting';
@@ -164,7 +186,13 @@ mgu.run({
                     });
         };
         ['icam', 'xv'].forEach(connect);
-        const get = (name, field) => (px[name] ? Promise.resolve().then(() => px[name].getValue(field, 3000)).catch(() => undefined) : Promise.resolve(undefined));
+        const get = (name, field) => (px[name] ? Promise.resolve().then(() => px[name].getValue(field, 3000)).then((v) => {
+            if (v !== undefined) camCache[name] = { v, at: Date.now() };
+            return v;
+        }, () => {
+            const c = camCache[name];
+            return c && Date.now() - c.at < CAM_CACHE_MS ? c.v : undefined;
+        }) : Promise.resolve(undefined));
         // enum arguments by name (as the getters return them); a proxy that refuses names gets the wire numbers
         const named = (fn, byName, byNumber) => Promise.resolve().then(() => fn(byName))
             .catch((e) => { log.info('camera: names refused (' + errText(e) + '), trying numbers'); return fn(byNumber); });
@@ -211,7 +239,7 @@ mgu.run({
         let page = 0, edit = 'left', calCam = 'left';
         let lastControl = '', lastWriteAt = 0, seq = 0;
         let lastPlan = { view: 'none', why: 'Đang khởi động', want: null }, lastSide = null;
-        let camTickAt = 0, lastWant, lastBusy, auxRefusedAt = -1e9, auxReason = '', arHoldUntil = 0;
+        let camTickAt = 0, lastWant, lastBusy, auxRefusedAt = -1e9, auxReason = '', arHoldUntil = 0, arLatched = false, frontHoldUntil = 0, frontLatched = false;
         const writeControl = (view, config, ar, aux, now) => {
             const body = JSON.stringify({ view, config, ar, aux });
             const active = view !== 'none';
@@ -261,20 +289,31 @@ mgu.run({
             if (test && now >= testUntil) { test = null; log.info('test ended'); }
             const side = blinker.side(now);
             if (side) lastSide = side;
-            const s = cfg();
+            const s = cfg(now);
             const st = readStatus(now);
             const n = st && st.native;
-            // the route's 3 s hold after the turn: from whether the turn itself is near (never from the hold itself,
-            // which kept the front camera up for as long as a route ran)
-            const kmhNow = speed !== null && now - speedAt < 3000 ? speed : null;
-            if (L.arWanted({ arMode: s.ar, nav: navNow(st), speed: kmhNow, arLatched: lastPlan.ar === 'route' })) arHoldUntil = now + 3000;
+            // the route's hold after the turn: from whether the turn itself is near (never from the hold itself,
+            // which kept the front camera up for as long as a route ran), keeping arLatched steady across turn signals
+            const kmhNow = speed !== null && now - speedAt < SPEED_STALE_MS ? speed : null;
+            const nvNow = navNow(st);
+            if (s.ar === 'off' || s.enabled === 'off' || !nvNow) { arHoldUntil = 0; arLatched = false; }
+            else if (L.arWanted({ arMode: s.ar, nav: nvNow, speed: kmhNow, arLatched })) { arHoldUntil = now + AR_HOLD_MS; arLatched = true; }
+            else if (now >= arHoldUntil) { arLatched = false; }
+            if (s.front === 'off' || s.enabled === 'off') { frontHoldUntil = 0; frontLatched = false; }
+            else if (s.front === 'always' || (kmhNow !== null && /^slow(\d+)$/.test(String(s.front)) && kmhNow <= Number(RegExp.$1) + (frontLatched ? 4 : 0))) {
+                frontHoldUntil = now + FRONT_HOLD_MS;
+                frontLatched = true;
+            } else if (now >= frontHoldUntil) {
+                frontLatched = false;
+            }
             if (n && n.aux_state === 'refused' && now - auxRefusedAt >= 15000) { auxRefusedAt = now; auxReason = String(n.aux_reason || '').slice(0, 80); log.warn('second view refused (' + (n.aux_reason || '') + '): the mirror camera alone'); }
             const p = L.plan({
                 enabled: s.enabled !== 'off', reverse, mode: s.mode, source: s.source, side, test, front: s.front,
-                arMode: s.ar, nav: navNow(st), arLatched: lastPlan.ar === 'route', arHold: now < arHoldUntil,
+                frontLatched, frontHold: now < frontHoldUntil,
+                arMode: s.ar, nav: nvNow, arLatched, arHold: now < arHoldUntil,
                 // the second layer was refused a moment ago: the mirror camera alone for a while
                 dual: s.blinkFront, auxRefused: now - auxRefusedAt < 15000,
-                speed: speed !== null && now - speedAt < 3000 ? speed : null, maxSpeed: Number(s.maxSpeed) || 0,
+                speed: kmhNow, maxSpeed: Number(s.maxSpeed) || 0,
                 cam: cam.info().cam,
                 helper: { ok: !!n, pictureAge: n ? n.picture_age_ms : null, pictureW: n ? n.picture_w : 0, pictureH: n ? n.picture_h : 0, pair: n ? n.pair : null },
             });
@@ -284,13 +323,12 @@ mgu.run({
             const shownSide = p.view === 'left' || p.view === 'right' ? p.view : test === 'left' || test === 'right' ? test : lastSide;
             // what the helper draws on the front camera; the car's speed (in steps of 5 km/h) only while a route is
             // drawn; nav: whether the helper should read the navigation at all
-            const kmh = p.ar === 'route' && speed !== null && now - speedAt < 3000 ? Math.round(speed / 5) * 5 : -1;
-            const nv = navNow(st);
-            const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), p.ar === 'route' && nv && nv.street && s.arStreet !== 'off' && streetLabel(nv.street, s) ? { label: { w: streetPic.w, h: streetPic.h, seq: streetPic.seq, street: streetPic.street } } : {}, { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
+            const kmh = p.ar === 'route' && kmhNow !== null ? Math.round(kmhNow / 5) * 5 : -1;
+            const ar = Object.assign(L.arConfig(s, p.view === 'front' ? p.ar : 'off', kmh), p.ar === 'route' && nvNow && nvNow.street && s.arStreet !== 'off' && streetLabel(nvNow.street, s) ? { label: { w: streetPic.w, h: streetPic.h, seq: streetPic.seq, street: streetPic.street } } : {}, { nav: s.ar === 'near' || s.ar === 'always' || page === 3 ? 1 : 0 });
             writeControl(p.view, L.viewConfig(s, targets, shownSide, p.view, !!p.aux), ar, p.aux ? L.auxConfig(s, targets, p.aux) : null, now);
             // the camera unit: at once when what is wanted changes or a side comes on, twice a second
-            // while a view is wanted or the unit is not in its mode yet, else every 2 s
-            const busy = !!(side || test) || p.view === 'front' || cam.info().phase !== 'on';
+            // while a signal/test is active or the unit is not in its mode yet, else every 1.5 s
+            const busy = !!(side || test) || cam.info().phase !== 'on';
             if (p.want !== lastWant || busy !== lastBusy || now - camTickAt >= (busy ? CAM_TICK_MS : CAM_IDLE_MS)) {
                 lastWant = p.want;
                 lastBusy = busy;

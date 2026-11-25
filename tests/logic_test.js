@@ -569,11 +569,32 @@ t('reverse gear, night rim dimming, blinker maxMs timeout, dead PID invalidation
     const H = require(path.join(__dirname, '..', 'tools', 'xinhan-cam', 'xinhan-cam.js'));
     assert.strictEqual(JSON.parse(H.configLine(L.viewConfig({ night: true }, T, 'left'))).left_rim, 95);
     assert.strictEqual(JSON.parse(H.auxLine(L.auxConfig({ night: true }, T, 'right'))).rim, 95);
-    // blinker maxMs safety timeout
-    const b = L.createBlinker({ holdMs: 2000, maxMs: 180000 });
-    b.event('LEFT', 'steady', 1000);
-    assert.strictEqual(b.side(120000), 'left');
-    assert.strictEqual(b.side(181000), null);
+    // blinker maxMs, tipMaxMs, string OFF variants, distance-driven missed-OFF auto-release, speed hysteresis
+    assert.strictEqual(L.decode({ activeFunctionIndicateDirection: 'BLINKEN_AUS' }).direction, 'OFF');
+    assert.strictEqual(L.decode({ activeFunctionIndicateDirection: 'KEIN_BLINKEN' }).direction, 'OFF');
+    assert.strictEqual(L.decode({ activeFunctionIndicateDirection: 'INAKTIV' }).direction, 'OFF');
+    assert.strictEqual(L.decode({ activeFunctionIndicateDirection: '0' }).direction, 'OFF');
+    assert.strictEqual(L.decode({ controlIndicateDirection: 'KEIN_BLINKEN' }).direction, 'OFF');
+    const b = L.createBlinker({ holdMs: 2000, maxMs: 180000, tipMaxMs: 6000, maxKm: 0.35, moveMaxMs: 20000 });
+    b.event('LEFT', 'tip', 1000);
+    assert.strictEqual(b.side(6999), 'left');
+    assert.strictEqual(b.side(7000), null);     // missed OFF on 3-blink comfort tap clears at 6 s
+    b.event('RIGHT', 'steady', 10000);
+    b.travel(0, 10000);
+    b.travel(0, 90000);                         // stopped at a red light for 80 s: stays on
+    assert.strictEqual(b.side(90000), 'right');
+    b.travel(54, 91000);                        // 54 km/h = 15 m/s
+    for (let t0 = 92000; t0 <= 116000; t0 += 1000) b.travel(54, t0);   // 25 s * 15 m/s = 375 m (> 0.35 km & > 20 s)
+    assert.strictEqual(b.side(116000), null);   // missed OFF cleared after driving away
+    b.event('LEFT', 'steady', 200000);
+    assert.strictEqual(b.side(320000), 'left');
+    assert.strictEqual(b.side(380000), null);   // stationary maxMs ceiling
+    // front camera speed hysteresis: hovering at 30..34 km/h stays latched, > 34 km/h drops
+    assert.strictEqual(L.plan(base({ front: 'slow30', speed: 32, frontLatched: false })).view, 'none');
+    assert.strictEqual(L.plan(base({ front: 'slow30', speed: 33, frontLatched: true })).view, 'front');
+    assert.strictEqual(L.plan(base({ front: 'slow30', speed: 35, frontLatched: true })).view, 'none');
+    assert.strictEqual(L.plan(base({ front: 'slow30', speed: 36, frontLatched: true, frontHold: true })).view, 'front');
+    assert.strictEqual(L.plan(base({ front: 'slow30', speed: 45, frontLatched: true, frontHold: true })).view, 'none');
 });
 
 /* ---------------- camera.js against a fake camera unit ---------------- */

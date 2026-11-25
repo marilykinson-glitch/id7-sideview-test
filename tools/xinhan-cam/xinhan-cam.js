@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.8.0';
+const VERSION = '0.8.1';
 const env = (k, d) => (process.env[k] !== undefined && process.env[k] !== '' ? process.env[k] : d);
 const CFG = {
     oap: env('XINHAN_OAP', '/var/opt/public/oap'),

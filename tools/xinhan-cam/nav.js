@@ -32,6 +32,8 @@ const cp = require('child_process');
 const CATALOG = process.env.XINHAN_CATALOG || '/etc/oap/someip/someip-interfaces.json';
 const SOMEIP = process.env.XINHAN_SOMEIP || '/usr/lib/someip.node';
 const GEN = process.env.XINHAN_GEN || path.join(__dirname, 'oapgen-gen.js');
+const ERR_LIMIT = Math.max(3, Number(process.env.XINHAN_NAV_ERR_LIMIT) || 8);
+const EMPTY_LIMIT = Math.max(1, Number(process.env.XINHAN_NAV_EMPTY_LIMIT) || 5);
 
 /* ---------------- the catalogue ---------------- */
 
@@ -285,7 +287,7 @@ async function read() {
                 say({ ev: 'proxy', iface: iface.name, inst, ok: true, note: 'method ' + qm });
                 // the request's shape is tried out: as the unit's own values came in (a union keyed or typed), then the others
                 const tries = [['keyed', false], ['typed', false], ['keyed', true], ['typed', true]];
-                let good = -1, at = 0, busy = false, fails = 0, errStreak = 0, lastErr = '', lastReply = '';
+                let good = -1, at = 0, busy = false, fails = 0, errStreak = 0, emptyStreak = 0, lastErr = '', lastReply = '';
                 setInterval(() => {
                     if (busy) return;
                     // the car's own guidance is on: its field has the turn
@@ -301,19 +303,30 @@ async function read() {
                         fails = 0;
                         errStreak = 0;
                         if (good < 0) { good = k; say({ ev: 'note', text: 'event list: request shape ' + tries[k].join(' ') + ' answered' }); }
-                        values.events = r;
                         // (the unit numbers every answer anew, uid: an answer that differs in that alone is the same one)
                         const s = cut(JSON.stringify(r), 3000), same = s.replace(/"uid":"?\d+"?/g, '');
                         if (same !== lastReply) { lastReply = same; say({ ev: 'value', iface: iface.name, name: qm, value: s }); }
-                        changed();
+                        const m = eventManeuver(r, tables);
+                        if (m.kind) {
+                            emptyStreak = 0;
+                            values.events = r;
+                            changed();
+                        } else if (!values.events || !eventManeuver(values.events, tables).kind || ++emptyStreak >= EMPTY_LIMIT) {
+                            // CarPlay / Android Auto briefly sends an empty list or blank distance while updating a step:
+                            // only drop the active turn once several replies in a row confirm guidance ended.
+                            emptyStreak = 0;
+                            values.events = r;
+                            changed();
+                        }
                     }, (e) => {
                         busy = false;
                         const msg = cut(e && e.message || e, 200);
                         if (good < 0) at++;
                         else if (++fails > 20) { good = -1; fails = 0; }
                         // phone guidance ended / CarPlay disconnected and queryContent keeps failing: drop the stale turn
-                        if (++errStreak >= 3 && values.events) {
+                        if (++errStreak >= ERR_LIMIT && values.events) {
                             values.events = null;
+                            emptyStreak = 0;
                             lastReply = '';
                             changed();
                         }

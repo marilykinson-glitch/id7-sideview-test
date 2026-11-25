@@ -6,7 +6,9 @@
 const dart = { maneuver: { type: 'placeholderElement', value: {} } };
 const reply = { GuidanceEventListError: 'NO_ERROR', viewContent: [{ eventsInView: [
     { type: 'intersection', value: { uid: 0, guidingStep: 'X', direction: 'LEFT', formattedDistance: { distance: '120', unit: 'METER', rawDistance: 1 } } }] }] };
+const emptyReply = { GuidanceEventListError: 'NO_ERROR', viewContent: [{ eventsInView: [] }] };
 const stopAfter = Number(process.env.FAKE_STOP_AFTER || 0);
+const blipAt = Number(process.env.FAKE_EMPTY_BLIP || 0);
 let calls = 0;
 module.exports.buildProxy = (cfg) => Promise.resolve({
     init: () => Promise.resolve(),
@@ -15,7 +17,9 @@ module.exports.buildProxy = (cfg) => Promise.resolve({
     callMethod: (name, args) => {
         const a = args.viewConfigs[0].viewport.startPoint.anchorPoint;
         if (!(a.type === 'standardReferencePoint' && a.value === 'CCP')) return Promise.reject(new Error('cannot serialize union'));
-        if (stopAfter > 0 && ++calls > stopAfter) return Promise.reject(new Error('guidance ended'));
+        const c = ++calls;
+        if (blipAt > 0 && (c === blipAt || c === blipAt + 1)) return Promise.resolve(emptyReply);
+        if (stopAfter > 0 && c > stopAfter) return Promise.reject(new Error('guidance ended'));
         return Promise.resolve(reply);
     },
 });

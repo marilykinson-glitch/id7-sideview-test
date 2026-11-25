@@ -225,7 +225,7 @@ void Pipeline::on_picture(const DecodedFrame &f)
      * view that comes on is not taken for a stopped camera before its first picture) */
     if (pairing)
         seen_ms_[cls] = now;
-    if (!pairing || (seen_ms_[cls ^ 1] >= 0 && now - seen_ms_[cls ^ 1] <= 500)) {
+    if (!pairing || (seen_ms_[cls ^ 1] >= 0 && now - seen_ms_[cls ^ 1] <= 650)) {
         std::lock_guard<std::mutex> lock(mutex_);
         stats_.source_ms = now;
     }
@@ -253,7 +253,7 @@ void Pipeline::on_picture(const DecodedFrame &f)
         pair_have_[cls] = true;
         pair_ms_[cls] = now;
         /* both halves, and neither left over from long ago (the other kind stopped coming) */
-        if (!pair_have_[0] || !pair_have_[1] || now - pair_ms_[cls ^ 1] > 500)
+        if (!pair_have_[0] || !pair_have_[1] || now - pair_ms_[cls ^ 1] > 650)
             return;
         src.y = pair_y_.data();
         src.u = pair_u_.data();
