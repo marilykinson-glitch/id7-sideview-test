@@ -1,0 +1,1 @@
+cat /proc/uptime; cat /etc/systemd/system/mgu-uplink.service.d/20-devlink-wait-car-wifi.conf; cat /var/opt/devlink-wifi/wait-car-wifi.sh; systemctl show mgu-uplink -p ExecStartPre -p ExecMainStartTimestampMonotonic | cut -c1-400; for u in wpa_supplicant connman aapd sdip-connman; do systemctl show $u -p ActiveEnterTimestampMonotonic; done
