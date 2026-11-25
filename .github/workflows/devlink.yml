@@ -53,4 +53,14 @@ jobs:
         run: |
           TAG="devlink-v${{ steps.apk.outputs.ver }}"
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" out/*.apk --title "MGU DevLink ${{ steps.apk.outputs.ver }}" --notes "APK ký sẵn, cài đè được lên bản cũ."
+          # GitHub API đôi khi trả 5xx tạm thời -> thử lại tối đa 6 lần
+          n=0
+          until gh release create "$TAG" out/*.apk \
+                --title "MGU DevLink ${{ steps.apk.outputs.ver }}" \
+                --notes "APK ký sẵn, cài đè được lên bản cũ."; do
+            n=$((n+1))
+            if [ "$n" -ge 6 ]; then echo "Publish lỗi sau $n lần thử"; exit 1; fi
+            echo "Publish lỗi (lần $n), thử lại sau 20s…"
+            gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+            sleep 20
+          done
