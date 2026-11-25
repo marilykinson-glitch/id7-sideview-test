@@ -257,6 +257,63 @@ final class Ssh {
         }
     }
 
+    /** chạy một lệnh và đẩy `in` vào stdin của nó (ví dụ `tar -xzf -`), kết quả đổ dần vào out.
+     *  Trả về mã thoát, -999 nếu bị dừng. */
+    static int runIn(String command, final InputStream in, final Out out, Job job) throws Exception {
+        Session s = open();
+        job.sess = s;
+        try {
+            final Session.Command cmd = s.exec("sh -c " + Util.sq(Util.PRE + command));
+            Thread te = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    pump(cmd.getErrorStream(), out);
+                }
+            });
+            te.setDaemon(true);
+            te.start();
+            Thread to = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    pump(cmd.getInputStream(), out);
+                }
+            });
+            to.setDaemon(true);
+            to.start();
+            // đẩy dữ liệu vào stdin
+            OutputStream os = cmd.getOutputStream();
+            byte[] buf = new byte[32768];
+            int n;
+            try {
+                while ((n = in.read(buf)) != -1) {
+                    if (job.stopped) break;
+                    os.write(buf, 0, n);
+                }
+                os.flush();
+                os.close();
+            } catch (IOException e) {
+                if (!job.stopped) throw e;
+            }
+            to.join(5000);
+            te.join(3000);
+            try {
+                cmd.join(10, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                // bỏ qua
+            }
+            if (job.stopped) return -999;
+            Integer st = cmd.getExitStatus();
+            return st == null ? -1 : st;
+        } finally {
+            job.sess = null;
+            try {
+                s.close();
+            } catch (Exception e) {
+                // bỏ qua
+            }
+        }
+    }
+
     private static Thread drain(final InputStream is, final StringBuilder sb) {
         Thread t = new Thread(new Runnable() {
             @Override

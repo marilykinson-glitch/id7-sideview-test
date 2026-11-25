@@ -40,6 +40,26 @@ final class Net {
         return null;
     }
 
+    /** một mạng CÓ internet (ưu tiên đã kiểm chứng) để tải GitHub, kể cả khi đang nối Wi-Fi xe không internet.
+     *  Trả về null nếu không có (máy chỉ đang nối mạng xe) -> cần bật dữ liệu di động. */
+    static Network internet(Context c) {
+        ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm == null) return null;
+        Network best = null;
+        try {
+            for (Network n : cm.getAllNetworks()) {
+                NetworkCapabilities nc = cm.getNetworkCapabilities(n);
+                if (nc == null) continue;
+                if (!nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue;
+                if (nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return n; // tốt nhất
+                if (best == null) best = n;
+            }
+        } catch (Exception e) {
+            // bỏ qua
+        }
+        return best;
+    }
+
     /** địa chỉ nội bộ thì đi qua Wi-Fi, còn lại dùng mạng mặc định */
     static void bindFor(Context c, String host) {
         ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
