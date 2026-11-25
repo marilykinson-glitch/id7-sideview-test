@@ -60,6 +60,36 @@ final class Net {
         return best;
     }
 
+    /** ÉP cả tiến trình đi qua cổng Ethernet (USB-OTG) để flash qua ENET.
+     *  Trả về true nếu tìm thấy và bind được; false nếu không có cổng Ethernet. */
+    static boolean bindEthernet(Context c) {
+        ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm == null) return false;
+        try {
+            for (Network n : cm.getAllNetworks()) {
+                NetworkCapabilities nc = cm.getNetworkCapabilities(n);
+                if (nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+                    cm.bindProcessToNetwork(n);
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            // bỏ qua
+        }
+        return false;
+    }
+
+    /** gỡ ràng buộc mạng của tiến trình (về mặc định) */
+    static void unbind(Context c) {
+        ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm == null) return;
+        try {
+            cm.bindProcessToNetwork(null);
+        } catch (Exception e) {
+            // bỏ qua
+        }
+    }
+
     /** địa chỉ nội bộ thì đi qua Wi-Fi, còn lại dùng mạng mặc định */
     static void bindFor(Context c, String host) {
         ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);

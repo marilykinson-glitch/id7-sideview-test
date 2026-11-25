@@ -32,8 +32,8 @@ public class MainActivity extends Activity {
     static final int REQ_KEY = 11;
     static final int REQ_UPLOAD = 12;
 
-    static final int TAB_CONNECT = 0, TAB_CMD = 1, TAB_SCAN = 2, TAB_FILES = 3, TAB_RELAY = 4, TAB_MGU = 5;
-    static final int TABS = 6;
+    static final int TAB_CONNECT = 0, TAB_CMD = 1, TAB_SCAN = 2, TAB_FILES = 3, TAB_RELAY = 4, TAB_MGU = 5, TAB_FLASH = 6;
+    static final int TABS = 7;
 
     interface Writer {
         void write(OutputStream os) throws Exception;
@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
     FilesScreen filesScreen;
     RelayScreen relayScreen;
     MguScreen mguScreen;
+    FlashScreen flashScreen;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -83,7 +84,7 @@ public class MainActivity extends Activity {
         // thanh dưới
         LinearLayout nav = Ui.row(this);
         nav.setBackgroundColor(0xFF111A29);
-        String[] names = {"🔌 Kết nối", "⌨ Lệnh", "🔎 Quét", "📁 Tệp", "🤖 Claude", "📦 Cài MGU"};
+        String[] names = {"🔌 Kết nối", "⌨ Lệnh", "🔎 Quét", "📁 Tệp", "🤖 Claude", "📦 Cài MGU", "🔑 Mở SSH"};
         for (int i = 0; i < TABS; i++) {
             final int idx = i;
             TextView t = Ui.text(this, names[i], 13, Ui.DIM);
@@ -107,7 +108,8 @@ public class MainActivity extends Activity {
         filesScreen = new FilesScreen(this);
         relayScreen = new RelayScreen(this);
         mguScreen = new MguScreen(this);
-        screens = new Screen[]{connectScreen, cmdScreen, scanScreen, filesScreen, relayScreen, mguScreen};
+        flashScreen = new FlashScreen(this);
+        screens = new Screen[]{connectScreen, cmdScreen, scanScreen, filesScreen, relayScreen, mguScreen, flashScreen};
         showTab(store.hasKey() || !store.password().isEmpty() ? TAB_CMD : TAB_CONNECT);
         refreshStatus();
         if (store.relayOn()) RelayScreen.startService(this);

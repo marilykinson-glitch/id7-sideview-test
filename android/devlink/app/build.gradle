@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'com.chaquo.python'
 }
 
 android {
@@ -10,8 +11,20 @@ android {
         applicationId 'app.devlink'
         minSdk 29
         targetSdk 34
-        versionCode 3
-        versionName '1.2.0'
+        versionCode 4
+        versionName '1.3.0'
+
+        // Chaquopy: nhúng Python để chạy flash/enroll (mgu7) qua ENET
+        ndk {
+            abiFilters 'arm64-v8a'   // điện thoại thật (Xiaomi 15 Ultra...) là arm64
+        }
+        python {
+            version '3.11'
+            buildPython 'python3'
+            pip {
+                install 'cryptography'
+            }
+        }
     }
 
     // chữ ký cố định để bản sau cài đè được lên bản trước (giữ nguyên khóa SSH đã lưu trong máy)
