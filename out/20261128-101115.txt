@@ -1,1 +1,88 @@
-# đang chạy từ 10:11:22
+# rc=0 sec=109.2 host=root@172.16.222.97
+
+[put] /tmp/mgu-sidecam-hw 2620376 byte
+41adc5325a71e34a9d1adaca5f08b531  /tmp/mgu-sidecam-hw
+ae6a0dd5196e9ef5ad1705c931813660  /var/opt/bimmer-drive/versions/1.1.1/mgu-sidecam.sw-bak
+03:11:34 dec=msdk view=left shown=1 age=5 pics=18 pair=sei@19 w=1280x480 corrupt=0 sent=5 cpu=?% 
+03:11:35 dec=msdk view=left shown=1 age=5 pics=50 pair=sei@19 w=1280x480 corrupt=0 sent=17 cpu=51% 
+03:11:36 dec=msdk view=left shown=1 age=0 pics=79 pair=sei@19 w=1280x480 corrupt=0 sent=29 cpu=48% 
+03:11:37 dec=msdk view=left shown=1 age=2 pics=112 pair=sei@19 w=1280x480 corrupt=0 sent=41 cpu=47% 
+03:11:38 dec=msdk view=left shown=1 age=21 pics=142 pair=sei@19 w=1280x480 corrupt=0 sent=54 cpu=54% 
+03:11:39 dec=msdk view=left shown=1 age=21 pics=142 pair=sei@19 w=1280x480 corrupt=0 sent=54 cpu=46% 
+03:11:40 dec=msdk view=left shown=1 age=3 pics=203 pair=sei@19 w=1280x480 corrupt=0 sent=78 cpu=44% 
+03:11:41 dec=msdk view=left shown=1 age=22 pics=233 pair=sei@19 w=1280x480 corrupt=0 sent=90 cpu=44% 
+03:11:44 dec=msdk view=none shown=0 age=414 pics=273 pair=sei@19 w=1280x480 corrupt=0 sent=103 cpu=16% no view asked for
+03:11:49 dec=msdk view=none shown=0 age=9 pics=295 pair=sei@19 w=1280x480 corrupt=0 sent=103 cpu=15% no view asked for
+03:11:54 dec=msdk view=none shown=0 age=125 pics=314 pair=sei@19 w=1280x480 corrupt=0 sent=103 cpu=14% no view asked for
+03:11:59 dec=msdk view=none shown=0 age=204 pics=334 pair=sei@19 w=1280x480 corrupt=0 sent=103 cpu=13% no view asked for
+03:12:04 dec=msdk view=none shown=0 age=286 pics=354 pair=sei@19 w=1280x480 corrupt=0 sent=103 cpu=16% no view asked for
+03:12:06 dec=msdk view=right shown=1 age=4 pics=362 pair=sei@19 w=1280x480 corrupt=0 sent=104 cpu=42% 
+03:12:07 dec=msdk view=right shown=1 age=3 pics=394 pair=sei@19 w=1280x480 corrupt=0 sent=116 cpu=44% 
+03:12:08 dec=msdk view=right shown=1 age=7 pics=423 pair=sei@19 w=1280x480 corrupt=0 sent=129 cpu=47% 
+03:12:09 dec=msdk view=right shown=1 age=10 pics=446 pair=sei@19 w=1280x480 corrupt=0 sent=137 cpu=45% 
+03:12:10 dec=msdk view=right shown=1 age=13 pics=476 pair=sei@19 w=1280x480 corrupt=0 sent=149 cpu=43% 
+03:12:11 dec=msdk view=right shown=1 age=9 pics=506 pair=sei@19 w=1280x480 corrupt=0 sent=161 cpu=45% 
+03:12:12 dec=msdk view=right shown=1 age=25 pics=538 pair=sei@19 w=1280x480 corrupt=0 sent=174 cpu=46% 
+03:12:13 dec=msdk view=right shown=1 age=8 pics=569 pair=sei@19 w=1280x480 corrupt=0 sent=187 cpu=44% 
+03:12:14 dec=msdk view=right shown=1 age=2 pics=599 pair=sei@19 w=1280x480 corrupt=0 sent=198 cpu=48% 
+03:12:15 dec=msdk view=right shown=1 age=8 pics=631 pair=sei@19 w=1280x480 corrupt=0 sent=211 cpu=44% 
+03:12:16 dec=msdk view=right shown=1 age=73 pics=660 pair=sei@19 w=1280x480 corrupt=0 sent=222 cpu=43% 
+03:12:17 dec=msdk view=right shown=1 age=1 pics=691 pair=sei@19 w=1280x480 corrupt=0 sent=234 cpu=45% 
+03:12:18 dec=msdk view=right shown=1 age=6 pics=723 pair=sei@19 w=1280x480 corrupt=0 sent=248 cpu=43% 
+03:12:19 dec=msdk view=right shown=1 age=12 pics=751 pair=sei@19 w=1280x480 corrupt=0 sent=259 cpu=48% 
+03:12:20 dec=msdk view=right shown=1 age=5 pics=780 pair=sei@19 w=1280x480 corrupt=0 sent=271 cpu=48% 
+03:12:21 dec=msdk view=right shown=1 age=5 pics=813 pair=sei@19 w=1280x480 corrupt=0 sent=284 cpu=49% 
+03:12:22 dec=msdk view=right shown=1 age=9 pics=845 pair=sei@19 w=1280x480 corrupt=0 sent=296 cpu=44% 
+03:12:23 dec=msdk view=right shown=1 age=5 pics=875 pair=sei@19 w=1280x480 corrupt=0 sent=308 cpu=48% 
+03:12:24 dec=msdk view=right shown=1 age=3 pics=928 pair=sei@19 w=1280x480 corrupt=0 sent=329 cpu=43% 
+03:12:25 dec=msdk view=right shown=1 age=6 pics=959 pair=sei@19 w=1280x480 corrupt=0 sent=342 cpu=48% 
+03:12:26 dec=msdk view=right shown=1 age=6 pics=959 pair=sei@19 w=1280x480 corrupt=0 sent=342 cpu=46% 
+03:12:27 dec=msdk view=right shown=1 age=6 pics=959 pair=sei@19 w=1280x480 corrupt=0 sent=342 cpu=47% 
+03:12:28 dec=msdk view=right shown=1 age=8 pics=1029 pair=sei@19 w=1280x480 corrupt=0 sent=369 cpu=47% 
+03:12:29 dec=msdk view=right shown=1 age=26 pics=1045 pair=sei@19 w=1280x480 corrupt=0 sent=376 cpu=47% 
+03:12:30 dec=msdk view=right shown=1 age=6 pics=1066 pair=sei@19 w=1280x480 corrupt=0 sent=384 cpu=47% 
+03:12:31 dec=msdk view=right shown=1 age=13 pics=1127 pair=sei@19 w=1280x480 corrupt=0 sent=408 cpu=47% 
+03:12:32 dec=msdk view=right shown=1 age=24 pics=1156 pair=sei@19 w=1280x480 corrupt=0 sent=420 cpu=48% 
+03:12:33 dec=msdk view=right shown=1 age=29 pics=1188 pair=sei@19 w=1280x480 corrupt=0 sent=432 cpu=49% 
+03:12:34 dec=msdk view=right shown=1 age=1 pics=1226 pair=sei@19 w=1280x480 corrupt=0 sent=447 cpu=51% 
+03:12:35 dec=msdk view=right shown=1 age=1 pics=1226 pair=sei@19 w=1280x480 corrupt=0 sent=447 cpu=51% 
+03:12:36 dec=msdk view=right shown=1 age=23 pics=1288 pair=sei@19 w=1280x480 corrupt=0 sent=472 cpu=48% 
+03:12:37 dec=msdk view=right shown=1 age=7 pics=1319 pair=sei@19 w=1280x480 corrupt=0 sent=485 cpu=51% 
+03:12:38 dec=msdk view=right shown=1 age=28 pics=1349 pair=sei@19 w=1280x480 corrupt=0 sent=497 cpu=48% 
+03:12:39 dec=msdk view=right shown=1 age=17 pics=1367 pair=sei@19 w=1280x480 corrupt=0 sent=503 cpu=43% 
+03:12:40 dec=msdk view=right shown=1 age=15 pics=1396 pair=sei@19 w=1280x480 corrupt=0 sent=515 cpu=52% 
+03:12:41 dec=msdk view=right shown=1 age=25 pics=1428 pair=sei@19 w=1280x480 corrupt=0 sent=527 cpu=46% 
+03:12:42 dec=msdk view=right shown=1 age=7 pics=1459 pair=sei@19 w=1280x480 corrupt=0 sent=540 cpu=45% 
+03:12:43 dec=msdk view=right shown=1 age=24 pics=1490 pair=sei@19 w=1280x480 corrupt=0 sent=552 cpu=49% 
+03:12:44 dec=msdk view=right shown=1 age=10 pics=1522 pair=sei@19 w=1280x480 corrupt=0 sent=564 cpu=47% 
+03:12:45 dec=msdk view=right shown=1 age=5 pics=1553 pair=sei@19 w=1280x480 corrupt=0 sent=577 cpu=51% 
+03:12:46 dec=msdk view=right shown=1 age=27 pics=1584 pair=sei@19 w=1280x480 corrupt=0 sent=589 cpu=51% 
+03:12:47 dec=msdk view=right shown=1 age=7 pics=1615 pair=sei@19 w=1280x480 corrupt=0 sent=602 cpu=52% 
+03:12:48 dec=msdk view=right shown=1 age=7 pics=1645 pair=sei@19 w=1280x480 corrupt=0 sent=614 cpu=54% 
+03:12:49 dec=msdk view=right shown=1 age=12 pics=1675 pair=sei@19 w=1280x480 corrupt=0 sent=626 cpu=42% 
+03:12:50 dec=msdk view=right shown=1 age=12 pics=1675 pair=sei@19 w=1280x480 corrupt=0 sent=626 cpu=47% 
+03:12:51 dec=msdk view=right shown=1 age=6 pics=1737 pair=sei@19 w=1280x480 corrupt=0 sent=650 cpu=49% 
+03:12:52 dec=msdk view=right shown=1 age=24 pics=1766 pair=sei@19 w=1280x480 corrupt=0 sent=662 cpu=47% 
+03:12:53 dec=msdk view=right shown=1 age=6 pics=1797 pair=sei@19 w=1280x480 corrupt=0 sent=675 cpu=48% 
+03:12:54 dec=msdk view=right shown=1 age=8 pics=1829 pair=sei@19 w=1280x480 corrupt=0 sent=687 cpu=46% 
+03:12:55 dec=msdk view=right shown=1 age=23 pics=1860 pair=sei@19 w=1280x480 corrupt=0 sent=699 cpu=48% 
+03:12:56 dec=msdk view=right shown=1 age=23 pics=1860 pair=sei@19 w=1280x480 corrupt=0 sent=699 cpu=49% 
+03:12:57 dec=msdk view=right shown=1 age=6 pics=1891 pair=sei@19 w=1280x480 corrupt=0 sent=712 cpu=55% 
+03:12:58 dec=msdk view=right shown=1 age=25 pics=1922 pair=sei@19 w=1280x480 corrupt=0 sent=724 cpu=51% 
+03:12:59 dec=msdk view=right shown=1 age=10 pics=1985 pair=sei@19 w=1280x480 corrupt=0 sent=749 cpu=53% 
+03:13:00 dec=msdk view=right shown=1 age=16 pics=2016 pair=sei@19 w=1280x480 corrupt=0 sent=761 cpu=53% 
+03:13:01 dec=msdk view=right shown=1 age=7 pics=2047 pair=sei@19 w=1280x480 corrupt=0 sent=774 cpu=51% 
+03:13:02 dec=msdk view=right shown=1 age=24 pics=2078 pair=sei@19 w=1280x480 corrupt=0 sent=786 cpu=53% 
+03:13:03 dec=msdk view=right shown=1 age=18 pics=2110 pair=sei@19 w=1280x480 corrupt=0 sent=798 cpu=54% 
+03:13:04 dec=msdk view=right shown=1 age=1 pics=2141 pair=sei@19 w=1280x480 corrupt=0 sent=810 cpu=48% 
+03:13:05 dec=msdk view=right shown=1 age=7 pics=2171 pair=sei@19 w=1280x480 corrupt=0 sent=823 cpu=52% 
+03:13:06 dec=msdk view=right shown=1 age=25 pics=2202 pair=sei@19 w=1280x480 corrupt=0 sent=835 cpu=53% 
+03:13:07 dec=msdk view=right shown=1 age=7 pics=2233 pair=sei@19 w=1280x480 corrupt=0 sent=848 cpu=53% 
+03:13:08 dec=msdk view=right shown=1 age=6 pics=2264 pair=sei@19 w=1280x480 corrupt=0 sent=859 cpu=54% 
+03:13:09 dec=msdk view=right shown=1 age=9 pics=2294 pair=sei@19 w=1280x480 corrupt=0 sent=871 cpu=52% 
+03:13:10 dec=msdk view=right shown=1 age=5 pics=2325 pair=sei@19 w=1280x480 corrupt=0 sent=884 cpu=50% 
+03:13:11 dec=msdk view=right shown=1 age=5 pics=2355 pair=sei@19 w=1280x480 corrupt=0 sent=896 cpu=48% 
+03:13:12 dec=msdk view=right shown=1 age=9 pics=2385 pair=sei@19 w=1280x480 corrupt=0 sent=909 cpu=48% 
+RESULT bad=0 sawView=75 sawShown=75
+decision=keep
+41adc5325a71e34a9d1adaca5f08b531  /proc/31962/exe
