@@ -223,20 +223,32 @@ void setup() {
     BLEServer* pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCB());
 
-    BLEService* pService = pServer->createService(SERVICE_UUID);
+    BLEService* pService = pServer->createService(BLEUUID((uint16_t)0xFFF0));
     pNotifyChar = pService->createCharacteristic(
-        NOTIFY_UUID, BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
+        BLEUUID((uint16_t)0xFFF1), BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
     pNotifyChar->addDescriptor(new BLE2902());
 
     BLECharacteristic* pWriteChar = pService->createCharacteristic(
-        WRITE_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+        BLEUUID((uint16_t)0xFFF2), BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
     pWriteChar->setCallbacks(new WriteCB());
 
     pService->start();
+    /* Name and the 16-bit service UUID 0xFFF0 both in the primary advertising
+     * packet (some apps' scanners never read the scan response), and again in
+     * the scan response. */
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(SERVICE_UUID);
-    pAdvertising->setScanResponse(true);
+    BLEAdvertisementData adv;
+    adv.setFlags(0x06);   /* LE General Discoverable, BR/EDR not supported */
+    adv.setCompleteServices(BLEUUID((uint16_t)0xFFF0));
+    adv.setName(DEVICE_NAME);
+    pAdvertising->setAdvertisementData(adv);
+    BLEAdvertisementData scan;
+    scan.setName(DEVICE_NAME);
+    scan.setCompleteServices(BLEUUID((uint16_t)0xFFF0));
+    pAdvertising->setScanResponseData(scan);
     pAdvertising->setMinPreferred(0x06);
+    pAdvertising->setMinInterval(0x20);   /* 20 ms: found fast by a scanning phone */
+    pAdvertising->setMaxInterval(0x40);
     BLEDevice::startAdvertising();
     emitJson();
 }
