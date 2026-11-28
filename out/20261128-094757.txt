@@ -1,1 +1,4 @@
-# đang chạy từ 09:48:04
+# rc=1 sec=0.4 host=root@172.16.222.97
+
+ABORT: bmw-voice.js match=0 ::                         uplinkOpts: this.uplinkOpts,
+                 
