@@ -2,11 +2,11 @@ Sketch uses 748769 bytes (57%) of program storage space. Maximum is 1310720 byte
 Global variables use 20636 bytes (6%) of dynamic memory, leaving 307044 bytes for local variables. Maximum is 327680 bytes.
 rc=0
 total 22540
-drwxr-xr-x 2 runner runner     4096 Nov 28 05:49 .
-drwxr-xr-x 8 runner runner     4096 Nov 28 05:49 ..
--rw-r--r-- 1 runner runner   748880 Nov 28 05:49 vm_hud_esp32.ino.bin
--rw-r--r-- 1 runner runner    20928 Nov 28 05:49 vm_hud_esp32.ino.bootloader.bin
--rwxr-xr-x 1 runner runner 10749004 Nov 28 05:49 vm_hud_esp32.ino.elf
--rw-r--r-- 1 runner runner  7347552 Nov 28 05:49 vm_hud_esp32.ino.map
--rw-r--r-- 1 runner runner  4194304 Nov 28 05:49 vm_hud_esp32.ino.merged.bin
--rw-r--r-- 1 runner runner     3072 Nov 28 05:49 vm_hud_esp32.ino.partitions.bin
+drwxr-xr-x 2 runner runner     4096 Nov 28 08:06 .
+drwxr-xr-x 8 runner runner     4096 Nov 28 08:06 ..
+-rw-r--r-- 1 runner runner   748880 Nov 28 08:06 vm_hud_esp32.ino.bin
+-rw-r--r-- 1 runner runner    20928 Nov 28 08:06 vm_hud_esp32.ino.bootloader.bin
+-rwxr-xr-x 1 runner runner 10749004 Nov 28 08:06 vm_hud_esp32.ino.elf
+-rw-r--r-- 1 runner runner  7347552 Nov 28 08:06 vm_hud_esp32.ino.map
+-rw-r--r-- 1 runner runner  4194304 Nov 28 08:06 vm_hud_esp32.ino.merged.bin
+-rw-r--r-- 1 runner runner     3072 Nov 28 08:06 vm_hud_esp32.ino.partitions.bin
