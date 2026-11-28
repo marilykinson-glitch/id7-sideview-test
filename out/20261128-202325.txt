@@ -1,1 +1,64 @@
-# đang chạy từ 20:24:03
+# rc=0 sec=0.6 host=root@172.16.222.97
+
+== uname
+Linux mgu 4.14.198-apl #1 SMP PREEMPT Fri Aug 18 07:48:18 UTC 2023 x86_64 GNU/Linux
+== bt tools
+/lib/modules/4.14.198-apl/kernel/net/bluetooth/bluetooth.ko
+== hci
+ls: /sys/class/bluetooth: No such file or directory
+cat: can't open '/sys/class/bluetooth/*/address': No such file or directory
+== usb
+/sys/bus/usb/devices/1-3.3 0424:2530 Bridge device
+/sys/bus/usb/devices/1-8 1546:01a8 u-blox GNSS receiver
+/sys/bus/usb/devices/usb1 1d6b:0002 xHCI Host Controller
+/sys/bus/usb/devices/usb2 1d6b:0003 xHCI Host Controller
+== kernel bt
+ahci
+intel_xhci_usb_role_switch
+libahci
+sdhci
+xhci_hcd
+xhci_pci
+/lib/modules/4.14.198-apl/kernel/drivers/bluetooth:
+hci_uart.ko
+
+/lib/modules/4.14.198-apl/kernel/net/bluetooth:
+bluetooth.ko
+/proc/modules:intel_xhci_usb_role_switch 16384 0 - Live 0xffffffffc084c000
+/proc/modules:roles 16384 1 intel_xhci_usb_role_switch, Live 0xffffffffc0823000
+/proc/modules:ahci 28672 0 - Live 0xffffffffc06dc000
+/proc/modules:libahci 28672 1 ahci, Live 0xffffffffc0551000
+/proc/modules:libata 151552 2 ahci,libahci, Live 0xffffffffc06af000
+/proc/modules:xhci_pci 16384 0 - Live 0xffffffffc045b000
+/proc/modules:xhci_hcd 188416 1 xhci_pci, Live 0xffffffffc0576000
+/proc/modules:usbcore 204800 3 cdc_acm,xhci_pci,xhci_hcd, Live 0xffffffffc0464000
+== procs
+  743 con_2036  384m S    /usr/bin/connhelper
+  854 root     41852 S    /usr/sbin/connmand -n -d src/technology.c:src/main.c
+  933 nav_hbtr  315m S    /usr/bin/dev-mv2trace -l -f
+  990 con_2026  725m S    /usr/bin/wicome -f /var/opt/public/con/wicome/pss_iu
+ 1119 con_2027  729m S    /usr/bin/GeniviBTService -c /var/opt/public/con/wico
+ 1120 messageb  225m S    /usr/bin/dlt-dbus -c /etc/dlt-dbus_connectivity.conf
+ 2339 cia_1301  389m S    /usr/bin/sdip-connman
+ 2356 con_2029  372m S    /usr/bin/Miracast -c /var/opt/public/con/wicome/geni
+== dbus
+/run/dbus:
+connectivity_socket
+system_bus_socket
+
+/var/run/dbus:
+connectivity_socket
+system_bus_socket
+/usr/bin/dbus-daemon
+/usr/bin/node
+== rfkill
+/sys/class/rfkill/rfkill12 phy6 wlan soft=0
+/sys/class/rfkill/rfkill13 brcmfmac-wifi wlan soft=0
+== tty
+ls: /dev/ttyUSB*: No such file or directory
+ls: /dev/rfcomm*: No such file or directory
+/dev/ttyACM0
+/dev/ttyS0
+/dev/ttyS1
+/dev/ttyS2
+/dev/ttyS3
