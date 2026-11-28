@@ -1,1 +1,78 @@
-# đang chạy từ 09:48:22
+# rc=0 sec=0.0 host=root@172.16.222.97
+
+    async speakReply(rawText) {
+        const hasOfflineTts = !!(this.offlineProbe && this.offlineProbe.hasTts);
+        if (this.cfg.simMode || !this.settings.voiceReply || this.car.state.callActive || (!hasOfflineTts && !this.settings.apiKey)) {
+            return false;
+        }
+        const spoken = /^Chưa nhận diện được lệnh điều khiển xe/.test(String(rawText || ''))
+            ? 'Xin lỗi, tôi chưa hiểu lệnh này.'
+            : NluBrain.formatSpeechTextVi(rawText);
+        if (!spoken) return false;
+        try {
+            const cacheDir = path.join(this.cfg.state, 'tts-cache');
+            mkdirp(cacheDir);
+            const cacheKey = (hasOfflineTts ? 'v3:piper:' : 'v2:gem:') + spoken;
+            const hash = crypto.createHash('sha1').update(cacheKey).digest('hex').slice(0, 16);
+            const cacheFile = path.join(cacheDir, hash + '.wav');
+            let wavBuf = null;
+            let durMs = 2400;
+
+            if (fs.existsSync(cacheFile)) {
+                wavBuf = fs.readFileSync(cacheFile);
+                const hdrInfo = OfflineAi.readWavHeaderInfo(wavBuf);
+                durMs = hdrInfo.durationMs || Math.round((Math.max(0, wavBuf.length - 44) / 48000) * 1000);
+                this.log('TTS cache hit (' + durMs + 'ms): "' + spoken + '"');
+            } else {
+                let tts = null;
+                if (hasOfflineTts && this.offlineWorker && this.offlineWorker.ttsReady) {
+                    tts = await OfflineAi.synthesizeOfflineViTts({
+                        text: spoken,
+                        offlineDir: this.cfg.offlineDir,
+                        workDir: this.cfg.run,
+                        worker: this.offlineWorker,
+                    });
+                }
+                if (!tts && this.settings.apiKey) {
+                    tts = await NluBrain.synthesizeVietnameseTts({
+                        text: spoken,
+                        apiKey: this.settings.apiKey,
+                        uplinkOpts: this.uplinkOpts,
+                    });
+                }
+                if (!tts || !tts.wavBuffer) return false;
+                wavBuf = tts.wavBuffer;
+                durMs = tts.durationMs || 2600;
+                this.log('TTS generated (' + tts.model + ', ' + durMs + 'ms' + (tts.elapsedMs ? (', gen=' + tts.elapsedMs + 'ms') : '') + '): "' + spoken + '"');
+                try {
+                    writeAtomic(cacheFile, wavBuf, 0o644);
+                    // Prune oldest cached WAVs if > 48 entries (~6 MB cap)
+                    const files = fs.readdirSync(cacheDir).filter((f) => /\.wav$/.test(f));
+                    if (files.length > 48) {
+                        const stats = files.map((f) => {
+                            const p = path.join(cacheDir, f);
+                            try { return { p, mt: fs.statSync(p).mtimeMs }; } catch (e) { return { p, mt: 0 }; }
+                        }).sort((a, b) => a.mt - b.mt);
+                        for (let i = 0; i < stats.length - 40; i++) {
+                            try { fs.unlinkSync(stats[i].p); } catch (e) {}
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            if (this.car.state.callActive || this.assistantState === 'listening') return false;
+            const outWav = path.join(this.cfg.run, 'reply_tts.wav');
+            writeAtomic(outWav, wavBuf, 0o644);
+            // Prevent the ceiling mic from hearing our own TTS reply and re-triggering "Hey BMW"
+            this.micStream.holdCooldown(durMs + 1100);
+            if (this.overlay.phase === 'result' && this.shouldShowOverlay()) {
+                this.overlay.extendHide(durMs + 900);
+            }
+            return await this.car.playOverlayWav(outWav, durMs);
+        } catch (e) {
+            this.log('TTS speak warn: ' + e.message);
+            return false;
+        }
+    }
+
+    saveSettings(patch) {
