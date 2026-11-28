@@ -22,11 +22,16 @@
 #define SERVICE_UUID   "0000fff0-0000-1000-8000-00805f9b34fb"
 #define NOTIFY_UUID    "0000fff1-0000-1000-8000-00805f9b34fb"
 #define WRITE_UUID     "0000fff2-0000-1000-8000-00805f9b34fb"
-#define DEVICE_NAME    "HUD(BLE)"
+/* VIETMAP LIVE 3.4.5 lists, in its HUD search, only devices whose name contains
+ * "vietmap_" / "vietmap-"; a BLE-only one must also contain "h50" (the H50
+ * HUD, Java handler Da/j: service FFFF, characteristics 9ABC + 1234). */
+#define DEVICE_NAME    "vietmap_h50"
 
 static BLECharacteristic* pNotifyChar = nullptr;     /* FFF1 (old HUD) */
 static BLECharacteristic* pHm10Char = nullptr;       /* FFE1 (HM-10 style: notify + write) */
-static BLECharacteristic* pTxChar = nullptr;         /* where replies go: the one the phone wrote to */
+static BLECharacteristic* pTxChar = nullptr;
+static BLECharacteristic* pH50A = nullptr;          /* 9ABC */
+static BLECharacteristic* pH50B = nullptr;          /* 1234 */         /* where replies go: the one the phone wrote to */
 static volatile bool bleConnected = false;
 static volatile bool sendWelcomePending = false;
 static unsigned long connectedAtMs = 0;
@@ -212,7 +217,9 @@ class WriteCB : public BLECharacteristicCallbacks {
         String val = pCharacteristic->getValue();
         size_t n = val.length();
         if (n == 0) return;
-        logHex("rx", (const uint8_t*)val.c_str(), n);
+        const char* tag = pCharacteristic == pH50A ? "rx9abc" : pCharacteristic == pH50B ? "rx1234" :
+                          pCharacteristic == pHm10Char ? "rxffe1" : "rxfff2";
+        logHex(tag, (const uint8_t*)val.c_str(), n);
         if (rxLen + n > sizeof(rxBuf)) rxLen = 0;
         memcpy(rxBuf + rxLen, val.c_str(), n);
         rxLen += n;
@@ -249,13 +256,25 @@ void setup() {
     pHm10Char->addDescriptor(new BLE2902());
     pHm10Char->setCallbacks(new WriteCB());
     pHm10->start();
+
+    /* H50 HUD (vietmap_hud_sdk, Da/j): service FFFF, characteristics 9ABC and 1234 */
+    BLEService* pH50 = pServer->createService(BLEUUID((uint16_t)0xFFFF));
+    const uint32_t allProps = BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY |
+        BLECharacteristic::PROPERTY_INDICATE | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR;
+    pH50A = pH50->createCharacteristic(BLEUUID((uint16_t)0x9ABC), allProps);
+    pH50A->addDescriptor(new BLE2902());
+    pH50A->setCallbacks(new WriteCB());
+    pH50B = pH50->createCharacteristic(BLEUUID((uint16_t)0x1234), allProps);
+    pH50B->addDescriptor(new BLE2902());
+    pH50B->setCallbacks(new WriteCB());
+    pH50->start();
     /* Name and the 16-bit service UUID 0xFFF0 both in the primary advertising
      * packet (some apps' scanners never read the scan response), and again in
      * the scan response. */
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
     BLEAdvertisementData adv;
     adv.setFlags(0x06);   /* LE General Discoverable, BR/EDR not supported */
-    adv.setCompleteServices(BLEUUID((uint16_t)0xFFE0));
+    adv.setCompleteServices(BLEUUID((uint16_t)0xFFFF));
     adv.setName(DEVICE_NAME);
     pAdvertising->setAdvertisementData(adv);
     BLEAdvertisementData scan;
