@@ -1,1 +1,31 @@
-# đang chạy từ 09:34:04
+# rc=1 sec=0.0 host=root@172.16.222.97
+
+drwxr-xr-x    4 root     root          4096 Nov 27 01:35 .
+drwxr-xr-x    4 root     root          4096 Nov 26 01:41 ..
+-rw-r--r--    1 root     root          1151 Nov 26 01:41 LICENSE.GPL-3.0
+drwxr-xr-x    2 root     root          4096 Nov 27 01:36 __pycache__
+-rwxr-xr-x    1 root     root         49087 Nov 27 01:35 alsa-smartx.py
+-rw-r--r--    1 root     root         65821 Nov 27 01:35 bmw-voice.js
+-rw-r--r--    1 root     root         78842 Nov 27 01:17 car-control.js
+-rw-r--r--    1 root     root          2029 Nov 27 01:17 component.json
+drwxr-xr-x    2 root     root          4096 Nov 26 01:41 fonts
+-rw-r--r--    1 root     root         27169 Nov 27 01:17 ipa-overlay.js
+-rw-r--r--    1 root     root         24550 Nov 27 01:17 mic-capture.js
+-rw-r--r--    1 root     root         55193 Nov 27 01:35 nlu-brain.js
+-rw-r--r--    1 root     root         23269 Nov 27 01:17 offline-ai.js
+-rwxr-xr-x    1 root     root         22556 Nov 27 01:35 offline-worker.py
+-rw-r--r--    1 root     root          9793 Nov 27 01:17 page.html
+-rw-r--r--    1 root     root         28988 Nov 27 01:17 uplink.js
+/var/opt/bmw-voice/versions/1.2.0
+6d3f4e9dfbdc81b9ea5b2f3dcc149721  nlu-brain.js
+c7cb30ad1a6881eb93de5d1ed9787dda  offline-ai.js
+3d10c383f8e28f898b1a00ab702c822a  mic-capture.js
+b8060c8e583cb978251f93d9fa01fe9d  ipa-overlay.js
+a83a79f299ecf7519f5f6c156bb4dbb3  alsa-smartx.py
+a28649a8b21ff08749b31cafbae2b75e  offline-worker.py
+746f61078af6a1c2b62c0c6314acd3ac  page.html
+d1f5f6cfa69eb53deda6b3c3f4cbf0b4  uplink.js
+eb2dc5f9462bd39ac8c3714fa6c12ae8  component.json
+7337f1cd4f11ae649a9e90b312a27e84  car-control.js
+47c33f51a3d0ad68157c2083eb2b0e64  bmw-voice.js
+/bin/gzip
