@@ -1,0 +1,42 @@
+name: build vm-hud esp32 firmware
+on:
+  push:
+    branches: [fw-build]
+    paths: ['vm_hud_esp32/**', '.github/workflows/fw.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: arduino-cli + esp32 core
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=$HOME/bin sh
+          echo "$HOME/bin" >> $GITHUB_PATH
+          $HOME/bin/arduino-cli config init
+          $HOME/bin/arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          $HOME/bin/arduino-cli core update-index
+          $HOME/bin/arduino-cli core install esp32:esp32
+          $HOME/bin/arduino-cli core list
+      - name: compile
+        run: |
+          set -e
+          mkdir -p out
+          build() {
+            arduino-cli compile --fqbn "$2" --export-binaries --output-dir "build-$1" vm_hud_esp32
+            ls -la "build-$1"
+            cp "build-$1"/vm_hud_esp32.ino.merged.bin "out/vm_hud_$1.merged.bin"
+          }
+          build esp32s3 "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=disabled"
+          build esp32c6 "esp32:esp32:esp32c6:CDCOnBoot=cdc"
+          build esp32c3 "esp32:esp32:esp32c3:CDCOnBoot=cdc"
+          arduino-cli core list > out/core.txt
+          sha256sum out/*.bin > out/SHA256SUMS
+      - name: commit binaries
+        run: |
+          git config user.name "fw-build"
+          git config user.email "fw-build@users.noreply.github.com"
+          git add out
+          git commit -m "firmware binaries ${GITHUB_SHA::7}" || exit 0
+          git push
