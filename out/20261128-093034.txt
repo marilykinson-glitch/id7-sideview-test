@@ -1,1 +1,24 @@
-# đang chạy từ 09:30:37
+# rc=0 sec=0.0 host=root@172.16.222.97
+
+---
+ps: invalid option -- 'e'
+BusyBox v1.27.2 (2023-08-18 07:46:45 UTC) multi-call binary.
+
+Usage: ps 
+---
+/run/bmw-voice:
+drwxr-xr-x    3 root     root           160 Nov 28 02:30 .
+drwxr-xr-x   49 root     root          1260 Nov 27 01:45 ..
+drwxrwxrwx    2 root     root            40 Nov 27 01:35 app
+-rw-r--r--    1 root     root         10604 Nov 27 01:44 chime.wav
+srw-rw-rw-    1 root     root             0 Nov 27 01:35 ctl.sock
+-rw-r--r--    1 root     root          1515 Nov 28 02:30 hmi.json
+-rw-r--r--    1 root     root         96300 Nov 27 01:44 last_ptt.wav
+-rw-r--r--    1 root     root        105516 Nov 27 01:44 reply_tts.wav
+
+/var/opt/bmw-voice/state:
+drwx------    2 root     root          4096 Nov 25 13:45 .
+drwxr-xr-x    6 root     root          4096 Nov 27 01:23 ..
+-rw-r--r--    1 root     root             6 Nov 25 13:45 internet-uids
+-rw-r--r--    1 root     root            16 Nov 25 13:45 uids.json
+---
