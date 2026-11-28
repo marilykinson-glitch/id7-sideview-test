@@ -1,1 +1,7 @@
-# đang chạy từ 09:49:30
+# rc=0 sec=27.9 host=root@172.16.222.97
+
+patched ok
+active
+Nov 28 02:49:48 mgu sh[24914]: [bmw-voice] Offline Vietnamese STT warm (5534ms)
+{"wake":"armed","call":false,"off":{"kws":true,"stt":true,"sttWarm":true,"tts":true,"ttsWarm":false,"kwsMode":"offline"}}
+result gemini-2.5-flash-preview-tts 3091 4225ms
