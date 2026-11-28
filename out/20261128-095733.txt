@@ -1,1 +1,27 @@
-# đang chạy từ 09:57:39
+# rc=0 sec=20.1 host=root@172.16.222.97
+
+{"ev":"init","ok":true,"err":""}
+{"ev":"sec","t":1.0,"cpu_pct":15.8,"aus":29,"frames":29,"pics":0,"corrupt":0,"fails":0,"decoding":true,"pic":"0x0","atlas":0,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":29,"idr5":0,"sei6":30,"sps7":30,"pps8":30,"aud9":0},"err":""}
+{"ev":"sec","t":2.0,"cpu_pct":15.8,"aus":60,"frames":60,"pics":2,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":60,"idr5":0,"sei6":60,"sps7":60,"pps8":60,"aud9":0},"err":""}
+{"ev":"sec","t":3.0,"cpu_pct":15.3,"aus":90,"frames":90,"pics":3,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":90,"idr5":0,"sei6":91,"sps7":91,"pps8":91,"aud9":0},"err":""}
+{"ev":"sec","t":4.0,"cpu_pct":15.2,"aus":120,"frames":120,"pics":4,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":120,"idr5":0,"sei6":121,"sps7":121,"pps8":121,"aud9":0},"err":""}
+{"ev":"sec","t":5.0,"cpu_pct":14.6,"aus":151,"frames":151,"pics":5,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":151,"idr5":0,"sei6":152,"sps7":152,"pps8":152,"aud9":0},"err":""}
+{"ev":"sec","t":6.0,"cpu_pct":12.9,"aus":181,"frames":181,"pics":6,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":181,"idr5":0,"sei6":182,"sps7":182,"pps8":182,"aud9":0},"err":""}
+{"ev":"sec","t":7.0,"cpu_pct":13.6,"aus":212,"frames":212,"pics":7,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":212,"idr5":0,"sei6":212,"sps7":213,"pps8":212,"aud9":0},"err":""}
+{"ev":"sec","t":8.0,"cpu_pct":12.7,"aus":242,"frames":242,"pics":8,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":242,"idr5":0,"sei6":243,"sps7":243,"pps8":243,"aud9":0},"err":""}
+{"ev":"sec","t":9.0,"cpu_pct":13.8,"aus":272,"frames":272,"pics":9,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":272,"idr5":0,"sei6":273,"sps7":273,"pps8":273,"aud9":0},"err":""}
+{"ev":"sec","t":10.0,"cpu_pct":14.9,"aus":303,"frames":303,"pics":10,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":303,"idr5":0,"sei6":304,"sps7":304,"pps8":304,"aud9":0},"err":""}
+{"ev":"sec","t":11.0,"cpu_pct":16.1,"aus":333,"frames":333,"pics":11,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":333,"idr5":0,"sei6":334,"sps7":334,"pps8":334,"aud9":0},"err":""}
+{"ev":"sec","t":12.0,"cpu_pct":15.1,"aus":364,"frames":364,"pics":12,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":364,"idr5":0,"sei6":364,"sps7":365,"pps8":364,"aud9":0},"err":""}
+{"ev":"sec","t":13.0,"cpu_pct":14.9,"aus":394,"frames":393,"pics":13,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":393,"idr5":0,"sei6":394,"sps7":395,"pps8":395,"aud9":0},"err":""}
+{"ev":"sec","t":14.0,"cpu_pct":14.7,"aus":425,"frames":424,"pics":14,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":424,"idr5":0,"sei6":424,"sps7":425,"pps8":425,"aud9":0},"err":""}
+{"ev":"sec","t":15.0,"cpu_pct":14.5,"aus":455,"frames":454,"pics":15,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":454,"idr5":0,"sei6":455,"sps7":456,"pps8":456,"aud9":0},"err":""}
+{"ev":"sec","t":16.0,"cpu_pct":15.0,"aus":485,"frames":484,"pics":16,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":484,"idr5":0,"sei6":485,"sps7":486,"pps8":486,"aud9":0},"err":""}
+{"ev":"sec","t":17.1,"cpu_pct":14.9,"aus":516,"frames":515,"pics":17,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":515,"idr5":0,"sei6":515,"sps7":516,"pps8":516,"aud9":0},"err":""}
+{"ev":"sec","t":18.1,"cpu_pct":14.3,"aus":546,"frames":545,"pics":18,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":545,"idr5":0,"sei6":546,"sps7":547,"pps8":547,"aud9":0},"err":""}
+{"ev":"sec","t":19.1,"cpu_pct":13.1,"aus":576,"frames":575,"pics":19,"corrupt":0,"fails":0,"decoding":true,"pic":"1280x480","atlas":921600,"first_frame_s":0.11,"qdrop":0,"nal":{"slice1":575,"idr5":0,"sei6":576,"sps7":577,"pps8":577,"aud9":0},"err":""}
+{"ev":"done","cpu_total_s":2.92,"wall_s":20.0}
+rc=0
+I cluster-demo: avb: receiver woc.avb.28674 on media_transport.avb_streaming.1
+I cluster-demo: decoder: VPP output copied on the CPU
+6.25 6.78 8.14 19/2949 28763
