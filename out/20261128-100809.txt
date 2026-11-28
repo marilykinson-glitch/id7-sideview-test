@@ -1,1 +1,9 @@
-# đang chạy từ 10:08:14
+# rc=0 sec=44.6 host=root@172.16.222.97
+
+03:08:17 view=none shown=0 layer=none tgt=idle pics=0 aus=6152 age=-1 w=0 pair= sei= why=the setting changed lr= sent=0
+03:08:28 view=none shown=0 layer=none tgt=idle pics=0 aus=6457 age=-1 w=0 pair= sei= why=the setting changed lr= sent=0
+03:08:38 view=none shown=0 layer=none tgt=idle pics=0 aus=6754 age=-1 w=0 pair= sei= why=the setting changed lr= sent=0
+03:08:48 view=none shown=0 layer=none tgt=idle pics=0 aus=7045 age=-1 w=0 pair= sei= why=the setting changed lr= sent=0
+---log
+ae6a0dd5196e9ef5ad1705c931813660  /proc/31320/exe
+rolled-back
