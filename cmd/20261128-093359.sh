@@ -1,0 +1,1 @@
+cd /var/opt/bmw-voice/current && ls -la . | head -30; readlink -f /var/opt/bmw-voice/current; md5sum nlu-brain.js offline-ai.js mic-capture.js ipa-overlay.js alsa-smartx.py offline-worker.py page.html uplink.js component.json car-control.js bmw-voice.js 2>&1; which python3 base64 gzip 2>&1
