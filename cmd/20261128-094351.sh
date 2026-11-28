@@ -1,0 +1,3 @@
+node -e "const s=require('/run/bimmer-drive/status.json');console.log(Object.keys(s).join(' '));const f=(o,p)=>{for(const k in o){const v=o[k];if(v&&typeof v==='object')f(v,p+k+'.');else if(/decode|access|packets|fps|keyframe|idr|gop|bytes|pictures|frames|view|state/i.test(k))console.log(p+k+'='+v)}};f(s,'')" 2>&1 | head -60
+sleep 5; node -e "const s=require('/run/bimmer-drive/status.json');const f=(o,p)=>{for(const k in o){const v=o[k];if(v&&typeof v==='object')f(v,p+k+'.');else if(/access_units|packets|bytes|decode_us|pictures/i.test(k))console.log(p+k+'='+v)}};f(s,'')"
+tail -5 /var/opt/bimmer-drive/bimmer-drive.log | cut -c1-200
