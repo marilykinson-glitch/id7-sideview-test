@@ -1,1 +1,14 @@
-# đang chạy từ 10:04:49
+# rc=0 sec=17.7 host=root@172.16.222.97
+
+ae6a0dd5196e9ef5ad1705c931813660  /var/opt/bimmer-drive/versions/1.0.3/mgu-sidecam
+/var/opt/bimmer-drive/versions/1.1.1
+72e0bf8b8402dd1f246f45afc835a478  /var/opt/bimmer-drive/versions/1.1.1/mgu-sidecam
+ae6a0dd5196e9ef5ad1705c931813660  /var/opt/bimmer-drive/versions/1.1.1/mgu-sidecam.sw-bak
+pid=30375
+72e0bf8b8402dd1f246f45afc835a478  /proc/30375/exe
+/usr/lib/libmfxhw64-p.so.1.24
+/usr/lib/libva-drm.so.1.9900.0
+/usr/lib/libva.so.1.9900.0
+cpu_pct=11
+{"decoder":"msdk","avb":"ok","aus":456,"pictures":0,"corrupt":0,"err":0,"restarts":0,"w":0,"h":0,"age":-1,"decode_us":0,"view":"none","shown":0,"pair":"","fr":0}
+19.52 17.28 12.75 29/2954 30462
