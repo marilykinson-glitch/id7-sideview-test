@@ -1,1 +1,37 @@
-# đang chạy từ 09:29:55
+# rc=0 sec=0.1 host=root@172.16.222.97
+
+ 02:29:58 up 1 day,  1:36,  load average: 8.18, 13.35, 15.22
+active
+active
+anh-dai-dien
+app-privacy
+aquota.group
+aquota.user
+bimmer-drive
+bimmer-link
+bmw-voice
+cluster-render
+gps-timesync
+hdshare
+iba1
+iba2
+idrive7-renderd
+iteriodev-comfort
+iteriodev-screencast
+iteriodev-tailscale
+jap-node22
+jap-ridetube-d
+kerneldump
+lost+found
+mgu-deploy
+mgu-inputgate
+mgu-python
+mgu-render
+mgu-studio-vault
+mgu-updater
+mgu-uplink
+personal
+public
+target
+thoi-tiet
+waze-on-cluster
