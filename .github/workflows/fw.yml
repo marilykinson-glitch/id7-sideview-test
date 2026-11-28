@@ -23,6 +23,7 @@ jobs:
         env:
           ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: https://espressif.github.io/arduino-esp32/package_esp32_index.json
         run: |
+          set +e
           mkdir -p out
           build() {
             arduino-cli compile --fqbn "$2" --export-binaries --output-dir "build-$1" vm_hud_esp32 > "out/build_$1.log" 2>&1
