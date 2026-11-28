@@ -17,7 +17,9 @@ jobs:
         run: |
           arduino-cli version
           arduino-cli core update-index
-          arduino-cli core install esp32:esp32
+          V3=$(arduino-cli core search esp32:esp32 --all --format json | python3 -c "import json,sys;d=json.load(sys.stdin);p=d['platforms'] if isinstance(d,dict) else d;rel=p[0].get('releases') or {};vs=[v for v in rel if v.startswith('3.')];vs.sort(key=lambda v:[int(x) if x.isdigit() else 0 for x in v.replace('-','.').split('.')]);print(vs[-1])")
+          echo "esp32 core $V3"
+          arduino-cli core install esp32:esp32@$V3
           arduino-cli core list
       - name: compile
         env:
