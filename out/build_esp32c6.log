@@ -1,10 +1,12 @@
-/home/runner/work/id7-sideview-test/id7-sideview-test/vm_hud_esp32/vm_hud_esp32.ino:15:10: fatal error: BLEDevice.h: No such file or directory
-   15 | #include <BLEDevice.h>
-      |          ^~~~~~~~~~~~~
-compilation terminated.
-
-[92mUsed platform[0m [92mVersion[0m [90mPath[0m
-[93mesp32:esp32[0m   4.0.0   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/4.0.0[0m
-Error during build: exit status 1
-rc=1
-ls: cannot access 'build-esp32c6': No such file or directory
+Sketch uses 747109 bytes (56%) of program storage space. Maximum is 1310720 bytes.
+Global variables use 20620 bytes (6%) of dynamic memory, leaving 307060 bytes for local variables. Maximum is 327680 bytes.
+rc=0
+total 22532
+drwxr-xr-x 2 runner runner     4096 Nov 28 04:33 .
+drwxr-xr-x 8 runner runner     4096 Nov 28 04:33 ..
+-rw-r--r-- 1 runner runner   747216 Nov 28 04:33 vm_hud_esp32.ino.bin
+-rw-r--r-- 1 runner runner    20928 Nov 28 04:33 vm_hud_esp32.ino.bootloader.bin
+-rwxr-xr-x 1 runner runner 10743632 Nov 28 04:33 vm_hud_esp32.ino.elf
+-rw-r--r-- 1 runner runner  7345563 Nov 28 04:33 vm_hud_esp32.ino.map
+-rw-r--r-- 1 runner runner  4194304 Nov 28 04:33 vm_hud_esp32.ino.merged.bin
+-rw-r--r-- 1 runner runner     3072 Nov 28 04:33 vm_hud_esp32.ino.partitions.bin
