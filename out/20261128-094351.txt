@@ -1,1 +1,41 @@
-# đang chạy từ 09:43:57
+# rc=0 sec=5.8 host=root@172.16.222.97
+
+at version tool app view fps note native snap nav vmc settings port phone limit symbol shown cluster_target why waze xinhan placing geometry renderer firewall source speed over speed_own pairing probe camera bmwmap screen
+view=none
+fps=30
+native.packets=10904606
+native.bytes=14478593151
+native.access_units=163870
+native.pictures=163654
+native.keyframes=2
+native.decode_errors=76
+native.decode_us=18729
+native.view_us=5593
+native.aux_frames=0
+native.target_state=idle
+native.view=none
+native.aux_state=none
+native.frames_sent=10106
+nav.state=reading
+nav.last.state=INACTIVE
+vmc.view=fit
+phone.packets=995
+waze.state=showing
+renderer.layers.map.state=shown
+renderer.targets.map.state=shown
+renderer.targets.panel.state=idle
+renderer.targets.hud.state=idle
+probe.bytes=0
+screen.decode_ms=null
+native.packets=10916797
+native.bytes=14494778492
+native.access_units=164054
+native.pictures=163838
+native.decode_us=15128
+phone.packets=995
+probe.bytes=0
+2026-11-28T02:13:12.238Z camera view -> none
+2026-11-28T02:13:44.514Z camera: not available
+2026-11-28T02:13:44.538Z map: not available
+2026-11-28T02:29:03.791Z camera: available
+2026-11-28T02:29:03.811Z map: available
