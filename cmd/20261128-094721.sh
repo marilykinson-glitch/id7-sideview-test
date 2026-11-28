@@ -1,0 +1,1 @@
+cd /var/opt/bmw-voice/current; n=$(grep -n "async function synthesizeVietnameseTts" nlu-brain.js | cut -d: -f1); sed -n "$n,$((n+55))p" nlu-brain.js; grep -n "TTS_MODEL_CASCADE = " -A5 nlu-brain.js; ls *.bak-*
