@@ -1,1 +1,14 @@
-# đang chạy từ 09:30:09
+# rc=0 sec=0.1 host=root@172.16.222.97
+
+  "version": "1.2.0",
+active
+NRestarts=0
+ActiveEnterTimestamp=Fri 2026-11-27 01:35:47 UTC
+current
+offline
+settings.json
+state
+tts-cache
+versions
+-- Logs begin at Sat 2026-11-28 02:28:59 UTC, end at Sat 2026-11-28 02:30:11 UTC. --
+-- No entries --
