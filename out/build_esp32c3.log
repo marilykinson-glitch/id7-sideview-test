@@ -1,0 +1,10 @@
+/home/runner/work/id7-sideview-test/id7-sideview-test/vm_hud_esp32/vm_hud_esp32.ino:15:10: fatal error: BLEDevice.h: No such file or directory
+   15 | #include <BLEDevice.h>
+      |          ^~~~~~~~~~~~~
+compilation terminated.
+
+[92mUsed platform[0m [92mVersion[0m [90mPath[0m
+[93mesp32:esp32[0m   4.0.0   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/4.0.0[0m
+Error during build: exit status 1
+rc=1
+ls: cannot access 'build-esp32c3': No such file or directory
