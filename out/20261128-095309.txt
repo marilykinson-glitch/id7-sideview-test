@@ -1,1 +1,86 @@
-# đang chạy từ 09:53:14
+# rc=0 sec=4.8 host=root@172.16.222.97
+
+== dri
+drwxr-xr-x    3 root     root           100 Aug 18  2023 .
+drwxr-xr-x   14 root     root          2940 Nov 28 02:28 ..
+drwxr-xr-x    2 root     root            80 Aug 18  2023 by-path
+crw-rw----    1 root     video     226,   0 Nov 27 00:53 card0
+crw-rw----    1 root     video     226, 128 Aug 18  2023 renderD128
+== libs
+/usr/lib/libdrm.so.2
+/usr/lib/libdrm.so.2.4.0
+/usr/lib/libdrm_intel.so.1
+/usr/lib/libdrm_intel.so.1.0.0
+/usr/lib/libigfxcmjit64.so.6.0.0.1183
+/usr/lib/libigfxcmrt64.so.6.0.0.1183
+/usr/lib/libmfxhw64-p.so.1.24
+/usr/lib/libmfxhw64.so
+/usr/lib/libmfxsw64-p.so.1.24
+/usr/lib/libmfxsw64.so
+/usr/lib/libva-drm.so.1
+/usr/lib/libva-drm.so.1.9900.0
+/usr/lib/libva-egl.so.1
+/usr/lib/libva-egl.so.1.9900.0
+/usr/lib/libva-tpi.so.1
+/usr/lib/libva-tpi.so.1.9900.0
+/usr/lib/libva-wayland.so.1
+/usr/lib/libva-wayland.so.1.9900.0
+/usr/lib/libva.so.1
+/usr/lib/libva.so.1.9900.0
+/usr/lib/dri/i965_dri.so
+/usr/lib/dri/i965_drv_video.so
+/usr/lib/dri/iHD_drv_video.so
+== find
+/usr/lib/libmfxsw64.so
+/usr/lib/libva.so.1.9900.0
+/usr/lib/libva-drm.so.1.9900.0
+/usr/lib/libva.so.1
+/usr/lib/dri/iHD_drv_video.so
+/usr/lib/dri/i965_drv_video.so
+/usr/lib/libva-tpi.so.1
+/usr/lib/libva-egl.so.1.9900.0
+/usr/lib/libmfxhw64-p.so.1.24
+/usr/lib/libva-wayland.so.1
+/usr/lib/mediasdk/libmfx_hevce_hw64.so
+/usr/lib/mediasdk/libmfx_vp8d_hw64.so
+/usr/lib/mediasdk/libmfx_vp9d_hw64.so
+/usr/lib/mediasdk/libmfx_hevcd_hw64.so
+/usr/lib/libva-wayland.so.1.9900.0
+/usr/lib/libva-egl.so.1
+/usr/lib/libmfxhw64.so
+/usr/lib/libmfxsw64-p.so.1.24
+/usr/lib/libva-drm.so.1
+/usr/lib/libva-tpi.so.1.9900.0
+== gst
+== who uses dri
+HmiMain3D 1
+NavigationBasic 2
+NavigationFully 1
+aapd 1
+animationplayer 1
+carplay 1
+dasvideo 1
+mgu-render 2
+mgu-renderd 2
+nivi3sink 1
+== gpu
+MAJOR=226
+MINOR=0
+DEVNAME=dri/card0
+DEVTYPE=drm_minor
+MAJOR=226
+MINOR=0
+DEVNAME=dri/card0
+DEVTYPE=drm_minor
+model name	: Intel(R) Atom(TM) Processor A3960 @ 1.90GHz
+== media
+NavigationBasic: /usr/lib/dri/mesa/i965_dri.so 
+NavigationFully: /usr/lib/dri/mesa/i965_dri.so 
+winston: /usr/lib/dri/mesa/i965_dri.so 
+aapd: /usr/lib/dri/iHD_drv_video.so /usr/lib/libmfxhw64-p.so.1.24 /usr/lib/libva-drm.so.1.9900.0 /usr/lib/libva.so.1.9900.0 
+waze-on-cluster: /usr/lib/dri/iHD_drv_video.so /usr/lib/libmfxhw64-p.so.1.24 /usr/lib/libva-drm.so.1.9900.0 /usr/lib/libva.so.1.9900.0 
+videodiag: /usr/lib/dri/iHD_drv_video.so /usr/lib/libva-drm.so.1.9900.0 /usr/lib/libva.so.1.9900.0 
+mgu-renderd: /usr/lib/dri/mesa/i965_dri.so 
+carplay: /usr/lib/dri/iHD_drv_video.so /usr/lib/libva-drm.so.1.9900.0 /usr/lib/libva.so.1.9900.0 
+dasvideo: /usr/lib/dri/iHD_drv_video.so /usr/lib/libva-drm.so.1.9900.0 /usr/lib/libva.so.1.9900.0 
+mgu-render: /usr/lib/dri/mesa/i965_dri.so 
