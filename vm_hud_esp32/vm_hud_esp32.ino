@@ -24,7 +24,9 @@
 #define WRITE_UUID     "0000fff2-0000-1000-8000-00805f9b34fb"
 #define DEVICE_NAME    "HUD(BLE)"
 
-static BLECharacteristic* pNotifyChar = nullptr;
+static BLECharacteristic* pNotifyChar = nullptr;     /* FFF1 (old HUD) */
+static BLECharacteristic* pHm10Char = nullptr;       /* FFE1 (HM-10 style: notify + write) */
+static BLECharacteristic* pTxChar = nullptr;         /* where replies go: the one the phone wrote to */
 static volatile bool bleConnected = false;
 static volatile bool sendWelcomePending = false;
 static unsigned long connectedAtMs = 0;
@@ -69,7 +71,8 @@ static void logHex(const char* dir, const uint8_t* data, size_t n) {
 }
 
 static void sendC3Frame(uint8_t cmd, const uint8_t* body, size_t bodyLen) {
-    if (!pNotifyChar || !bleConnected) return;
+    BLECharacteristic* tx = pTxChar ? pTxChar : pNotifyChar;
+    if (!tx || !bleConnected) return;
     size_t lenField = bodyLen + 13;
     size_t total = lenField + 8;
     if (total > 256) return;
@@ -87,8 +90,8 @@ static void sendC3Frame(uint8_t cmd, const uint8_t* body, size_t bodyLen) {
     for (size_t off = 0; off < total; off += 20) {
         size_t chunk = total - off;
         if (chunk > 20) chunk = 20;
-        pNotifyChar->setValue(frame + off, chunk);
-        pNotifyChar->notify();
+        tx->setValue(frame + off, chunk);
+        tx->notify();
         delay(15);
     }
 }
@@ -190,6 +193,7 @@ class ServerCB : public BLEServerCallbacks {
         connectedAtMs = millis();
         sendWelcomePending = true;
         rxLen = 0;
+        pTxChar = nullptr;
         Serial.print("{\"t\":\"raw\",\"dir\":\"evt\",\"hex\":\"\",\"evt\":\"connect\"}\n");
     }
     void onDisconnect(BLEServer* pServer) override {
@@ -204,6 +208,7 @@ class ServerCB : public BLEServerCallbacks {
 
 class WriteCB : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pCharacteristic) override {
+        pTxChar = (pCharacteristic == pHm10Char) ? pHm10Char : pNotifyChar;
         String val = pCharacteristic->getValue();
         size_t n = val.length();
         if (n == 0) return;
@@ -233,18 +238,30 @@ void setup() {
     pWriteChar->setCallbacks(new WriteCB());
 
     pService->start();
+
+    /* HM-10 style service FFE0 with one characteristic FFE1 for both ways,
+     * as the newer VIETMAP LIVE (3.4.x) builds its HUD UUIDs from ffe0/ffe1. */
+    BLEService* pHm10 = pServer->createService(BLEUUID((uint16_t)0xFFE0));
+    pHm10Char = pHm10->createCharacteristic(
+        BLEUUID((uint16_t)0xFFE1),
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY |
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+    pHm10Char->addDescriptor(new BLE2902());
+    pHm10Char->setCallbacks(new WriteCB());
+    pHm10->start();
     /* Name and the 16-bit service UUID 0xFFF0 both in the primary advertising
      * packet (some apps' scanners never read the scan response), and again in
      * the scan response. */
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
     BLEAdvertisementData adv;
     adv.setFlags(0x06);   /* LE General Discoverable, BR/EDR not supported */
-    adv.setCompleteServices(BLEUUID((uint16_t)0xFFF0));
+    adv.setCompleteServices(BLEUUID((uint16_t)0xFFE0));
     adv.setName(DEVICE_NAME);
     pAdvertising->setAdvertisementData(adv);
     BLEAdvertisementData scan;
     scan.setName(DEVICE_NAME);
     scan.setCompleteServices(BLEUUID((uint16_t)0xFFF0));
+    /* both services are listed: FFE0 in the advertising packet, FFF0 in the scan response */
     pAdvertising->setScanResponseData(scan);
     pAdvertising->setMinPreferred(0x06);
     pAdvertising->setMinInterval(0x20);   /* 20 ms: found fast by a scanning phone */
