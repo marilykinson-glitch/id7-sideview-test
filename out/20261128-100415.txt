@@ -1,1 +1,11 @@
-# đang chạy từ 10:04:21
+# rc=0 sec=0.5 host=root@172.16.222.97
+
+pid=30092
+lrwxrwxrwx    1 root     root             0 Nov 28 03:03 /proc/30092/exe -> /var/opt/bimmer-drive/versions/1.1.1/mgu-sidecam
+ae6a0dd5196e9ef5ad1705c931813660  /proc/30092/exe
+72e0bf8b8402dd1f246f45afc835a478  /var/opt/bimmer-drive/versions/1.0.3/mgu-sidecam
+ae6a0dd5196e9ef5ad1705c931813660  /var/opt/bimmer-drive/versions/1.0.3/mgu-sidecam.sw-bak
+/var/opt/bimmer-drive/versions/1.1.1/mgu-sidecam 
+45:    bin: env('BD_BIN', path.join(__dirname, 'mgu-sidecam')),
+1123:            note = 'mgu-sidecam is missing (' + CFG.bin + ')';
+2026-11-28T03:04:23.493Z {"ev":"status","version":"1.0.3","avb":"ok","packets":79872,"bytes":106042338,"lost":0,"dropped":0,"access_units":1199,"pictures":1199,"corrupt":0,"keyframes":0,"decode_errors":0,"restarts":0,"picture_w":1280,"picture_h":480,"full_range":0,"picture_age_ms":6,"source_age_ms":6,"decode_us":24214,"view
