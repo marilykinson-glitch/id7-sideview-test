@@ -25,7 +25,7 @@
 /* VIETMAP LIVE 3.4.5 lists, in its HUD search, only devices whose name contains
  * "vietmap_" / "vietmap-"; a BLE-only one must also contain "h50" (the H50
  * HUD, Java handler Da/j: service FFFF, characteristics 9ABC + 1234). */
-#define DEVICE_NAME    "vietmap_h50"
+#define DEVICE_NAME    "vietmap-hud"
 
 static BLECharacteristic* pNotifyChar = nullptr;     /* FFF1 (old HUD) */
 static BLECharacteristic* pHm10Char = nullptr;       /* FFE1 (HM-10 style: notify + write) */
@@ -274,7 +274,7 @@ void setup() {
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
     BLEAdvertisementData adv;
     adv.setFlags(0x06);   /* LE General Discoverable, BR/EDR not supported */
-    adv.setCompleteServices(BLEUUID((uint16_t)0xFFFF));
+    adv.setCompleteServices(BLEUUID((uint16_t)0xFFF0));
     adv.setName(DEVICE_NAME);
     pAdvertising->setAdvertisementData(adv);
     BLEAdvertisementData scan;
