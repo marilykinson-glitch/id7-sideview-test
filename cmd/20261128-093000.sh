@@ -1,0 +1,1 @@
+grep '"version"' /var/opt/bmw-voice/current/component.json 2>&1; systemctl is-active bmw-voice; systemctl show bmw-voice -p NRestarts -p ActiveEnterTimestamp; ls /var/opt/bmw-voice 2>&1; journalctl -u bmw-voice -b --no-pager -n 150 | cut -c1-240
