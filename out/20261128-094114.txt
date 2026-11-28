@@ -1,1 +1,7 @@
-# đang chạy từ 09:41:20
+# rc=0 sec=97.8 host=root@172.16.222.97
+
+list 200
+gemini-2.5-flash-preview-tts gemini-2.5-pro-preview-tts gemini-3.1-flash-tts-preview gemini-3.8-flash-tts gemini-3.8-flash-lite-tts gemini-3.5-transcribe-live gemini-2.5-flash-native-audio-latest gemini-2.5-flash-native-audio-preview-09-2025 gemini-2.5-flash-native-audio-preview-12-2025 gemini-3.1-flash-live-preview gemini-3.8-live gemini-3.8-live-extended-thinking gemini-3.5-live-translate-preview
+gemini-3.8-flash-lite-tts 200 2483ms audio bytes 145320
+gemini-3.1-flash-tts-preview 200 4033ms audio bytes 156160
+gemini-2.5-flash-preview-tts 200 2707ms audio bytes 131264
