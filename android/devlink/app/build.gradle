@@ -10,8 +10,8 @@ android {
         applicationId 'app.devlink'
         minSdk 29
         targetSdk 34
-        versionCode 2
-        versionName '1.1.0'
+        versionCode 3
+        versionName '1.1.1'
     }
 
     // chữ ký cố định để bản sau cài đè được lên bản trước (giữ nguyên khóa SSH đã lưu trong máy)

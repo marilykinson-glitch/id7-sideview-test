@@ -27,17 +27,60 @@ final class Net {
     }
 
     private static Network wifi(ConnectivityManager cm) {
+        return wifi(cm, null);
+    }
+
+    /** mạng nội bộ (Wi-Fi hoặc cáp Ethernet) có địa chỉ cùng dải với host; nếu không có thì ưu tiên cáp Ethernet */
+    private static Network wifi(ConnectivityManager cm, String host) {
+        Network firstWifi = null;
+        Network firstEth = null;
+        byte[] want = null;
+        if (host != null) {
+            try {
+                if (host.matches("^\\d+\\.\\d+\\.\\d+\\.\\d+$")) want = InetAddress.getByName(host).getAddress();
+            } catch (Exception e) {
+                want = null;
+            }
+        }
         try {
+            Network sameNet = null;
             for (Network n : cm.getAllNetworks()) {
                 NetworkCapabilities nc = cm.getNetworkCapabilities(n);
                 if (nc == null) continue;
-                if (nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
-                    return n;
+                boolean w = nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+                boolean e = nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET);
+                if (!w && !e) continue;
+                if (e && firstEth == null) firstEth = n;
+                if (w && firstWifi == null) firstWifi = n;
+                if (want == null) continue;
+                LinkProperties lp = cm.getLinkProperties(n);
+                if (lp == null) continue;
+                for (LinkAddress la : lp.getLinkAddresses()) {
+                    if (sameNet(la, want)) {
+                        if (sameNet == null || e) sameNet = n;
+                    }
+                }
+                // link-local (169.254.x.x) và dải riêng chỉ đi được trên mạng có địa chỉ cùng dải; mạng khác bỏ qua
             }
+            if (sameNet != null) return sameNet;
         } catch (Exception e) {
             // dùng mạng mặc định
         }
-        return null;
+        if (firstEth != null) return firstEth;
+        return firstWifi;
+    }
+
+    private static boolean sameNet(LinkAddress la, byte[] want) {
+        InetAddress a = la.getAddress();
+        if (!(a instanceof Inet4Address)) return false;
+        byte[] b = a.getAddress();
+        int bits = la.getPrefixLength();
+        if (bits < 0 || bits > 32) return false;
+        for (int i = 0; i < 4 && bits > 0; i++, bits -= 8) {
+            int mask = bits >= 8 ? 0xFF : (0xFF << (8 - bits)) & 0xFF;
+            if (((b[i] ^ want[i]) & mask) != 0) return false;
+        }
+        return true;
     }
 
     /** địa chỉ nội bộ thì đi qua Wi-Fi, còn lại dùng mạng mặc định */
@@ -45,7 +88,7 @@ final class Net {
         ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
         if (cm == null) return;
         try {
-            Network w = isLocal(host) ? wifi(cm) : null;
+            Network w = isLocal(host) ? wifi(cm, host) : null;
             cm.bindProcessToNetwork(w);
         } catch (Exception e) {
             // bỏ qua
