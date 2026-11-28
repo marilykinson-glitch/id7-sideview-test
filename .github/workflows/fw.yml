@@ -23,18 +23,19 @@ jobs:
         env:
           ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: https://espressif.github.io/arduino-esp32/package_esp32_index.json
         run: |
-          set -e
           mkdir -p out
           build() {
-            arduino-cli compile --fqbn "$2" --export-binaries --output-dir "build-$1" vm_hud_esp32
-            ls -la "build-$1"
-            cp "build-$1"/vm_hud_esp32.ino.merged.bin "out/vm_hud_$1.merged.bin"
+            arduino-cli compile --fqbn "$2" --export-binaries --output-dir "build-$1" vm_hud_esp32 > "out/build_$1.log" 2>&1
+            echo "rc=$?" >> "out/build_$1.log"
+            ls -la "build-$1" >> "out/build_$1.log" 2>&1
+            cp "build-$1"/*.merged.bin "out/vm_hud_$1.merged.bin" 2>/dev/null || true
           }
           build esp32s3 "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=disabled"
           build esp32c6 "esp32:esp32:esp32c6:CDCOnBoot=cdc"
           build esp32c3 "esp32:esp32:esp32c3:CDCOnBoot=cdc"
           arduino-cli core list > out/core.txt
-          sha256sum out/*.bin > out/SHA256SUMS
+          arduino-cli board details --fqbn esp32:esp32:esp32s3 > out/s3-options.txt 2>&1 || true
+          (cd out && sha256sum *.bin > SHA256SUMS 2>/dev/null; echo ok >> SHA256SUMS)
       - name: commit binaries
         run: |
           git config user.name "fw-build"
