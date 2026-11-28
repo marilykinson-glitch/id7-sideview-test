@@ -1,1 +1,8 @@
-# đang chạy từ 09:57:17
+# rc=0 sec=1.4 host=root@172.16.222.97
+
+[put] /tmp/msdk-probe 666520 byte
+369d3abedf034f8f5977007ece0993eb  /tmp/msdk-probe
+6.26 6.86 8.22 10/2956 28596
+rc=127
+sh: timeout: not found
+6.26 6.86 8.22 10/2956 28599
