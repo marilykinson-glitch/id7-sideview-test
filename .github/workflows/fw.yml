@@ -10,16 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: arduino-cli + esp32 core
+      - uses: arduino/setup-arduino-cli@v2
+      - name: esp32 core
+        env:
+          ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: https://espressif.github.io/arduino-esp32/package_esp32_index.json
         run: |
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=$HOME/bin sh
-          echo "$HOME/bin" >> $GITHUB_PATH
-          $HOME/bin/arduino-cli config init
-          $HOME/bin/arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          $HOME/bin/arduino-cli core update-index
-          $HOME/bin/arduino-cli core install esp32:esp32
-          $HOME/bin/arduino-cli core list
+          arduino-cli version
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli core list
       - name: compile
+        env:
+          ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: https://espressif.github.io/arduino-esp32/package_esp32_index.json
         run: |
           set -e
           mkdir -p out
