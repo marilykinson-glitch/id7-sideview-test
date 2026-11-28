@@ -1,1 +1,10 @@
-# đang chạy từ 10:05:44
+# rc=0 sec=75.7 host=root@172.16.222.97
+
+03:05:48 view=none shown=0 pics=0 age=-1 corrupt=0 err=0 dec=msdk dec_us=0 view_us=0 sent=0 cpu=12% the setting changed
+03:05:58 view=none shown=0 pics=0 age=-1 corrupt=0 err=0 dec=msdk dec_us=0 view_us=0 sent=0 cpu=13% the setting changed
+03:06:08 view=none shown=0 pics=0 age=-1 corrupt=0 err=0 dec=msdk dec_us=0 view_us=0 sent=0 cpu=12% the setting changed
+03:06:18 view=none shown=0 pics=0 age=-1 corrupt=0 err=0 dec=msdk dec_us=0 view_us=0 sent=0 cpu=15% the setting changed
+03:06:28 view=none shown=0 pics=0 age=-1 corrupt=0 err=0 dec=msdk dec_us=0 view_us=0 sent=0 cpu=14% the setting changed
+03:06:38 view=none shown=0 pics=0 age=-1 corrupt=0 err=0 dec=msdk dec_us=0 view_us=0 sent=0 cpu=14% the setting changed
+03:06:48 view=none shown=0 pics=0 age=-1 corrupt=0 err=0 dec=msdk dec_us=0 view_us=0 sent=0 cpu=15% the setting changed
+03:06:58 view=none shown=0 pics=0 age=-1 corrupt=0 err=0 dec=msdk dec_us=0 view_us=0 sent=0 cpu=15% the setting changed
