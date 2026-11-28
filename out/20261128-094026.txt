@@ -1,1 +1,36 @@
-# đang chạy từ 09:40:32
+# rc=0 sec=0.8 host=root@172.16.222.97
+
+Nov 28 02:37:30 mgu sh[17970]: [bmw-voice] TTS generated (piper-vi-warm, 3529ms, gen=7977ms): "Đã chỉnh điều hoà ghế tài 22 độ"
+Nov 28 02:38:48 mgu sh[17970]: [bmw-voice] TTS generated (piper-vi-warm, 3599ms, gen=7292ms): "Đã chỉnh điều hoà ghế tài 24 độ"
+---
+-rw-r--r--    1 root     root        115244 Nov 27 01:03 bd97fbddfffb2a13.wav
+-rw-r--r--    1 root     root         92716 Nov 27 01:04 bfe9be4d9eb766d9.wav
+-rw-r--r--    1 root     root         98490 Nov 26 08:04 c31f883ecd659394.wav
+-rw-r--r--    1 root     root         96300 Nov 27 01:37 cc45a01b199f4d86.wav
+-rw-r--r--    1 root     root         94764 Nov 27 01:03 d4cf73663d478f31.wav
+-rw-r--r--    1 root     root         90668 Nov 27 01:03 db76f6aa3cda9912.wav
+-rw-r--r--    1 root     root        141868 Nov 27 01:04 ddc15240bb38b781.wav
+-rw-r--r--    1 root     root        154156 Nov 27 01:13 eff49b7fe14ccdc5.wav
+---
+{"at":1795833521336,"ok":true,"engine":"offline_stt","speakerZone":"driver","transcript":"Chỉnh điều hòa hai bốn chấm năm","replyVi":"Đã chỉnh điều hoà ghế tài 24°C","actions":[{"tool":"set_climate","args":{"tempC":24,"zone":"driver","_resolvedTempC":24},"ok":true,"summaryVi":"Đã chỉnh điều hoà ghế tài 24°C"}]}
+---SIDECAM
+pid=1692
+/var/opt/bimmer-drive/versions/1.0.3/mgu-sidecam 
+VmRSS:	   22124 kB
+Threads:	6
+191720 mgu-sidecam
+15417 mgu-sidecam
+875 mgu-sidecam
+0 mgu-sidecam
+0 dlt_segmented
+0 dlt_receiver
+---
+bimmer-drive.log
+current
+pair.json
+versions
+/var/opt/bimmer-drive/versions/1.0.3
+app
+someip
+status.json
+{"ver":"1.0.3","view":"none"}
