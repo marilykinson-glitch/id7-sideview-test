@@ -1,1 +1,32 @@
-# đang chạy từ 09:31:00
+# rc=0 sec=3.6 host=root@172.16.222.97
+
+6.86 11.92 14.60 15/2986 16424
+4
+4
+   49%    1692  /var/opt/bimmer-drive/versions/1.0.3/mgu-sidecam 
+   19%     303  /usr/bin/avb_streamhandler_app_someip -s pluginias-media_transport-avb_configuration_bmw_mgu.so_withclasschanges --bg setup --target Harman_MGU_B1 -p 
+   19%    3022  /usr/bin/AlsaRoutingAdapters -p /usr/share/audiomanager/SmartXMGU.bin -s 
+   15%     150  /usr/bin/vsomeipd 
+   14%    2346  /usr/bin/aapd 
+   12%     729  /usr/bin/HmiMain3D -ro=/mnt/dataro/data/hmi -ibaroot=/mnt/iba/ibaroot -nfsrw=/mnt/share/hmi -bsc -lm=ramses_thread 
+    8%     868  /usr/bin/SignalGateway 
+    8%     761  /usr/bin/HmiDisplayClusterScenes -ro=/mnt/dataro/data/hmi -nfsrw=/mnt/share/hmi 
+    7%     885  /var/opt/waze-on-cluster/current/waze-on-cluster -c /var/opt/waze-on-cluster/current/waze-on-cluster.conf -s src_crop=1280x720:0,156,1280,564 
+    6%    2284  /usr/bin/NavigationPositioning --onoff=init --memtrace=0 --onoff-pinfo=off --trc-dlt --trc-dlt-appid=NAPS --trc-dlt-description=NavigationPositioning 
+    6%     473  /lib/systemd/systemd-journald 
+    6%   19468  /usr/bin/node /var/opt/bimmer-link/current/bimmer-link.js run 
+    6%   16423  sh -c PATH="$PATH:/usr/local/bin:/usr/sbin:/sbin:/opt/bin:/opt/sbin"; export PATH
+cat /proc/loadavg; nproc 2>/dev/null; grep -c ^processor /proc/cpuinfo
+snap(){ for p in /proc/[0-9]*; do read -r l < $p/stat 2>/dev/null || continue; set -- ${l#*) }; echo "${p#/proc/} $(( ${12} + ${13} ))"; done; }
+snap > /tmp/s1; sleep 3; snap > /tmp/s2
+awk 'NR==FNR{a[$1]=$2;next} ($1 in a){d=$2-a[$1]; if(d>3) print d, $1}' /tmp/s1 /tmp/s2 | sort -rn | head -15 | while read d p; do printf "%5s%%  %6s 
+echo ---; grep -E 'MemTotal|MemAvailable' /proc/meminfo; echo ---; cat /run/bmw-voice/hmi.json
+
+ 
+    5%     166  /usr/bin/ipcServer -c /etc/ipc4_b1.cfg 
+    5%     812  /usr/bin/gnssd -c /run/etc/navsens_config.json 
+---
+MemTotal:        5779464 kB
+MemAvailable:    1742800 kB
+---
+{"at":1795833063813,"version":"1.2.0","simMode":false,"url":"http://172.16.222.97:8145/?pin=8354","ips":["172.16.222.97","10.71.48.110"],"pin":"8354","assistantState":"idle","wakeStatus":"paused","micLevels":{"leftDb":-26.6,"rightDb":-26.6},"settings":{"hasApiKey":true,"apiKeyMasked":"AQ.Ab8****ObGw","model":"gemini-3.5-flash-lite","pttTrigger":"short_press","handsFreeWake":true,"voiceReply":true,"swapMicChannels":false},"car":{"liveCar":true,"proxyCount":23,"climate":{"on":true,"tempDriverC":24.5,"tempPassengerC":24.5,"fanLevel":3,"maxAc":false,"defrost":false,"freshAir":true,"sync":false,"seatHeatDriver":0,"seatHeatPassenger":0,"seatCoolDriver":0,"seatCoolPassenger":0,"massageDriver":false,"massagePassenger":false,"wheelHeat":false},"ambient":{"on":true,"key":"orange","name":"Cam BMW","hex":"#FF5500","brightness":80},"media":{"playing":true,"source":"CarPlay / Media","volumePercent":21,"muted":true},"oilTempC":87,"coolantTempC":92,"battery12v":12.6,"fuelPercent":65,"rangeKm":410,"callActive":true},"audio":{"hasAlsaCapture":true,"device":"smartx:SpeechSink_CF_2MIC_6REF"},"offline":{"kws":true,"stt":true,"sttWarm":true,"tts":true,"ttsWarm":true,"kwsMode":"offline"},"hasVoiceReady":true,"lastTurn":{"at":1795743874258,"ok":true,"engine":"offline_stt","speakerZone":"driver","transcript":"Kéo cửa sổ bên tai lên","replyVi":"Đã đóng kính ghế tài","actions":[{"tool":"control_windows","args":{"target":"driver","action":"close"},"ok":true,"summaryVi":"Đã đóng kính ghế tài"}]}}
