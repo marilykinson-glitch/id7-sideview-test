@@ -1,1 +1,14 @@
-# đang chạy từ 10:03:33
+# rc=0 sec=23.5 host=root@172.16.222.97
+
+[put] /tmp/mgu-sidecam-hw 2620376 byte
+72e0bf8b8402dd1f246f45afc835a478  /tmp/mgu-sidecam-hw
+pid=30092
+cpu_pct=48
+{"version":"1.0.3","avb":"ok","aus":457,"pictures":457,"corrupt":0,"err":0,"restarts":0,"w":1280,"h":480,"age":7,"decode_us":22523,"view":"right","shown":1,"pair":"sei@19","sei":"b62c66633562426cfb62"}
+2023-08-18T07:36:51.359Z mgu-sidecam started (pid 1692)
+2026-11-28T02:48:42.153Z mgu-sidecam ended (exit 0): again in 2000 ms
+2026-11-28T02:48:44.635Z mgu-sidecam 1.0.3
+2026-11-28T02:48:44.654Z mgu-sidecam started (pid 24001)
+2026-11-28T03:03:41.826Z mgu-sidecam ended (exit 0): again in 2000 ms
+2026-11-28T03:03:43.874Z mgu-sidecam started (pid 30092)
+19.49 16.55 12.14 35/2949 30153
