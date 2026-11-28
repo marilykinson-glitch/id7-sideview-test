@@ -1,1 +1,66 @@
-# đang chạy từ 09:47:26
+# rc=0 sec=0.0 host=root@172.16.222.97
+
+async function synthesizeVietnameseTts(opts) {
+    const o = opts || {};
+    const spoken = formatSpeechTextVi(o.text || '');
+    if (!spoken || !o.apiKey) return null;
+
+    for (let i = 0; i < TTS_MODEL_CASCADE.length; i++) {
+        const model = TTS_MODEL_CASCADE[i];
+        const body = JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: 'Đọc tự nhiên, rõ ràng, ngắn gọn bằng tiếng Việt: ' + spoken }] }],
+            generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: o.voiceName || 'Kore' },
+                    },
+                },
+            },
+        });
+        try {
+            const res = await Up.request(o.uplinkOpts || Up.options(), {
+                host: 'generativelanguage.googleapis.com',
+                path: '/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(o.apiKey),
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+                timeoutMs: 9000,
+            });
+            if (res.status < 200 || res.status >= 300) continue;
+            const data = JSON.parse(res.body);
+            const parts = (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+            let inline = null;
+            for (let p = 0; p < parts.length; p++) {
+                if (parts[p] && parts[p].inlineData && parts[p].inlineData.data) {
+                    inline = parts[p].inlineData;
+                    break;
+                }
+            }
+            if (!inline) continue;
+            const raw = Buffer.from(inline.data, 'base64');
+            if (raw.length < 200) continue;
+            const isWav = raw.length > 44 && raw.slice(0, 4).toString('ascii') === 'RIFF';
+            const rateM = /rate=(\d+)/i.exec(String(inline.mimeType || ''));
+            const sr = rateM ? Number(rateM[1]) : 24000;
+            const wavBuffer = isWav ? raw : pcmToWav24kMono(raw, sr);
+            const dataBytes = Math.max(0, wavBuffer.length - 44);
+            const durationMs = Math.round((dataBytes / (sr * 2)) * 1000);
+            return { wavBuffer, durationMs, model, spoken };
+        } catch (e) {}
+    }
+    return null;
+}
+
+module.exports = {
+    sanitizePlainQuotes,
+    normalizeViOrthography,
+    extractHeyBmwWake,
+1095:const TTS_MODEL_CASCADE = [
+1096-    'gemini-2.5-flash-preview-tts',
+1097-    'gemini-3.8-flash-lite-tts',
+1098-    'gemini-3.1-flash-tts-preview',
+1099-];
+1100-
+bmw-voice.js.bak-call
+car-control.js.bak-call
